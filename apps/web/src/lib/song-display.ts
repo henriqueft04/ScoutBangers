@@ -14,8 +14,8 @@ export function displayTitle(
   song: Song,
   meta?: TrackMetadata | null
 ): string {
-  const m = meta ?? peekTrackMetadata(song.id)
-  return m?.title || song.title || "Untitled"
+  void meta
+  return song.title || "Untitled"
 }
 
 /**

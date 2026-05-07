@@ -1,5 +1,5 @@
 import * as React from "react"
-import { ChevronDown } from "lucide-react"
+import { ChevronDown, Download } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
@@ -101,7 +101,18 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
         <p className="text-muted-foreground text-xs uppercase tracking-wider">
           Now Playing
         </p>
-        <span className="size-7" aria-hidden />
+        {song ? (
+          <a
+            href={`/api/stream/${song.id}`}
+            download={title}
+            aria-label="Download song"
+            className="text-muted-foreground hover:text-foreground touch-manipulation inline-flex size-7 items-center justify-center rounded-md transition-colors"
+          >
+            <Download className="size-4" />
+          </a>
+        ) : (
+          <span className="size-7" aria-hidden />
+        )}
       </header>
 
       <PlaybackErrorBanner />

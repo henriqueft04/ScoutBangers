@@ -33,10 +33,7 @@ interface Song {
 }
 
 function parseSongName(filename: string): { title: string; artist?: string } {
-  const withoutExt = filename.replace(/\.[a-z0-9]+$/i, "")
-  const match = withoutExt.match(/^(.+?)\s*[-–—]\s*(.+)$/)
-  if (match) return { artist: match[1]!.trim(), title: match[2]!.trim() }
-  return { title: withoutExt.trim() }
+  return { title: filename.replace(/\.[a-z0-9]+$/i, "").trim() }
 }
 
 function json(body: unknown, status = 200, extra?: HeadersInit): Response {
