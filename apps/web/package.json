@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@workspace/ui": "*",
-    "google-auth-library": "^10.6.2",
     "lucide-react": "^1.14.0",
     "music-metadata": "^11.12.3",
     "react": "^19.2.4",
