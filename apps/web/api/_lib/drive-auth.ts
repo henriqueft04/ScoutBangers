@@ -20,13 +20,23 @@ function getCredentials(): { client_email: string; private_key: string } {
   return { client_email: creds.client_email, private_key: creds.private_key }
 }
 
-function pemToDer(pem: string): Uint8Array {
+function pemToDer(pem: string): ArrayBuffer {
   const base64 = pem
     .replace(/-----BEGIN PRIVATE KEY-----/g, "")
     .replace(/-----END PRIVATE KEY-----/g, "")
     .replace(/\s+/g, "")
   const binary = atob(base64)
-  return Uint8Array.from(binary, (c) => c.charCodeAt(0))
+  const buf = new ArrayBuffer(binary.length)
+  const view = new Uint8Array(buf)
+  for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i)
+  return buf
+}
+
+function strToBuffer(str: string): ArrayBuffer {
+  const encoded = new TextEncoder().encode(str)
+  const buf = new ArrayBuffer(encoded.length)
+  new Uint8Array(buf).set(encoded)
+  return buf
 }
 
 function toBase64url(buf: ArrayBuffer): string {
@@ -37,7 +47,7 @@ function toBase64url(buf: ArrayBuffer): string {
 }
 
 function jsonToBase64url(obj: unknown): string {
-  return toBase64url(new TextEncoder().encode(JSON.stringify(obj)))
+  return toBase64url(strToBuffer(JSON.stringify(obj)))
 }
 
 /**
@@ -51,7 +61,7 @@ export async function getDriveAccessToken(): Promise<string> {
   const keyDer = pemToDer(private_key)
   const cryptoKey = await crypto.subtle.importKey(
     "pkcs8",
-    keyDer.buffer as ArrayBuffer,
+    keyDer,
     { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
     false,
     ["sign"]
@@ -70,7 +80,7 @@ export async function getDriveAccessToken(): Promise<string> {
   const sigBuf = await crypto.subtle.sign(
     "RSASSA-PKCS1-v1_5",
     cryptoKey,
-    new TextEncoder().encode(`${header}.${payload}`).buffer as ArrayBuffer
+    strToBuffer(`${header}.${payload}`)
   )
   const jwt = `${header}.${payload}.${toBase64url(sigBuf)}`
 
