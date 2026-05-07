@@ -101,11 +101,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (!id) return
     sharedSongHandled.current = true
     const index = songs.findIndex((s) => s.id === id)
-    if (index !== -1) dispatch({ type: "PLAY", index })
+    if (index !== -1) play(index)
     // Remove the param from the URL without adding a history entry.
     const url = new URL(window.location.href)
     url.searchParams.delete("song")
     window.history.replaceState(null, "", url.pathname + (url.search || ""))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [songs, loading])
 
   // ---- Persistence -----------------------------------------------------
