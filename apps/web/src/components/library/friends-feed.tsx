@@ -102,7 +102,7 @@ export function FriendsFeed() {
         <p className="text-destructive text-xs">{error}</p>
       ) : !entries || entries.length === 0 ? (
         <p className="text-muted-foreground text-sm">
-          Nobody's listened yet. Be the first.
+          No friend activity yet — invite some friends to listen.
         </p>
       ) : (
         <ul role="list" className="flex flex-col gap-px">

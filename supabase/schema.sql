@@ -246,17 +246,25 @@ language sql
 security definer
 set search_path = public
 as $$
-  select
-    p.song_id,
-    p.user_id,
-    prof.display_name,
-    prof.avatar_url,
-    p.played_at
-  from public.plays p
-  join public.profiles prof on prof.id = p.user_id
-  where p.user_id is not null
-    and prof.share_activity = true
-  order by p.played_at desc
+  -- One row per user (their most recent play), excluding the caller.
+  -- IS DISTINCT FROM auth.uid() works for anon callers too (auth.uid()
+  -- is null, so every non-null user_id is "distinct" and stays in).
+  select song_id, user_id, display_name, avatar_url, played_at
+  from (
+    select distinct on (p.user_id)
+      p.song_id,
+      p.user_id,
+      prof.display_name,
+      prof.avatar_url,
+      p.played_at
+    from public.plays p
+    join public.profiles prof on prof.id = p.user_id
+    where p.user_id is not null
+      and prof.share_activity = true
+      and p.user_id is distinct from auth.uid()
+    order by p.user_id, p.played_at desc
+  ) per_user
+  order by played_at desc
   limit lim;
 $$;
 
