@@ -51,7 +51,15 @@ function getClient(): JWT {
 /** Fetch a current Drive access token. Cached internally by the JWT client. */
 export async function getDriveAccessToken(): Promise<string> {
   const auth = getClient()
-  const { token } = await auth.getAccessToken()
+
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(
+      () => reject(new Error("Google token request timed out after 10s")),
+      10_000
+    )
+  )
+
+  const { token } = await Promise.race([auth.getAccessToken(), timeout])
   if (!token) {
     throw new Error("Empty access token from Google token endpoint")
   }
