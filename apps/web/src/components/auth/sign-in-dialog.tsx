@@ -1,4 +1,5 @@
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { Loader2, X } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
@@ -81,7 +82,7 @@ export function SignInDialog({ open, onClose }: SignInDialogProps) {
     }
   }
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -231,6 +232,7 @@ export function SignInDialog({ open, onClose }: SignInDialogProps) {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

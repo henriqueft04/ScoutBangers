@@ -1,4 +1,5 @@
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { Check, Heart, ListPlus, Loader2, Plus, X } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
@@ -205,7 +206,7 @@ export function AddToPlaylistDialog({
     setCreatingBusy(false)
   }
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -342,6 +343,7 @@ export function AddToPlaylistDialog({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
