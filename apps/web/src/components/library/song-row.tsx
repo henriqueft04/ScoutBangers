@@ -10,6 +10,7 @@ import { artistHref } from "@/lib/artists"
 import { displayArtist, displayTitle } from "@/lib/song-display"
 import type { Song } from "@/lib/types"
 
+import { FavoriteButton } from "./favorite-button"
 import { MarqueeText } from "./marquee-text"
 import { SongArtwork } from "./song-artwork"
 
@@ -122,6 +123,7 @@ export function SongRow({
           </Link>
         )}
       </div>
+      <FavoriteButton songId={song.id} size="sm" />
     </div>
   )
 }

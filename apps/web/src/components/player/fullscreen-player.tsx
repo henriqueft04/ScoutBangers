@@ -4,6 +4,7 @@ import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
 
+import { FavoriteButton } from "@/components/library/favorite-button"
 import { MarqueeText } from "@/components/library/marquee-text"
 import { SongArtwork } from "@/components/library/song-artwork"
 import { useTrackMetadata } from "@/hooks/useTrackMetadata"
@@ -120,27 +121,28 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
         </p>
         {song ? (
           <div className="flex items-center gap-1">
+            <FavoriteButton songId={song.id} size="md" stopPropagation={false} />
             <Button
               type="button"
               variant="ghost"
-              size="icon-sm"
+              size="icon"
               aria-label="Share song"
               onClick={handleShare}
-              className="touch-manipulation"
+              className="touch-manipulation size-10"
             >
-              {copied ? <Check className="size-4" /> : <Share2 className="size-4" />}
+              {copied ? <Check className="size-5" /> : <Share2 className="size-5" />}
             </Button>
             <a
               href={`/api/stream/${song.id}`}
               download={title}
               aria-label="Download song"
-              className="text-muted-foreground hover:text-foreground touch-manipulation inline-flex size-7 items-center justify-center rounded-md transition-colors"
+              className="text-muted-foreground hover:text-foreground touch-manipulation inline-flex size-10 items-center justify-center rounded-md transition-colors"
             >
-              <Download className="size-4" />
+              <Download className="size-5" />
             </a>
           </div>
         ) : (
-          <span className="size-7" aria-hidden />
+          <span className="size-10" aria-hidden />
         )}
       </header>
 
@@ -179,9 +181,9 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
           )}
         </div>
 
-        <div className="flex w-full max-w-sm flex-col gap-3">
+        <div className="flex w-full max-w-sm flex-col gap-4">
           <ProgressBar />
-          <MainControls />
+          <MainControls size="lg" />
           <VolumeControl className="mt-2 hidden md:flex md:justify-center" />
         </div>
       </div>

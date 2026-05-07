@@ -15,13 +15,16 @@ import { usePlayer } from "@/hooks/usePlayer"
 
 interface MainControlsProps {
   className?: string
+  /** "lg" doubles padding and bumps the play button to ~64px — used in
+   *  the fullscreen now-playing sheet where touch targets get more room. */
+  size?: "default" | "lg"
 }
 
 /**
  * The five-button control cluster: shuffle | prev | play/pause | next | repeat.
  * Sized for touch on mobile (44px play, 36px secondaries) and dense on desktop.
  */
-export function MainControls({ className }: MainControlsProps) {
+export function MainControls({ className, size = "default" }: MainControlsProps) {
   const {
     isPlaying,
     songs,
@@ -38,10 +41,17 @@ export function MainControls({ className }: MainControlsProps) {
   const hasSongs = songs.length > 0
   const hasCurrent = currentIndex !== null
 
+  const isLg = size === "lg"
+  const sideButton = isLg ? "size-12" : ""
+  const sideIcon = isLg ? "size-6" : ""
+  const playButton = isLg ? "size-16 md:size-16" : "size-11 md:size-10"
+  const playIcon = isLg ? "size-7" : "size-5"
+
   return (
     <div
       className={cn(
         "flex items-center justify-center gap-1 md:gap-2",
+        isLg && "gap-3 md:gap-4",
         className
       )}
     >
@@ -55,10 +65,11 @@ export function MainControls({ className }: MainControlsProps) {
         disabled={!hasSongs}
         className={cn(
           "touch-manipulation",
+          sideButton,
           shuffle && "text-primary bg-accent"
         )}
       >
-        <Shuffle />
+        <Shuffle className={sideIcon} />
       </Button>
 
       <Button
@@ -68,9 +79,9 @@ export function MainControls({ className }: MainControlsProps) {
         aria-label="Previous"
         onClick={prev}
         disabled={!hasCurrent}
-        className="touch-manipulation"
+        className={cn("touch-manipulation", sideButton)}
       >
-        <SkipBack />
+        <SkipBack className={sideIcon} />
       </Button>
 
       <Button
@@ -80,12 +91,12 @@ export function MainControls({ className }: MainControlsProps) {
         aria-label={isPlaying ? "Pause" : "Play"}
         onClick={toggle}
         disabled={!hasSongs}
-        className="size-11 touch-manipulation rounded-full md:size-10"
+        className={cn("touch-manipulation rounded-full", playButton)}
       >
         {isPlaying ? (
-          <Pause className="size-5 fill-current" />
+          <Pause className={cn(playIcon, "fill-current")} />
         ) : (
-          <Play className="size-5 fill-current" />
+          <Play className={cn(playIcon, "fill-current")} />
         )}
       </Button>
 
@@ -96,9 +107,9 @@ export function MainControls({ className }: MainControlsProps) {
         aria-label="Next"
         onClick={next}
         disabled={!hasCurrent}
-        className="touch-manipulation"
+        className={cn("touch-manipulation", sideButton)}
       >
-        <SkipForward />
+        <SkipForward className={sideIcon} />
       </Button>
 
       <Button
@@ -111,10 +122,11 @@ export function MainControls({ className }: MainControlsProps) {
         disabled={!hasSongs}
         className={cn(
           "touch-manipulation",
+          sideButton,
           repeat !== "off" && "text-primary bg-accent"
         )}
       >
-        {repeat === "one" ? <Repeat1 /> : <Repeat />}
+        {repeat === "one" ? <Repeat1 className={sideIcon} /> : <Repeat className={sideIcon} />}
       </Button>
     </div>
   )
