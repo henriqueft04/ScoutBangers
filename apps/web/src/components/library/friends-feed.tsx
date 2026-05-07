@@ -1,5 +1,6 @@
 import * as React from "react"
 import { Loader2, Play } from "lucide-react"
+import { Link } from "react-router-dom"
 
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -158,7 +159,12 @@ function FeedRow({ entry, song, onPlay }: FeedRowProps) {
           : "opacity-60"
       )}
     >
-      <div className="bg-primary text-primary-foreground inline-flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-semibold">
+      <Link
+        to={`/u/${entry.userId}`}
+        onClick={(event) => event.stopPropagation()}
+        aria-label={`Open ${entry.displayName}'s profile`}
+        className="bg-primary text-primary-foreground inline-flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-semibold"
+      >
         {entry.avatarUrl ? (
           <img
             src={entry.avatarUrl}
@@ -169,10 +175,16 @@ function FeedRow({ entry, song, onPlay }: FeedRowProps) {
         ) : (
           initials
         )}
-      </div>
+      </Link>
       <div className="min-w-0 flex-1">
         <p className="text-foreground truncate text-sm">
-          <span className="font-semibold">{entry.displayName}</span>
+          <Link
+            to={`/u/${entry.userId}`}
+            onClick={(event) => event.stopPropagation()}
+            className="font-semibold hover:underline"
+          >
+            {entry.displayName}
+          </Link>
           <span className="text-muted-foreground"> played</span>
         </p>
         <p className="text-muted-foreground truncate text-xs">

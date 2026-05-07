@@ -8,6 +8,7 @@ import { LibraryPage } from "@/components/pages/library-page"
 import { PlaylistsPage } from "@/components/pages/playlists-page"
 import { PlaylistDetailPage } from "@/components/pages/playlist-detail-page"
 import { ProfilePage } from "@/components/pages/profile-page"
+import { PublicProfilePage } from "@/components/pages/public-profile-page"
 import { PlayerProvider } from "@/components/player/player-provider"
 
 /**
@@ -31,6 +32,7 @@ export function App() {
               <Route path="/playlists" element={<PlaylistsPage />} />
               <Route path="/playlists/:id" element={<PlaylistDetailPage />} />
               <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/u/:userId" element={<PublicProfilePage />} />
               <Route path="/artist/:name" element={<ArtistPage />} />
               <Route path="*" element={<HomePage />} />
             </Routes>

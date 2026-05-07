@@ -58,7 +58,11 @@ async function loadFavoritesFor(userId: string): Promise<void> {
   if (!id) {
     const { data: created } = await sb
       .from("playlists")
-      .insert({ user_id: userId, name: FAVORITES_PLAYLIST_NAME })
+      .insert({
+        user_id: userId,
+        name: FAVORITES_PLAYLIST_NAME,
+        is_public: false,
+      })
       .select("id")
       .single()
     id = created?.id ?? null

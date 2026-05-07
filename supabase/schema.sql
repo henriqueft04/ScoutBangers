@@ -50,6 +50,8 @@ create table if not exists public.playlists (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
+  -- Public playlists show on the owner's /u/:userId profile page.
+  is_public boolean not null default true,
   created_at timestamptz not null default now()
 );
 
@@ -118,6 +120,10 @@ drop policy if exists "playlists_read_own" on public.playlists;
 create policy "playlists_read_own" on public.playlists
   for select using (auth.uid() = user_id);
 
+drop policy if exists "playlists_read_public" on public.playlists;
+create policy "playlists_read_public" on public.playlists
+  for select using (is_public = true);
+
 drop policy if exists "playlists_insert_own" on public.playlists;
 create policy "playlists_insert_own" on public.playlists
   for insert with check (auth.uid() = user_id);
@@ -136,6 +142,15 @@ create policy "playlist_songs_read_own" on public.playlist_songs
     exists (
       select 1 from public.playlists
       where id = playlist_id and user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "playlist_songs_read_public" on public.playlist_songs;
+create policy "playlist_songs_read_public" on public.playlist_songs
+  for select using (
+    exists (
+      select 1 from public.playlists
+      where id = playlist_id and is_public = true
     )
   );
 
@@ -269,6 +284,6 @@ as $$
 $$;
 
 grant execute on function public.top_songs_global(int) to anon, authenticated;
-grant execute on function public.top_songs_for_user(uuid, int) to authenticated;
-grant execute on function public.top_artists_for_user(uuid, int) to authenticated;
+grant execute on function public.top_songs_for_user(uuid, int) to anon, authenticated;
+grant execute on function public.top_artists_for_user(uuid, int) to anon, authenticated;
 grant execute on function public.recent_plays(int) to anon, authenticated;
