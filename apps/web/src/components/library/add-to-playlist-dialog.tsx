@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Check, HeartOff, ListPlus, Loader2, X } from "lucide-react"
+import { Check, HeartOff, ListPlus, Loader2, Plus, X } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 
@@ -38,6 +38,9 @@ export function AddToPlaylistDialog({
   const [playlists, setPlaylists] = React.useState<PlaylistSummary[] | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [busyId, setBusyId] = React.useState<string | null>(null)
+  const [creating, setCreating] = React.useState(false)
+  const [newName, setNewName] = React.useState("")
+  const [creatingBusy, setCreatingBusy] = React.useState(false)
 
   React.useEffect(() => {
     if (!open || !supabase || !user) return
@@ -123,6 +126,47 @@ export function AddToPlaylistDialog({
     onClose()
   }
 
+  const handleCreate = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!supabase || !user || !newName.trim()) return
+    setCreatingBusy(true)
+    setError(null)
+
+    const name = newName.trim()
+    // 1. Create the playlist
+    const { data: created, error: createErr } = await supabase
+      .from("playlists")
+      .insert({ user_id: user.id, name })
+      .select("id, name")
+      .single()
+    if (createErr || !created) {
+      setError(createErr?.message ?? "Couldn't create playlist")
+      setCreatingBusy(false)
+      return
+    }
+
+    // 2. Add the song to it
+    const position = Math.floor(Date.now() / 1000)
+    const { error: addErr } = await supabase.from("playlist_songs").insert({
+      playlist_id: created.id,
+      song_id: songId,
+      position,
+    })
+    if (addErr) {
+      setError(addErr.message)
+      setCreatingBusy(false)
+      return
+    }
+
+    setPlaylists((prev) => [
+      { id: created.id, name: created.name, alreadyContains: true },
+      ...(prev ?? []),
+    ])
+    setNewName("")
+    setCreating(false)
+    setCreatingBusy(false)
+  }
+
   return (
     <div
       role="dialog"
@@ -154,6 +198,57 @@ export function AddToPlaylistDialog({
         {error ? (
           <p className="text-destructive mb-2 text-xs">{error}</p>
         ) : null}
+
+        {creating ? (
+          <form
+            onSubmit={handleCreate}
+            className="border-border bg-background mb-3 flex items-center gap-2 rounded-md border p-2"
+          >
+            <input
+              autoFocus
+              type="text"
+              placeholder="Playlist name"
+              value={newName}
+              onChange={(event) => setNewName(event.target.value)}
+              disabled={creatingBusy}
+              className="flex-1 bg-transparent px-2 py-1 text-sm focus:outline-none"
+            />
+            <Button
+              type="submit"
+              size="sm"
+              disabled={!newName.trim() || creatingBusy}
+            >
+              {creatingBusy ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                "Create"
+              )}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setCreating(false)
+                setNewName("")
+              }}
+              disabled={creatingBusy}
+            >
+              Cancel
+            </Button>
+          </form>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="hover:bg-accent/40 mb-2 flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left transition-colors"
+          >
+            <Plus className="text-muted-foreground size-4" />
+            <span className="text-foreground text-sm font-medium">
+              New playlist
+            </span>
+          </button>
+        )}
 
         <div className="mb-4 max-h-72 overflow-y-auto">
           {playlists === null ? (

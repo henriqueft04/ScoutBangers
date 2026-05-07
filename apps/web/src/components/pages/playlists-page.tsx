@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Loader2, Plus } from "lucide-react"
+import { Loader2, Plus, Trash2 } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
@@ -76,6 +76,25 @@ export function PlaylistsPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void reload()
   }, [user, reload])
+
+  const handleDelete = async (
+    event: React.MouseEvent,
+    id: string,
+    name: string
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!supabase || !user) return
+    if (!window.confirm(`Delete playlist "${name}"? This can't be undone.`)) {
+      return
+    }
+    const { error } = await supabase.from("playlists").delete().eq("id", id)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setPlaylists((prev) => (prev ? prev.filter((p) => p.id !== id) : prev))
+  }
 
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -183,18 +202,32 @@ export function PlaylistsPage() {
         <ul role="list" className="flex flex-col gap-1">
           {playlists.map((playlist) => (
             <li key={playlist.id}>
-              <Link
-                to={`/playlists/${playlist.id}`}
-                className="hover:bg-accent/40 flex items-center justify-between rounded-md px-3 py-2.5 transition-colors"
-              >
-                <span className="text-foreground text-sm font-medium">
-                  {playlist.name}
-                </span>
-                <span className="text-muted-foreground text-xs">
-                  {playlist.song_count}{" "}
-                  {playlist.song_count === 1 ? "song" : "songs"}
-                </span>
-              </Link>
+              <div className="hover:bg-accent/40 flex items-center gap-2 rounded-md pr-1 transition-colors">
+                <Link
+                  to={`/playlists/${playlist.id}`}
+                  className="flex flex-1 items-center justify-between px-3 py-2.5"
+                >
+                  <span className="text-foreground text-sm font-medium">
+                    {playlist.name}
+                  </span>
+                  <span className="text-muted-foreground text-xs">
+                    {playlist.song_count}{" "}
+                    {playlist.song_count === 1 ? "song" : "songs"}
+                  </span>
+                </Link>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Delete ${playlist.name}`}
+                  onClick={(event) =>
+                    handleDelete(event, playlist.id, playlist.name)
+                  }
+                  className="text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
             </li>
           ))}
         </ul>
