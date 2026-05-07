@@ -1,22 +1,16 @@
-// `.js` extension is required by Vercel's nodenext module resolution even
-// though the source is .ts — the extension refers to the compiled output.
+import { request } from "node:https"
+import type { RequestOptions } from "node:https"
 import { getDriveAccessToken } from "./_lib/drive-auth.js"
 
 /**
  * GET /api/songs
  *
- * Lists every audio file in the Drive folder identified by DRIVE_FOLDER_ID and
- * returns a sorted manifest. Authenticated as a Google service account so we
- * get proper authenticated quotas (no more IP-level abuse-detection hits) and
- * the folder can stay private — share it with the service-account email
- * instead of "anyone with link".
- *
- * Required env vars:
- *   - GOOGLE_SERVICE_ACCOUNT_JSON  Full service-account JSON pasted whole
- *   - DRIVE_FOLDER_ID              ID of the Drive folder shared with the SA
+ * Lists every audio file in the Drive folder identified by DRIVE_FOLDER_ID.
+ * Uses node:https (not fetch/undici) to avoid undici HTTP/2 body-read hangs.
  */
 
-const DRIVE_LIST_URL = "https://www.googleapis.com/drive/v3/files"
+const DRIVE_LIST_HOST = "www.googleapis.com"
+const DRIVE_LIST_PATH = "/drive/v3/files"
 
 interface DriveFile {
   id: string
@@ -40,10 +34,26 @@ interface Song {
   modifiedTime: string
 }
 
-function parseSongName(filename: string): {
-  title: string
-  artist?: string
-} {
+function httpsGet(path: string, headers: Record<string, string>): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const opts: RequestOptions = {
+      host: DRIVE_LIST_HOST,
+      path,
+      method: "GET",
+      headers: { ...headers, Connection: "close" },
+    }
+    const req = request(opts, (res) => {
+      const chunks: Buffer[] = []
+      res.on("data", (chunk: Buffer) => chunks.push(chunk))
+      res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")))
+      res.on("error", reject)
+    })
+    req.on("error", reject)
+    req.end()
+  })
+}
+
+function parseSongName(filename: string): { title: string; artist?: string } {
   const withoutExt = filename.replace(/\.[a-z0-9]+$/i, "")
   const match = withoutExt.match(/^(.+?)\s*[-–—]\s*(.+)$/)
   if (match) {
@@ -85,41 +95,29 @@ export default async function handler(request: Request): Promise<Response> {
   }
 
   const bust = request.url.includes("bust")
-
   const files: DriveFile[] = []
   let pageToken: string | undefined
-  let page = 0
 
   try {
     do {
-      page++
       const params = new URLSearchParams({
         q: `'${folderId}' in parents and mimeType contains 'audio/' and trashed = false`,
-        fields:
-          "nextPageToken,files(id,name,mimeType,size,modifiedTime)",
+        fields: "nextPageToken,files(id,name,mimeType,size,modifiedTime)",
         pageSize: "1000",
       })
       if (pageToken) params.set("pageToken", pageToken)
 
-      console.log(`[songs] page ${page} fetch start`)
-      const driveResponse = await fetch(`${DRIVE_LIST_URL}?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(10_000),
-      })
-      console.log(`[songs] page ${page} response status ${driveResponse.status}`)
-      if (!driveResponse.ok) {
-        const detail = await driveResponse.text()
+      const responseText = await httpsGet(
+        `${DRIVE_LIST_PATH}?${params}`,
+        { Authorization: `Bearer ${token}` }
+      )
+      const data = JSON.parse(responseText) as DriveListResponse
+      if (!Array.isArray(data.files)) {
         return jsonResponse(
-          {
-            error: "Drive API request failed",
-            status: driveResponse.status,
-            detail,
-          },
+          { error: "Unexpected Drive API response", detail: responseText.slice(0, 500) },
           { status: 502 }
         )
       }
-      const data = (await driveResponse.json()) as DriveListResponse
-      console.log(`[songs] page ${page} parsed ${data.files.length} files, nextPageToken=${!!data.nextPageToken}`)
       files.push(...data.files)
       pageToken = data.nextPageToken
     } while (pageToken)
@@ -154,9 +152,6 @@ export default async function handler(request: Request): Promise<Response> {
   return jsonResponse(songs, {
     headers: bust
       ? { "Cache-Control": "no-store" }
-      : {
-          "Cache-Control":
-            "public, s-maxage=300, stale-while-revalidate=600",
-        },
+      : { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" },
   })
 }

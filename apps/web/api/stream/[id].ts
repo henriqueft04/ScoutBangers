@@ -64,9 +64,16 @@ export default async function handler(request: Request): Promise<Response> {
   }
 
   if (!upstream.ok) {
-    const detail = await upstream.text()
+    // Drain up to 500 bytes for the error message — don't await the full body.
+    const reader = upstream.body?.getReader()
+    let detail = ""
+    if (reader) {
+      const { value } = await reader.read()
+      if (value) detail = new TextDecoder().decode(value).slice(0, 500)
+      reader.cancel().catch(() => undefined)
+    }
     return new Response(
-      `Drive returned ${upstream.status}: ${detail.slice(0, 500)}`,
+      `Drive returned ${upstream.status}: ${detail}`,
       { status: 502 }
     )
   }
@@ -77,9 +84,15 @@ export default async function handler(request: Request): Promise<Response> {
     !upstreamType.startsWith("video/") &&
     upstreamType !== "application/octet-stream"
   ) {
-    const detail = await upstream.text()
+    const reader = upstream.body?.getReader()
+    let detail = ""
+    if (reader) {
+      const { value } = await reader.read()
+      if (value) detail = new TextDecoder().decode(value).slice(0, 400)
+      reader.cancel().catch(() => undefined)
+    }
     return new Response(
-      `Drive returned non-audio content (${upstreamType}). Snippet: ${detail.slice(0, 400)}`,
+      `Drive returned non-audio content (${upstreamType}). Snippet: ${detail}`,
       { status: 502 }
     )
   }

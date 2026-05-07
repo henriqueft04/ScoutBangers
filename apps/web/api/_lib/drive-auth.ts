@@ -1,7 +1,10 @@
 import { createSign } from "node:crypto"
+import { request } from "node:https"
+import type { RequestOptions } from "node:https"
 
 const SCOPE = "https://www.googleapis.com/auth/drive.readonly"
-const TOKEN_URL = "https://oauth2.googleapis.com/token"
+const TOKEN_HOST = "oauth2.googleapis.com"
+const TOKEN_PATH = "/token"
 
 function getCredentials(): { client_email: string; private_key: string } {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
@@ -24,13 +27,41 @@ function getCredentials(): { client_email: string; private_key: string } {
   return { client_email: creds.client_email, private_key: creds.private_key }
 }
 
+function httpsPost(
+  host: string,
+  path: string,
+  body: string,
+  headers: Record<string, string>
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const opts: RequestOptions = {
+      host,
+      path,
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Length": Buffer.byteLength(body),
+        Connection: "close",
+      },
+    }
+    const req = request(opts, (res) => {
+      const chunks: Buffer[] = []
+      res.on("data", (chunk: Buffer) => chunks.push(chunk))
+      res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")))
+      res.on("error", reject)
+    })
+    req.on("error", reject)
+    req.write(body)
+    req.end()
+  })
+}
+
 /**
- * Fetch a Drive access token by manually signing a JWT with the service
- * account's private key and exchanging it at Google's token endpoint.
+ * Fetch a Drive access token by signing a JWT with the service account's
+ * private key and exchanging it at Google's token endpoint.
  *
- * Uses only Node's built-in `crypto` — no google-auth-library, no
- * persistent agents, no background timers. Safe for serverless: the
- * process exits cleanly as soon as the handler returns.
+ * Uses node:https directly (not fetch/undici) to avoid undici's HTTP/2
+ * stream-termination issues that cause body reads to hang in Node 24.
  */
 export async function getDriveAccessToken(): Promise<string> {
   const { client_email, private_key } = getCredentials()
@@ -43,7 +74,7 @@ export async function getDriveAccessToken(): Promise<string> {
     JSON.stringify({
       iss: client_email,
       scope: SCOPE,
-      aud: TOKEN_URL,
+      aud: `https://${TOKEN_HOST}${TOKEN_PATH}`,
       iat: now,
       exp: now + 3600,
     })
@@ -54,19 +85,23 @@ export async function getDriveAccessToken(): Promise<string> {
   const signature = signer.sign(private_key, "base64url")
   const jwt = `${header}.${payload}.${signature}`
 
-  const res = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
-    }),
+  const body = new URLSearchParams({
+    grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+    assertion: jwt,
+  }).toString()
+
+  const responseText = await httpsPost(TOKEN_HOST, TOKEN_PATH, body, {
+    "Content-Type": "application/x-www-form-urlencoded",
   })
 
-  const data = (await res.json()) as { access_token?: string; error?: string; error_description?: string }
+  const data = JSON.parse(responseText) as {
+    access_token?: string
+    error?: string
+    error_description?: string
+  }
   if (!data.access_token) {
     throw new Error(
-      `Token exchange failed: ${data.error ?? ""} ${data.error_description ?? JSON.stringify(data)}`.trim()
+      `Token exchange failed: ${data.error ?? ""} ${data.error_description ?? responseText}`.trim()
     )
   }
   return data.access_token
