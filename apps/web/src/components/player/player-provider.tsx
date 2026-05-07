@@ -444,6 +444,23 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   }, [computeAdvance, getDeck, handleEnded, playIndex])
 
+  // ---- Reconciliation: sync isPlaying to the audio's actual state ------
+  // Some browsers (notably mobile Safari) fire `play`/`pause` events out
+  // of order during src changes, which can leave the icon out of sync.
+  // A 250 ms tick reads the audio element directly and dispatches only
+  // when state genuinely differs — cheap, eventually consistent.
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      const active = getDeck(activeDeckRef.current)
+      if (!active) return
+      const actuallyPlaying = !active.paused && !active.ended
+      if (actuallyPlaying !== stateRef.current.isPlaying) {
+        dispatch({ type: "SET_PLAYING", isPlaying: actuallyPlaying })
+      }
+    }, 250)
+    return () => clearInterval(interval)
+  }, [getDeck])
+
   // ---- Public actions --------------------------------------------------
 
   const play = React.useCallback(

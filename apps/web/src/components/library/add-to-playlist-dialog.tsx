@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Check, HeartOff, ListPlus, Loader2, Plus, X } from "lucide-react"
+import { Check, Heart, ListPlus, Loader2, Plus, X } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 
@@ -11,6 +11,7 @@ interface PlaylistSummary {
   id: string
   name: string
   alreadyContains: boolean
+  isFavorites: boolean
 }
 
 interface AddToPlaylistDialogProps {
@@ -48,20 +49,18 @@ export function AddToPlaylistDialog({
 
     void (async () => {
       const sb = supabase!
-      // Fetch all of the user's playlists except Favorites.
+      // Fetch all of the user's playlists (Favorites included).
       const { data: lists, error: listsErr } = await sb
         .from("playlists")
         .select("id, name")
         .eq("user_id", user.id)
-        .neq("name", FAVORITES_PLAYLIST_NAME)
-        .order("created_at", { ascending: false })
+        .order("created_at", { ascending: true })
       if (cancelled) return
       if (listsErr) {
         setError(listsErr.message)
         return
       }
       const ids = (lists ?? []).map((p) => p.id)
-      // Find which of those playlists already contain this song.
       let contains = new Set<string>()
       if (ids.length > 0) {
         const { data: rows } = await sb
@@ -72,11 +71,18 @@ export function AddToPlaylistDialog({
         contains = new Set((rows ?? []).map((r) => r.playlist_id))
       }
       if (cancelled) return
+      // Sort Favorites first, then the rest by creation order.
+      const sorted = (lists ?? []).slice().sort((a, b) => {
+        if (a.name === FAVORITES_PLAYLIST_NAME) return -1
+        if (b.name === FAVORITES_PLAYLIST_NAME) return 1
+        return 0
+      })
       setPlaylists(
-        (lists ?? []).map((p) => ({
+        sorted.map((p) => ({
           id: p.id,
           name: p.name,
           alreadyContains: contains.has(p.id),
+          isFavorites: p.name === FAVORITES_PLAYLIST_NAME,
         }))
       )
     })()
@@ -97,33 +103,65 @@ export function AddToPlaylistDialog({
 
   if (!open) return null
 
-  const handleAddTo = async (playlistId: string, alreadyContains: boolean) => {
-    if (!supabase || alreadyContains) return
-    setBusyId(playlistId)
-    // eslint-disable-next-line react-hooks/purity
-    const position = Math.floor(Date.now() / 1000)
-    const { error } = await supabase.from("playlist_songs").insert({
-      playlist_id: playlistId,
-      song_id: songId,
-      position,
-    })
-    setBusyId(null)
-    if (error) {
-      setError(error.message)
+  const handleToggleRow = async (
+    playlistId: string,
+    alreadyContains: boolean,
+    isFavorites: boolean
+  ) => {
+    if (!supabase) return
+
+    // Favorites flow goes through useFavorites so the heart UI updates
+    // immediately across the rest of the app.
+    if (isFavorites) {
+      setBusyId(playlistId)
+      await toggleFavorite(songId)
+      setPlaylists((prev) =>
+        prev
+          ? prev.map((p) =>
+              p.id === playlistId
+                ? { ...p, alreadyContains: !alreadyContains }
+                : p
+            )
+          : prev
+      )
+      setBusyId(null)
       return
+    }
+
+    setBusyId(playlistId)
+    if (alreadyContains) {
+      const { error } = await supabase
+        .from("playlist_songs")
+        .delete()
+        .match({ playlist_id: playlistId, song_id: songId })
+      setBusyId(null)
+      if (error) {
+        setError(error.message)
+        return
+      }
+    } else {
+      // eslint-disable-next-line react-hooks/purity
+      const position = Math.floor(Date.now() / 1000)
+      const { error } = await supabase.from("playlist_songs").insert({
+        playlist_id: playlistId,
+        song_id: songId,
+        position,
+      })
+      setBusyId(null)
+      if (error) {
+        setError(error.message)
+        return
+      }
     }
     setPlaylists((prev) =>
       prev
         ? prev.map((p) =>
-            p.id === playlistId ? { ...p, alreadyContains: true } : p
+            p.id === playlistId
+              ? { ...p, alreadyContains: !alreadyContains }
+              : p
           )
         : prev
     )
-  }
-
-  const handleRemoveFavorite = async () => {
-    await toggleFavorite(songId)
-    onClose()
   }
 
   const handleCreate = async (event: React.FormEvent) => {
@@ -159,7 +197,7 @@ export function AddToPlaylistDialog({
     }
 
     setPlaylists((prev) => [
-      { id: created.id, name: created.name, alreadyContains: true },
+      { id: created.id, name: created.name, alreadyContains: true, isFavorites: false },
       ...(prev ?? []),
     ])
     setNewName("")
@@ -264,39 +302,45 @@ export function AddToPlaylistDialog({
                   <button
                     type="button"
                     onClick={() =>
-                      handleAddTo(playlist.id, playlist.alreadyContains)
+                      handleToggleRow(
+                        playlist.id,
+                        playlist.alreadyContains,
+                        playlist.isFavorites
+                      )
                     }
-                    disabled={busyId === playlist.id || playlist.alreadyContains}
-                    className="hover:bg-accent/40 disabled:hover:bg-transparent flex w-full items-center justify-between rounded-md px-3 py-2.5 text-left transition-colors"
+                    disabled={busyId === playlist.id}
+                    className="hover:bg-accent/40 flex w-full items-center justify-between rounded-md px-3 py-2.5 text-left transition-colors"
                   >
                     <span className="text-foreground flex items-center gap-2 text-sm">
-                      <ListPlus className="text-muted-foreground size-4" />
+                      {playlist.isFavorites ? (
+                        <Heart
+                          className={
+                            playlist.alreadyContains
+                              ? "text-primary size-4 fill-current"
+                              : "text-muted-foreground size-4"
+                          }
+                        />
+                      ) : (
+                        <ListPlus className="text-muted-foreground size-4" />
+                      )}
                       {playlist.name}
                     </span>
-                    {playlist.alreadyContains ? (
+                    {busyId === playlist.id ? (
+                      <Loader2 className="text-muted-foreground size-4 animate-spin" />
+                    ) : playlist.alreadyContains ? (
                       <span className="text-primary inline-flex items-center gap-1 text-xs">
                         <Check className="size-3.5" />
                         Added
                       </span>
-                    ) : busyId === playlist.id ? (
-                      <Loader2 className="text-muted-foreground size-4 animate-spin" />
-                    ) : null}
+                    ) : (
+                      <Plus className="text-muted-foreground size-4" />
+                    )}
                   </button>
                 </li>
               ))}
             </ul>
           )}
         </div>
-
-        <Button
-          type="button"
-          variant="outline"
-          className="text-destructive w-full"
-          onClick={handleRemoveFavorite}
-        >
-          <HeartOff className="size-4" />
-          Remove from Favorites
-        </Button>
       </div>
     </div>
   )

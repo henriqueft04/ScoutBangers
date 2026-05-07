@@ -1,25 +1,21 @@
 import * as React from "react"
 
 import { EmptyState } from "@/components/library/empty-state"
-import { SongList } from "@/components/library/song-list"
+import { SongRow } from "@/components/library/song-row"
 import { usePlayer } from "@/hooks/usePlayer"
 import { supabase, supabaseConfigured } from "@/lib/supabase"
 import type { Song } from "@/lib/types"
 
 interface RankedSong extends Song {
   playCount: number
+  rank: number
 }
 
 /**
- * Home tab — global top-10 most-played songs.
- *
- * Pulls aggregated counts from Supabase's `top_songs_global` RPC and joins
- * them against the local song catalog so titles/artists/artwork still come
- * from Drive metadata. Anonymous reads are allowed (the function is granted
- * to the `anon` role), so this works pre-sign-in.
- *
- * Falls back to "first 10 by default sort order" when Supabase is not
- * configured (so the home tab still renders something during development).
+ * Home tab — global top-10 most-played songs with rank + play count.
+ * Pulls from Supabase's `top_songs_global` RPC (granted to anon, so this
+ * works pre-sign-in) and joins against the local song catalog so titles
+ * and artwork come from Drive metadata.
  */
 export function HomePage() {
   const { songs, currentIndex, isPlaying, play, loading } = usePlayer()
@@ -40,9 +36,13 @@ export function HomePage() {
       }
       const byId = new Map(songs.map((song) => [song.id, song]))
       const out: RankedSong[] = []
+      let rank = 1
       for (const row of data ?? []) {
         const song = byId.get(row.song_id)
-        if (song) out.push({ ...song, playCount: Number(row.play_count) })
+        if (song) {
+          out.push({ ...song, playCount: Number(row.play_count), rank })
+          rank += 1
+        }
       }
       setRanked(out)
     })()
@@ -52,13 +52,16 @@ export function HomePage() {
     }
   }, [songs])
 
-  // Fallback: first 10 songs in whatever order the catalog provides.
   const display: RankedSong[] = React.useMemo(() => {
     if (ranked && ranked.length > 0) return ranked
-    return songs.slice(0, 10).map((song) => ({ ...song, playCount: 0 }))
+    return songs.slice(0, 10).map((song, index) => ({
+      ...song,
+      playCount: 0,
+      rank: index + 1,
+    }))
   }, [ranked, songs])
 
-  const playFromRanked = (index: number) => {
+  const handlePlay = (index: number) => {
     const song = display[index]
     if (!song) return
     const indexInAll = songs.findIndex((s) => s.id === song.id)
@@ -90,16 +93,24 @@ export function HomePage() {
           }
         />
       ) : (
-        <SongList
-          songs={display}
-          currentIndex={
-            currentIndex !== null
-              ? display.findIndex((s) => s.id === songs[currentIndex]?.id)
-              : null
-          }
-          isPlaying={isPlaying}
-          onPlay={playFromRanked}
-        />
+        <ul role="list" className="flex flex-col gap-px py-1">
+          {display.map((song, index) => (
+            <li key={song.id}>
+              <SongRow
+                song={song}
+                index={index}
+                rank={song.rank}
+                playCount={song.playCount}
+                isCurrent={
+                  currentIndex !== null &&
+                  songs[currentIndex]?.id === song.id
+                }
+                isPlaying={isPlaying}
+                onPlay={handlePlay}
+              />
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   )

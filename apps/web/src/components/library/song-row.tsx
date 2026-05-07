@@ -20,6 +20,10 @@ interface SongRowProps {
   isCurrent: boolean
   isPlaying: boolean
   onPlay: (index: number) => void
+  /** When set, shown as a numeric badge on the left (e.g. for top-10 lists). */
+  rank?: number
+  /** When set, replaces the artist line with "N plays" — used on the home top-10. */
+  playCount?: number
 }
 
 /**
@@ -41,6 +45,8 @@ export function SongRow({
   isCurrent,
   isPlaying,
   onPlay,
+  rank,
+  playCount,
 }: SongRowProps) {
   const [ref, inView] = useInView<HTMLDivElement>()
   const meta = useTrackMetadata(song.id, inView)
@@ -82,6 +88,17 @@ export function SongRow({
         "min-h-14 md:min-h-12"
       )}
     >
+      {rank !== undefined ? (
+        <span
+          aria-hidden
+          className={cn(
+            "w-5 shrink-0 text-center text-base font-semibold tabular-nums md:w-6",
+            isCurrent ? "text-primary" : "text-muted-foreground"
+          )}
+        >
+          {rank}
+        </span>
+      ) : null}
       <div className="relative size-10 shrink-0 md:size-11">
         {meta?.pictureUrl ? (
           <img
@@ -113,7 +130,12 @@ export function SongRow({
         >
           {title}
         </MarqueeText>
-        {artist && (
+        {playCount !== undefined ? (
+          <p className="text-muted-foreground text-xs tabular-nums">
+            {playCount.toLocaleString()}{" "}
+            {playCount === 1 ? "play" : "plays"}
+          </p>
+        ) : artist ? (
           <Link
             to={artistHref(artist)}
             onClick={(event) => event.stopPropagation()}
@@ -121,7 +143,7 @@ export function SongRow({
           >
             {artist}
           </Link>
-        )}
+        ) : null}
       </div>
       <FavoriteButton songId={song.id} size="sm" />
     </div>

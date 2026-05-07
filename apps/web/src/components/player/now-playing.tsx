@@ -4,6 +4,7 @@ import { Link } from "react-router-dom"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
+import { FavoriteButton } from "@/components/library/favorite-button"
 import { MarqueeText } from "@/components/library/marquee-text"
 import { SongArtwork } from "@/components/library/song-artwork"
 import { useTrackMetadata } from "@/hooks/useTrackMetadata"
@@ -85,6 +86,10 @@ export function NowPlaying({ className, onExpand }: NowPlayingProps) {
           </>
         )}
       </div>
+
+      {song ? (
+        <FavoriteButton songId={song.id} size="sm" stopPropagation />
+      ) : null}
 
       <Button
         type="button"
