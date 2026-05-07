@@ -39,21 +39,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!supabase) return
     let cancelled = false
 
-    supabase.auth.getSession().then(async ({ data }) => {
+    const handleSession = (session: Awaited<
+      ReturnType<NonNullable<typeof supabase>["auth"]["getSession"]>
+    >["data"]["session"]) => {
       if (cancelled) return
-      const session = data.session
       const user = session?.user ?? null
-      const profile = user ? await loadProfile(user) : null
-      if (!cancelled) setState({ session, user, profile, loading: false })
-    })
+      // Render immediately with what we know — don't block UI on profile.
+      setState({ session, user, profile: null, loading: false })
+      if (user) {
+        void loadProfile(user).then((profile) => {
+          if (!cancelled) {
+            setState((prev) => ({ ...prev, profile }))
+          }
+        })
+      }
+    }
+
+    void supabase.auth.getSession().then(({ data }) => handleSession(data.session))
 
     const { data: subscription } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (cancelled) return
-        const user = session?.user ?? null
-        const profile = user ? await loadProfile(user) : null
-        if (!cancelled) setState({ session, user, profile, loading: false })
-      }
+      (_event, session) => handleSession(session)
     )
 
     return () => {
