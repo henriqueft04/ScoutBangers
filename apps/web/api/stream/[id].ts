@@ -35,8 +35,7 @@ export default async function handler(request: Request): Promise<Response> {
     )
   }
 
-  const url = new URL(request.url)
-  const id = url.pathname.split("/").filter(Boolean).pop()
+  const id = request.url.split("?")[0].split("/").filter(Boolean).pop()
   if (!id) {
     return new Response("Missing file id", { status: 400 })
   }

@@ -84,7 +84,7 @@ export default async function handler(request: Request): Promise<Response> {
     )
   }
 
-  const bust = new URL(request.url).searchParams.has("bust")
+  const bust = request.url.includes("bust")
 
   const files: DriveFile[] = []
   let pageToken: string | undefined
