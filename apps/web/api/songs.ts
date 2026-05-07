@@ -1,16 +1,14 @@
-import { request } from "node:https"
-import type { RequestOptions } from "node:https"
 import { getDriveAccessToken } from "./_lib/drive-auth.js"
 
+export const config = { runtime: "edge" }
+
 /**
- * GET /api/songs
+ * GET /api/songs — Edge function
  *
  * Lists every audio file in the Drive folder identified by DRIVE_FOLDER_ID.
- * Uses node:https (not fetch/undici) to avoid undici HTTP/2 body-read hangs.
  */
 
-const DRIVE_LIST_HOST = "www.googleapis.com"
-const DRIVE_LIST_PATH = "/drive/v3/files"
+const DRIVE_LIST_URL = "https://www.googleapis.com/drive/v3/files"
 
 interface DriveFile {
   id: string
@@ -34,64 +32,34 @@ interface Song {
   modifiedTime: string
 }
 
-function httpsGet(path: string, headers: Record<string, string>): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const opts: RequestOptions = {
-      host: DRIVE_LIST_HOST,
-      path,
-      method: "GET",
-      headers: { ...headers, Connection: "close" },
-    }
-    const req = request(opts, (res) => {
-      const chunks: Buffer[] = []
-      res.on("data", (chunk: Buffer) => chunks.push(chunk))
-      res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")))
-      res.on("error", reject)
-    })
-    req.on("error", reject)
-    req.end()
-  })
-}
-
 function parseSongName(filename: string): { title: string; artist?: string } {
   const withoutExt = filename.replace(/\.[a-z0-9]+$/i, "")
   const match = withoutExt.match(/^(.+?)\s*[-–—]\s*(.+)$/)
-  if (match) {
-    return { artist: match[1]!.trim(), title: match[2]!.trim() }
-  }
+  if (match) return { artist: match[1]!.trim(), title: match[2]!.trim() }
   return { title: withoutExt.trim() }
 }
 
-function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
+function json(body: unknown, status = 200, extra?: HeadersInit): Response {
   return new Response(JSON.stringify(body), {
-    ...init,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      ...init.headers,
-    },
+    status,
+    headers: { "Content-Type": "application/json; charset=utf-8", ...extra },
   })
 }
 
 export default async function handler(request: Request): Promise<Response> {
   const folderId = process.env.DRIVE_FOLDER_ID
   if (!folderId) {
-    return jsonResponse(
-      { error: "Server misconfigured: DRIVE_FOLDER_ID is unset." },
-      { status: 500 }
-    )
+    return json({ error: "Server misconfigured: DRIVE_FOLDER_ID is unset." }, 500)
   }
 
   let token: string
   try {
     token = await getDriveAccessToken()
   } catch (error) {
-    return jsonResponse(
-      {
-        error: "Failed to obtain Drive access token",
-        detail: error instanceof Error ? error.message : String(error),
-      },
-      { status: 500 }
-    )
+    return json({
+      error: "Failed to obtain Drive access token",
+      detail: error instanceof Error ? error.message : String(error),
+    }, 500)
   }
 
   const bust = request.url.includes("bust")
@@ -107,28 +75,22 @@ export default async function handler(request: Request): Promise<Response> {
       })
       if (pageToken) params.set("pageToken", pageToken)
 
-      const responseText = await httpsGet(
-        `${DRIVE_LIST_PATH}?${params}`,
-        { Authorization: `Bearer ${token}` }
-      )
-      const data = JSON.parse(responseText) as DriveListResponse
-      if (!Array.isArray(data.files)) {
-        return jsonResponse(
-          { error: "Unexpected Drive API response", detail: responseText.slice(0, 500) },
-          { status: 502 }
-        )
+      const res = await fetch(`${DRIVE_LIST_URL}?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const detail = await res.text()
+        return json({ error: "Drive API request failed", status: res.status, detail }, 502)
       }
+      const data = (await res.json()) as DriveListResponse
       files.push(...data.files)
       pageToken = data.nextPageToken
     } while (pageToken)
   } catch (error) {
-    return jsonResponse(
-      {
-        error: "Failed to reach Drive API",
-        detail: error instanceof Error ? error.message : String(error),
-      },
-      { status: 502 }
-    )
+    return json({
+      error: "Failed to reach Drive API",
+      detail: error instanceof Error ? error.message : String(error),
+    }, 502)
   }
 
   const songs: Song[] = files
@@ -149,9 +111,9 @@ export default async function handler(request: Request): Promise<Response> {
       return aKey.localeCompare(bKey)
     })
 
-  return jsonResponse(songs, {
-    headers: bust
-      ? { "Cache-Control": "no-store" }
-      : { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" },
+  return json(songs, 200, {
+    "Cache-Control": bust
+      ? "no-store"
+      : "public, s-maxage=300, stale-while-revalidate=600",
   })
 }

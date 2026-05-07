@@ -1,16 +1,12 @@
-// `.js` extension is required by Vercel's nodenext module resolution even
-// though the source is .ts — the extension refers to the compiled output.
 import { getDriveAccessToken } from "../_lib/drive-auth.js"
 
+export const config = { runtime: "edge" }
+
 /**
- * GET /api/stream/:id
+ * GET /api/stream/:id — Edge function
  *
- * Streaming proxy for a single Drive audio file. Forwards the client's `Range`
- * header to Drive (which the browser blocks when called directly due to CORS),
- * pipes the response body through, and surfaces the upstream status code so
- * 206 Partial Content reaches the HTML5 audio element.
- *
- * Authenticated as a Google service account — see `_lib/drive-auth.ts`.
+ * Streaming proxy for a single Drive audio file. Forwards the client's
+ * Range header to Drive and pipes the response body through.
  */
 
 const DRIVE_FILE_URL = "https://www.googleapis.com/drive/v3/files"
@@ -36,9 +32,7 @@ export default async function handler(request: Request): Promise<Response> {
   }
 
   const id = request.url.split("?")[0].split("/").filter(Boolean).pop()
-  if (!id) {
-    return new Response("Missing file id", { status: 400 })
-  }
+  if (!id) return new Response("Missing file id", { status: 400 })
 
   const driveUrl = `${DRIVE_FILE_URL}/${encodeURIComponent(id)}?alt=media`
 
@@ -50,32 +44,17 @@ export default async function handler(request: Request): Promise<Response> {
 
   let upstream: Response
   try {
-    upstream = await fetch(driveUrl, {
-      headers: upstreamHeaders,
-      method: "GET",
-    })
+    upstream = await fetch(driveUrl, { headers: upstreamHeaders })
   } catch (error) {
     return new Response(
-      `Upstream fetch failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Upstream fetch failed: ${error instanceof Error ? error.message : String(error)}`,
       { status: 502 }
     )
   }
 
   if (!upstream.ok) {
-    // Drain up to 500 bytes for the error message — don't await the full body.
-    const reader = upstream.body?.getReader()
-    let detail = ""
-    if (reader) {
-      const { value } = await reader.read()
-      if (value) detail = new TextDecoder().decode(value).slice(0, 500)
-      reader.cancel().catch(() => undefined)
-    }
-    return new Response(
-      `Drive returned ${upstream.status}: ${detail}`,
-      { status: 502 }
-    )
+    const detail = await upstream.text()
+    return new Response(`Drive returned ${upstream.status}: ${detail.slice(0, 500)}`, { status: 502 })
   }
 
   const upstreamType = upstream.headers.get("content-type") ?? ""
@@ -84,15 +63,9 @@ export default async function handler(request: Request): Promise<Response> {
     !upstreamType.startsWith("video/") &&
     upstreamType !== "application/octet-stream"
   ) {
-    const reader = upstream.body?.getReader()
-    let detail = ""
-    if (reader) {
-      const { value } = await reader.read()
-      if (value) detail = new TextDecoder().decode(value).slice(0, 400)
-      reader.cancel().catch(() => undefined)
-    }
+    const detail = await upstream.text()
     return new Response(
-      `Drive returned non-audio content (${upstreamType}). Snippet: ${detail}`,
+      `Drive returned non-audio content (${upstreamType}). Snippet: ${detail.slice(0, 400)}`,
       { status: 502 }
     )
   }
@@ -103,16 +76,10 @@ export default async function handler(request: Request): Promise<Response> {
     if (value) responseHeaders.set(header, value)
   }
 
-  // Caching strategy is Range-aware. Vercel's edge CDN keys on the URL but
-  // does NOT differentiate by Range header — caching a 206 response would
-  // poison the cache for unrelated range requests.
   if (upstream.status === 206) {
     responseHeaders.set("Cache-Control", "private, max-age=3600")
   } else {
-    responseHeaders.set(
-      "Cache-Control",
-      "public, max-age=86400, immutable"
-    )
+    responseHeaders.set("Cache-Control", "public, max-age=86400, immutable")
   }
   responseHeaders.set("Vary", "Range")
 

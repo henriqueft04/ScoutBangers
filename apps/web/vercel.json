@@ -1,11 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "functions": {
-    "api/**/*.ts": {
-      "maxDuration": 15
-    }
-  },
   "rewrites": [
     {
       "source": "/((?!api/|.*\\..*).*)",
