@@ -93,12 +93,27 @@ export default async function handler(request: Request): Promise<Response> {
     const value = upstream.headers.get(header)
     if (value) responseHeaders.set(header, value)
   }
-  // Long cache: a Drive file ID is content-addressed, so the bytes can't change
-  // without changing the ID. The /api/songs manifest controls invalidation.
-  responseHeaders.set(
-    "Cache-Control",
-    "public, max-age=86400, immutable"
-  )
+
+  // Caching strategy is Range-aware. Vercel's edge CDN keys on the URL but
+  // does NOT differentiate by Range header — caching a 206 response would
+  // poison the cache for unrelated range requests (e.g., the metadata
+  // prefetch's 0-524287 chunk being served as if it were the full file,
+  // causing Chromium's FFmpegDemuxer to error out partway through playback).
+  //
+  // - Full responses (200): safe to cache on the CDN long-term, immutable
+  //   because Drive file IDs are content-addressed.
+  // - Partial responses (206): browser cache only (`private`); never cached
+  //   on the shared CDN. `Vary: Range` is also set so any well-behaved
+  //   intermediary keys correctly.
+  if (upstream.status === 206) {
+    responseHeaders.set("Cache-Control", "private, max-age=3600")
+  } else {
+    responseHeaders.set(
+      "Cache-Control",
+      "public, max-age=86400, immutable"
+    )
+  }
+  responseHeaders.set("Vary", "Range")
 
   return new Response(upstream.body, {
     status: upstream.status,

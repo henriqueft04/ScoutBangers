@@ -1,11 +1,16 @@
+import * as React from "react"
 import { Pause, Play } from "lucide-react"
+import { Link } from "react-router-dom"
 
 import { cn } from "@workspace/ui/lib/utils"
 
 import { useInView } from "@/hooks/useInView"
 import { useTrackMetadata } from "@/hooks/useTrackMetadata"
+import { artistHref } from "@/lib/artists"
+import { displayArtist, displayTitle } from "@/lib/song-display"
 import type { Song } from "@/lib/types"
 
+import { MarqueeText } from "./marquee-text"
 import { SongArtwork } from "./song-artwork"
 
 interface SongRowProps {
@@ -17,12 +22,17 @@ interface SongRowProps {
 }
 
 /**
- * One row in the library list. The whole row is a single button so the entire
- * area is tappable on mobile (good for fat fingers + touch-action: manipulation
- * removes the iOS 300ms tap delay).
+ * One row in the library list. The whole row triggers playback; the artist
+ * sub-link navigates to the artist page when present (clicks on the link
+ * stop propagation so they don't also start playback).
  *
- * Embedded tags (artwork + artist if missing from filename) are loaded lazily
- * once the row scrolls into view.
+ * Implemented as `role="button"` rather than a `<button>` element so we can
+ * legally nest a `<Link>` for the artist — `<a>` inside `<button>` is invalid
+ * HTML. Keyboard activation is wired explicitly to keep this accessible.
+ *
+ * Embedded tags (artwork + artist + tag-title) are loaded lazily once the
+ * row scrolls into view. The marquee animation only runs on the currently-
+ * playing row to keep big lists calm.
  */
 export function SongRow({
   song,
@@ -31,24 +41,40 @@ export function SongRow({
   isPlaying,
   onPlay,
 }: SongRowProps) {
-  const [ref, inView] = useInView<HTMLButtonElement>()
+  const [ref, inView] = useInView<HTMLDivElement>()
   const meta = useTrackMetadata(song.id, inView)
 
   const Icon = isCurrent && isPlaying ? Pause : Play
-  const artist = song.artist ?? meta?.artist
-  const title = song.title || meta?.title || "Untitled"
+  const title = displayTitle(song, meta)
+  const artist = displayArtist(song, meta)
+
+  const handleActivate = React.useCallback(() => {
+    onPlay(index)
+  }, [onPlay, index])
+
+  const handleKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault()
+        handleActivate()
+      }
+    },
+    [handleActivate]
+  )
 
   return (
-    <button
+    <div
       ref={ref}
-      type="button"
-      onClick={() => onPlay(index)}
+      role="button"
+      tabIndex={0}
+      onClick={handleActivate}
+      onKeyDown={handleKeyDown}
       data-current={isCurrent || undefined}
       aria-label={
         isCurrent && isPlaying ? `Pause ${title}` : `Play ${title}`
       }
       className={cn(
-        "group/row flex w-full touch-manipulation items-center gap-3 rounded-md px-2 py-2 text-left transition-colors",
+        "group/row flex w-full touch-manipulation cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left transition-colors",
         "hover:bg-muted active:bg-accent",
         "focus-visible:ring-ring/40 focus-visible:ring-3 focus-visible:outline-none",
         "data-[current]:bg-accent",
@@ -77,18 +103,25 @@ export function SongRow({
         </span>
       </div>
       <div className="min-w-0 flex-1">
-        <p
+        <MarqueeText
+          enabled={isCurrent}
           className={cn(
-            "truncate text-sm font-medium",
+            "text-sm font-medium",
             isCurrent ? "text-primary" : "text-foreground"
           )}
         >
           {title}
-        </p>
+        </MarqueeText>
         {artist && (
-          <p className="text-muted-foreground truncate text-xs">{artist}</p>
+          <Link
+            to={artistHref(artist)}
+            onClick={(event) => event.stopPropagation()}
+            className="text-muted-foreground hover:text-foreground inline-block max-w-full truncate text-xs hover:underline"
+          >
+            {artist}
+          </Link>
         )}
       </div>
-    </button>
+    </div>
   )
 }

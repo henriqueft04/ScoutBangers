@@ -1,3 +1,6 @@
+import { ChevronUp } from "lucide-react"
+
+import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { MainControls } from "./main-controls"
@@ -8,6 +11,7 @@ import { VolumeControl } from "./volume-control"
 
 interface PlayerBarProps {
   className?: string
+  onExpand: () => void
 }
 
 /**
@@ -17,8 +21,12 @@ interface PlayerBarProps {
  * - Mobile: progress bar on top (full width), then a single row containing
  *   `[NowPlaying] [MainControls]`. Volume is hidden (phones use hardware).
  * - `md+`: 3-column grid `[NowPlaying] [Controls + Progress stacked] [Volume]`.
+ *
+ * Tapping the artwork/title region expands the fullscreen player; an explicit
+ * chevron button on the right does the same. The artist name within
+ * NowPlaying is a link, so clicks there navigate instead.
  */
-export function PlayerBar({ className }: PlayerBarProps) {
+export function PlayerBar({ className, onExpand }: PlayerBarProps) {
   return (
     <footer
       className={cn(
@@ -35,14 +43,26 @@ export function PlayerBar({ className }: PlayerBarProps) {
       </div>
 
       <div className="mx-auto grid w-full max-w-6xl grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] md:gap-4 md:px-6 md:py-3">
-        <NowPlaying />
+        <NowPlaying onExpand={onExpand} />
 
         <div className="flex flex-col items-stretch gap-1">
           <MainControls />
           <ProgressBar className="hidden w-full md:flex" />
         </div>
 
-        <VolumeControl className="hidden justify-self-end md:flex" />
+        <div className="hidden items-center gap-2 justify-self-end md:flex">
+          <VolumeControl />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Open fullscreen player"
+            onClick={onExpand}
+            className="touch-manipulation"
+          >
+            <ChevronUp />
+          </Button>
+        </div>
       </div>
     </footer>
   )

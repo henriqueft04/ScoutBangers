@@ -2,9 +2,11 @@ import * as React from "react"
 
 import { useSongs } from "@/hooks/useSongs"
 import { streamUrl } from "@/lib/audio-url"
+import { fadeVolume, type FadeHandle } from "@/lib/fade"
 import { shuffledIndices } from "@/lib/shuffle"
 import { getCached, setCached } from "@/lib/storage"
-import type { PlayerContextValue } from "@/lib/types"
+import { prefetchAllMetadata } from "@/lib/track-metadata"
+import type { PlayerContextValue, SortMode } from "@/lib/types"
 
 import { PlayerContext } from "./player-context"
 import {
@@ -14,33 +16,71 @@ import {
 } from "./player-reducer"
 
 const VOLUME_KEY = "scoutbangers:volume"
-const VOLUME_TTL_MS = 365 * 24 * 60 * 60 * 1000
+const SORT_KEY = "scoutbangers:sort"
+const PREFS_TTL_MS = 365 * 24 * 60 * 60 * 1000
+
+const VALID_SORTS: ReadonlyArray<SortMode> = ["default", "title", "artist"]
+
+const CROSSFADE_MS = 2000
+/** Trigger auto-crossfade when this many seconds remain on the current song. */
+const CROSSFADE_LEAD_SECONDS = CROSSFADE_MS / 1000
+/** Begin prefetching the next song's audio onto the idle deck this far in. */
+const PREFETCH_PROGRESS = 0.5
 
 interface PersistedVolume {
   volume: number
   muted: boolean
 }
 
+type DeckId = 0 | 1
+const otherDeck = (deck: DeckId): DeckId => (deck === 0 ? 1 : 0)
+
 /**
- * Owns the single `<audio>` element for the app and exposes player state +
- * actions via {@link PlayerContext}. Songs are sourced from {@link useSongs}
- * (stale-while-revalidate from `/api/songs`).
+ * Owns two `<audio>` elements (a "two-deck" architecture) and exposes player
+ * state + actions via {@link PlayerContext}. Songs are sourced from
+ * {@link useSongs} (stale-while-revalidate from `/api/songs`).
  *
- * The audio element is the source of truth for playback events — we mirror its
- * `play`, `pause`, `timeupdate`, `loadedmetadata`, `volumechange`, `ended`
- * events into the reducer so all React reads stay reactive.
+ * Why two decks:
+ *   1. **Crossfade** — when one song nears its end (or the user picks another
+ *      while music is playing), we ramp the outgoing deck's volume to 0 and
+ *      the incoming deck's volume to user volume over 2 seconds. A single
+ *      `<audio>` element can't overlap itself.
+ *   2. **Prefetch** — once the active song is past 50%, we point the idle
+ *      deck at the predicted next song so the audio is already buffered when
+ *      the crossfade fires. Eliminates the proxy + Drive RTT for normal
+ *      playback transitions.
+ *
+ * The active deck is tracked via a ref (synchronous, no re-renders). Both
+ * decks share the same set of event listeners; each handler ignores events
+ * from the inactive deck so the reducer only ever sees the song that's
+ * actually playing.
  */
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
-  const audioRef = React.useRef<HTMLAudioElement>(null)
+  const deckARef = React.useRef<HTMLAudioElement>(null)
+  const deckBRef = React.useRef<HTMLAudioElement>(null)
+  const activeDeckRef = React.useRef<DeckId>(0)
+  const fadesRef = React.useRef<Record<DeckId, FadeHandle | null>>({
+    0: null,
+    1: null,
+  })
+  /** Set true once we've kicked off the auto-advance crossfade for the
+   *  current song; reset on every track change. */
+  const crossfadeArmedRef = React.useRef(false)
+  /** Song id that is currently preloaded onto the idle deck (if any). */
+  const prefetchedIdRef = React.useRef<string | null>(null)
+
   const [state, dispatch] = React.useReducer(
     playerReducer,
-    initialPlayerState
+    initialPlayerState,
+    (init) => {
+      const stored = getCached<SortMode>(SORT_KEY)
+      if (stored && VALID_SORTS.includes(stored)) {
+        return { ...init, sort: stored }
+      }
+      return init
+    }
   )
 
-  // stateRef lets event handlers and async callbacks read the latest state
-  // without recreating themselves on every render (and re-binding listeners).
-  // We sync inside a layout effect so the ref is up-to-date before any audio
-  // event fires from a paint that's already committed.
   const stateRef = React.useRef<InternalPlayerState>(state)
   React.useLayoutEffect(() => {
     stateRef.current = state
@@ -52,15 +92,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: "SONGS", songs, loading, error })
   }, [songs, loading, error])
 
-  // ---- Volume persistence -----------------------------------------------
+  // ---- Persistence -----------------------------------------------------
 
   React.useEffect(() => {
-    const audio = audioRef.current
-    if (!audio) return
     const stored = getCached<PersistedVolume>(VOLUME_KEY)
-    if (stored) {
-      audio.volume = stored.volume
-      audio.muted = stored.muted
+    if (!stored) return
+    for (const ref of [deckARef, deckBRef]) {
+      const audio = ref.current
+      if (audio) {
+        audio.volume = stored.volume
+        audio.muted = stored.muted
+      }
     }
   }, [])
 
@@ -68,32 +110,47 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setCached<PersistedVolume>(
       VOLUME_KEY,
       { volume: state.volume, muted: state.muted },
-      VOLUME_TTL_MS
+      PREFS_TTL_MS
     )
   }, [state.volume, state.muted])
 
-  // ---- Imperative helpers (declared before audio events use them) -------
+  React.useEffect(() => {
+    setCached<SortMode>(SORT_KEY, state.sort, PREFS_TTL_MS)
+  }, [state.sort])
 
-  const playIndex = React.useCallback(
-    (index: number, shufflePos?: number) => {
-      const audio = audioRef.current
-      const current = stateRef.current
-      const song = current.songs[index]
-      if (!audio || !song) return
+  // Bulk prefetch is intentionally disabled: it stampedes Drive's API key and
+  // gets us 403'd. Metadata is loaded lazily as rows scroll into view (via
+  // the IntersectionObserver in SongRow), throttled by the global queue in
+  // `lib/track-metadata.ts`. Search-by-artist for not-yet-seen songs will
+  // populate as the user scrolls; the trade-off is acceptable for v2.
+  void prefetchAllMetadata // imported but only for opt-in callers
 
-      if (current.currentIndex !== index) {
-        audio.src = streamUrl(song.id)
-        dispatch({ type: "TIME", position: 0 })
-        dispatch({ type: "PLAYBACK_ERROR", message: null })
-      }
-      dispatch({ type: "SET_INDEX", index, shufflePos })
-      // Browsers may block autoplay; the play() rejection just leaves us paused.
-      void audio.play().catch(() => {
-        /* noop — user can press play manually */
-      })
+  // ---- Deck helpers ----------------------------------------------------
+
+  const getDeck = React.useCallback((deck: DeckId) => {
+    return deck === 0 ? deckARef.current : deckBRef.current
+  }, [])
+
+  const userTargetVolume = React.useCallback(() => {
+    const s = stateRef.current
+    return s.muted ? 0 : s.volume
+  }, [])
+
+  const cancelFades = React.useCallback(() => {
+    fadesRef.current[0]?.cancel()
+    fadesRef.current[1]?.cancel()
+    fadesRef.current = { 0: null, 1: null }
+  }, [])
+
+  const setFade = React.useCallback(
+    (deck: DeckId, handle: FadeHandle) => {
+      fadesRef.current[deck]?.cancel()
+      fadesRef.current[deck] = handle
     },
     []
   )
+
+  // ---- Compute next/prev (queue navigation) ----------------------------
 
   const computeAdvance = React.useCallback(
     (
@@ -103,7 +160,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       const s = stateRef.current
       if (s.songs.length === 0) return null
 
-      // Auto-advance from `ended` with repeat-one: replay current.
       if (auto && s.repeat === "one" && s.currentIndex !== null) {
         return { index: s.currentIndex, shufflePos: s.shufflePos }
       }
@@ -132,166 +188,342 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     []
   )
 
-  // ---- Audio element event listeners ------------------------------------
+  // ---- Core playback ---------------------------------------------------
+
+  const playIndex = React.useCallback(
+    (
+      index: number,
+      shufflePos?: number,
+      opts: { crossfade?: boolean } = {}
+    ) => {
+      const s = stateRef.current
+      const song = s.songs[index]
+      const activeId = activeDeckRef.current
+      const idleId = otherDeck(activeId)
+      const active = getDeck(activeId)
+      const idle = getDeck(idleId)
+      if (!song || !active || !idle) return
+
+      const newSrc = streamUrl(song.id)
+      const sameSong = s.currentIndex === index
+      const wasPlaying = !active.paused
+      const wantsCrossfade = Boolean(opts.crossfade) && wasPlaying && !sameSong
+
+      crossfadeArmedRef.current = false
+      prefetchedIdRef.current = null
+
+      if (sameSong) {
+        cancelFades()
+        active.currentTime = 0
+        active.volume = userTargetVolume()
+        void active.play().catch(() => {})
+        dispatch({ type: "TIME", position: 0 })
+        dispatch({ type: "PLAYBACK_ERROR", message: null })
+        return
+      }
+
+      if (!wantsCrossfade) {
+        cancelFades()
+        idle.pause()
+        if (active.src !== window.location.origin + newSrc) {
+          active.src = newSrc
+        } else {
+          active.currentTime = 0
+        }
+        active.volume = userTargetVolume()
+        void active.play().catch(() => {})
+        dispatch({ type: "SET_INDEX", index, shufflePos })
+        dispatch({ type: "TIME", position: 0 })
+        dispatch({ type: "PLAYBACK_ERROR", message: null })
+        return
+      }
+
+      // Crossfade path: idle deck takes over as active immediately.
+      cancelFades()
+      const idleHasSong =
+        idle.src.endsWith(newSrc) ||
+        (idle.currentSrc && idle.currentSrc.endsWith(newSrc))
+      if (!idleHasSong) {
+        idle.src = newSrc
+      }
+      idle.currentTime = 0
+      idle.volume = 0
+      void idle.play().catch(() => {})
+
+      activeDeckRef.current = idleId
+
+      const oldDeckId = activeId
+      const newDeckId = idleId
+      const target = userTargetVolume()
+      setFade(oldDeckId, fadeVolume(active, 0, CROSSFADE_MS))
+      setFade(newDeckId, fadeVolume(idle, target, CROSSFADE_MS))
+      void fadesRef.current[oldDeckId]?.promise.then(() => {
+        // The old deck has fully faded; stop it and free the buffer.
+        active.pause()
+      })
+
+      dispatch({ type: "SET_INDEX", index, shufflePos })
+      dispatch({ type: "TIME", position: 0 })
+      dispatch({ type: "PLAYBACK_ERROR", message: null })
+    },
+    [getDeck, userTargetVolume, cancelFades, setFade]
+  )
+
+  const handleEnded = React.useCallback(() => {
+    if (crossfadeArmedRef.current) {
+      // We already fired the crossfade earlier; nothing to do.
+      crossfadeArmedRef.current = false
+      return
+    }
+    const s = stateRef.current
+    if (s.repeat === "one" && s.currentIndex !== null) {
+      const active = getDeck(activeDeckRef.current)
+      if (active) {
+        active.currentTime = 0
+        void active.play().catch(() => {})
+      }
+      return
+    }
+    const advance = computeAdvance(1, true)
+    if (advance) {
+      playIndex(advance.index, advance.shufflePos)
+    } else {
+      dispatch({ type: "SET_PLAYING", isPlaying: false })
+    }
+  }, [computeAdvance, playIndex, getDeck])
+
+  // ---- Audio event listeners (bound to BOTH decks, gated by active) ----
 
   React.useEffect(() => {
-    const audio = audioRef.current
-    if (!audio) return
+    const decks: Array<[DeckId, HTMLAudioElement | null]> = [
+      [0, deckARef.current],
+      [1, deckBRef.current],
+    ]
+    const cleanups: Array<() => void> = []
 
-    const handlePlay = () =>
-      dispatch({ type: "SET_PLAYING", isPlaying: true })
-    const handlePause = () =>
-      dispatch({ type: "SET_PLAYING", isPlaying: false })
-    const handleTime = () =>
-      dispatch({ type: "TIME", position: audio.currentTime })
-    const handleDuration = () =>
-      dispatch({
-        type: "DURATION",
-        duration: Number.isFinite(audio.duration) ? audio.duration : 0,
-      })
-    const handleVolume = () =>
-      dispatch({
-        type: "VOLUME",
-        volume: audio.volume,
-        muted: audio.muted,
-      })
-    const handleError = () => {
-      const err = audio.error
-      if (!err) {
-        dispatch({ type: "PLAYBACK_ERROR", message: "Unknown playback error" })
-        return
+    for (const [deckId, audio] of decks) {
+      if (!audio) continue
+
+      const isActive = () => activeDeckRef.current === deckId
+
+      const handlePlay = () => {
+        if (isActive()) dispatch({ type: "SET_PLAYING", isPlaying: true })
       }
-      const codeName =
-        err.code === MediaError.MEDIA_ERR_ABORTED
-          ? "aborted"
-          : err.code === MediaError.MEDIA_ERR_NETWORK
-            ? "network error"
-            : err.code === MediaError.MEDIA_ERR_DECODE
-              ? "decode error"
-              : err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
-                ? "format not supported"
-                : `code ${err.code}`
-      const message = err.message
-        ? `${codeName} — ${err.message}`
-        : codeName
-      const s = stateRef.current
-      const songName =
-        s.currentIndex !== null ? s.songs[s.currentIndex]?.title : null
-      console.error(
-        "[player] audio error",
-        { code: err.code, message: err.message, song: songName, src: audio.currentSrc }
-      )
-      dispatch({
-        type: "PLAYBACK_ERROR",
-        message: songName
-          ? `Couldn't play "${songName}": ${message}`
-          : `Playback failed: ${message}`,
+      const handlePause = () => {
+        if (isActive() && !crossfadeArmedRef.current) {
+          dispatch({ type: "SET_PLAYING", isPlaying: false })
+        }
+      }
+      const handleTime = () => {
+        if (!isActive()) return
+        dispatch({ type: "TIME", position: audio.currentTime })
+
+        const duration = audio.duration
+        if (!Number.isFinite(duration) || duration <= 0) return
+
+        // Prefetch next song onto idle deck when past halfway.
+        if (
+          !prefetchedIdRef.current &&
+          audio.currentTime / duration >= PREFETCH_PROGRESS
+        ) {
+          const advance = computeAdvance(1, true)
+          if (advance) {
+            const nextSong = stateRef.current.songs[advance.index]
+            if (nextSong) {
+              const idle = getDeck(otherDeck(activeDeckRef.current))
+              if (idle) {
+                idle.src = streamUrl(nextSong.id)
+                prefetchedIdRef.current = nextSong.id
+              }
+            }
+          }
+        }
+
+        // Auto-trigger crossfade when within 2s of the end.
+        if (
+          !crossfadeArmedRef.current &&
+          stateRef.current.repeat !== "one" &&
+          duration - audio.currentTime <= CROSSFADE_LEAD_SECONDS
+        ) {
+          const advance = computeAdvance(1, true)
+          if (advance) {
+            crossfadeArmedRef.current = true
+            playIndex(advance.index, advance.shufflePos, { crossfade: true })
+          }
+        }
+      }
+      const handleDuration = () => {
+        if (isActive()) {
+          dispatch({
+            type: "DURATION",
+            duration: Number.isFinite(audio.duration) ? audio.duration : 0,
+          })
+        }
+      }
+      const handleVolume = () => {
+        if (isActive() && fadesRef.current[deckId] === null) {
+          // Only mirror volume when not mid-fade — otherwise the rAF ticks
+          // would clobber the user's actual volume.
+          dispatch({
+            type: "VOLUME",
+            volume: audio.volume,
+            muted: audio.muted,
+          })
+        }
+      }
+      const handleEndedEvt = () => {
+        if (isActive()) handleEnded()
+      }
+      const handleError = () => {
+        if (!isActive()) return
+        const err = audio.error
+        if (!err) {
+          dispatch({ type: "PLAYBACK_ERROR", message: "Unknown playback error" })
+          return
+        }
+        const codeName =
+          err.code === MediaError.MEDIA_ERR_ABORTED
+            ? "aborted"
+            : err.code === MediaError.MEDIA_ERR_NETWORK
+              ? "network error"
+              : err.code === MediaError.MEDIA_ERR_DECODE
+                ? "decode error"
+                : err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
+                  ? "format not supported"
+                  : `code ${err.code}`
+        const detail = err.message ? `${codeName} — ${err.message}` : codeName
+        const s = stateRef.current
+        const songName =
+          s.currentIndex !== null ? s.songs[s.currentIndex]?.title : null
+        console.error("[player] audio error", {
+          deck: deckId,
+          code: err.code,
+          message: err.message,
+          song: songName,
+          src: audio.currentSrc,
+        })
+        dispatch({
+          type: "PLAYBACK_ERROR",
+          message: songName
+            ? `Couldn't play "${songName}": ${detail}`
+            : `Playback failed: ${detail}`,
+        })
+      }
+
+      audio.addEventListener("play", handlePlay)
+      audio.addEventListener("pause", handlePause)
+      audio.addEventListener("timeupdate", handleTime)
+      audio.addEventListener("loadedmetadata", handleDuration)
+      audio.addEventListener("durationchange", handleDuration)
+      audio.addEventListener("volumechange", handleVolume)
+      audio.addEventListener("ended", handleEndedEvt)
+      audio.addEventListener("error", handleError)
+
+      cleanups.push(() => {
+        audio.removeEventListener("play", handlePlay)
+        audio.removeEventListener("pause", handlePause)
+        audio.removeEventListener("timeupdate", handleTime)
+        audio.removeEventListener("loadedmetadata", handleDuration)
+        audio.removeEventListener("durationchange", handleDuration)
+        audio.removeEventListener("volumechange", handleVolume)
+        audio.removeEventListener("ended", handleEndedEvt)
+        audio.removeEventListener("error", handleError)
       })
     }
-    const handleEnded = () => {
-      const s = stateRef.current
-      if (s.repeat === "one" && s.currentIndex !== null) {
-        audio.currentTime = 0
-        void audio.play().catch(() => {})
-        return
-      }
-      const advance = computeAdvance(1, true)
-      if (advance) {
-        playIndex(advance.index, advance.shufflePos)
-      } else {
-        dispatch({ type: "SET_PLAYING", isPlaying: false })
-      }
-    }
-
-    audio.addEventListener("play", handlePlay)
-    audio.addEventListener("pause", handlePause)
-    audio.addEventListener("timeupdate", handleTime)
-    audio.addEventListener("loadedmetadata", handleDuration)
-    audio.addEventListener("durationchange", handleDuration)
-    audio.addEventListener("volumechange", handleVolume)
-    audio.addEventListener("ended", handleEnded)
-    audio.addEventListener("error", handleError)
 
     return () => {
-      audio.removeEventListener("play", handlePlay)
-      audio.removeEventListener("pause", handlePause)
-      audio.removeEventListener("timeupdate", handleTime)
-      audio.removeEventListener("loadedmetadata", handleDuration)
-      audio.removeEventListener("durationchange", handleDuration)
-      audio.removeEventListener("volumechange", handleVolume)
-      audio.removeEventListener("ended", handleEnded)
-      audio.removeEventListener("error", handleError)
+      for (const fn of cleanups) fn()
     }
-  }, [computeAdvance, playIndex])
+  }, [computeAdvance, getDeck, handleEnded, playIndex])
 
-  // ---- Public actions ----------------------------------------------------
+  // ---- Public actions --------------------------------------------------
 
   const play = React.useCallback(
     (index: number) => {
       const s = stateRef.current
       if (s.shuffle) {
-        // Re-seed shuffle order so the chosen song lands at position 0.
         const order = shuffledIndices(s.songs.length, index)
         dispatch({ type: "SET_SHUFFLE_ORDER", order, shufflePos: 0 })
-        playIndex(index, 0)
+        playIndex(index, 0, { crossfade: true })
         return
       }
-      playIndex(index)
+      playIndex(index, undefined, { crossfade: true })
     },
     [playIndex]
   )
 
   const toggle = React.useCallback(() => {
-    const audio = audioRef.current
+    const active = getDeck(activeDeckRef.current)
+    const idle = getDeck(otherDeck(activeDeckRef.current))
     const s = stateRef.current
-    if (!audio) return
-    // Nothing loaded yet — start the first song.
+    if (!active) return
     if (s.currentIndex === null) {
       if (s.songs.length > 0) play(0)
       return
     }
-    if (audio.paused) {
-      void audio.play().catch(() => {})
+    if (active.paused) {
+      cancelFades()
+      active.volume = userTargetVolume()
+      void active.play().catch(() => {})
     } else {
-      audio.pause()
+      cancelFades()
+      active.pause()
+      // If a crossfade was in progress the idle deck is also playing — pause it too.
+      idle?.pause()
     }
-  }, [play])
+  }, [getDeck, play, cancelFades, userTargetVolume])
 
   const next = React.useCallback(() => {
     const advance = computeAdvance(1, false)
-    if (advance) playIndex(advance.index, advance.shufflePos)
+    if (advance) playIndex(advance.index, advance.shufflePos, { crossfade: true })
   }, [computeAdvance, playIndex])
 
   const prev = React.useCallback(() => {
-    const audio = audioRef.current
-    // Spotify-style: if we're past 3s, restart current song instead of going
-    // back. Hardcoded 3s threshold matches Spotify and is a near-universal UX.
-    if (audio && audio.currentTime > 3) {
-      audio.currentTime = 0
+    const active = getDeck(activeDeckRef.current)
+    if (active && active.currentTime > 3) {
+      active.currentTime = 0
       return
     }
     const advance = computeAdvance(-1, false)
-    if (advance) playIndex(advance.index, advance.shufflePos)
-  }, [computeAdvance, playIndex])
+    if (advance) playIndex(advance.index, advance.shufflePos, { crossfade: true })
+  }, [computeAdvance, playIndex, getDeck])
 
-  const seek = React.useCallback((seconds: number) => {
-    const audio = audioRef.current
-    if (!audio) return
-    audio.currentTime = seconds
-  }, [])
+  const seek = React.useCallback(
+    (seconds: number) => {
+      const active = getDeck(activeDeckRef.current)
+      if (!active) return
+      active.currentTime = seconds
+      // A user-initiated seek invalidates the auto-crossfade arming so we
+      // re-evaluate at the new position.
+      crossfadeArmedRef.current = false
+    },
+    [getDeck]
+  )
 
-  const setVolume = React.useCallback((volume: number) => {
-    const audio = audioRef.current
-    if (!audio) return
-    audio.volume = Math.max(0, Math.min(1, volume))
-    if (audio.muted && volume > 0) audio.muted = false
-  }, [])
+  const setVolume = React.useCallback(
+    (volume: number) => {
+      const v = Math.max(0, Math.min(1, volume))
+      const active = getDeck(activeDeckRef.current)
+      const idle = getDeck(otherDeck(activeDeckRef.current))
+      if (!active) return
+      cancelFades()
+      active.volume = v
+      if (idle && !idle.paused) idle.volume = v
+      if (active.muted && v > 0) active.muted = false
+      dispatch({ type: "VOLUME", volume: v, muted: active.muted })
+    },
+    [getDeck, cancelFades]
+  )
 
   const toggleMute = React.useCallback(() => {
-    const audio = audioRef.current
-    if (!audio) return
-    audio.muted = !audio.muted
-  }, [])
+    const active = getDeck(activeDeckRef.current)
+    const idle = getDeck(otherDeck(activeDeckRef.current))
+    if (!active) return
+    const muted = !active.muted
+    active.muted = muted
+    if (idle) idle.muted = muted
+    dispatch({ type: "VOLUME", volume: active.volume, muted })
+  }, [getDeck])
 
   const toggleShuffle = React.useCallback(() => {
     dispatch({ type: "TOGGLE_SHUFFLE" })
@@ -305,7 +537,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: "SEARCH", query })
   }, [])
 
-  // ---- Public context value ---------------------------------------------
+  const setSort = React.useCallback((sort: SortMode) => {
+    dispatch({ type: "SET_SORT", sort })
+  }, [])
+
+  // ---- Public context value --------------------------------------------
 
   const value = React.useMemo<PlayerContextValue>(
     () => ({
@@ -319,6 +555,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       shuffle: state.shuffle,
       repeat: state.repeat,
       search: state.search,
+      sort: state.sort,
       loading: state.loading,
       error: state.error,
       playbackError: state.playbackError,
@@ -332,6 +569,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       toggleShuffle,
       cycleRepeat,
       setSearch,
+      setSort,
       reload,
     }),
     [
@@ -345,6 +583,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       state.shuffle,
       state.repeat,
       state.search,
+      state.sort,
       state.loading,
       state.error,
       state.playbackError,
@@ -358,13 +597,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       toggleShuffle,
       cycleRepeat,
       setSearch,
+      setSort,
       reload,
     ]
   )
 
   return (
     <PlayerContext.Provider value={value}>
-      <audio ref={audioRef} preload="metadata" />
+      <audio ref={deckARef} preload="auto" />
+      <audio ref={deckBRef} preload="auto" />
       {children}
     </PlayerContext.Provider>
   )

@@ -49,6 +49,33 @@
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
     --font-sans: "Geist Variable", sans-serif;
+    --animate-marquee: marquee 12s ease-in-out infinite;
+}
+
+/*
+ * Marquee animation for overflowing text. The travel distance is set per
+ * instance via the `--marquee-distance` CSS variable (negative px value),
+ * computed in JS from the actual overflow.
+ *
+ * Tuned so the start of the title is the dominant view: the cycle pauses for
+ * a long beat at the beginning so it can be read without movement, then
+ * reveals the rest, briefly pauses at the end, and returns. Total ~12 s.
+ *
+ *   0–30%   pause at start (~3.6s — primary read window)
+ *   30–60%  slide left to reveal the end
+ *   60–70%  pause at end
+ *   70–100% slide back to start
+ */
+@keyframes marquee {
+    0%, 30% {
+        transform: translateX(0);
+    }
+    60%, 70% {
+        transform: translateX(var(--marquee-distance, 0px));
+    }
+    100% {
+        transform: translateX(0);
+    }
 }
 
 /*
@@ -99,5 +126,18 @@
     }
   body {
     @apply bg-background text-foreground antialiased;
+    }
+  /*
+   * Hide the native `type="search"` clear button. We render our own X icon
+   * inside SearchInput, and Chrome/Safari were also drawing a built-in blue
+   * one beside it.
+   */
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="search"]::-webkit-search-decoration,
+  input[type="search"]::-webkit-search-results-button,
+  input[type="search"]::-webkit-search-results-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+    display: none;
     }
 }

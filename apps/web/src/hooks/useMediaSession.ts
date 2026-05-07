@@ -1,5 +1,7 @@
 import * as React from "react"
 
+import { displayArtist, displayTitle } from "@/lib/song-display"
+
 import { useTrackMetadata } from "./useTrackMetadata"
 import { usePlayer } from "./usePlayer"
 
@@ -120,8 +122,8 @@ export function useMediaSession(): void {
       : FALLBACK_ARTWORK
 
     navigator.mediaSession.metadata = new MediaMetadata({
-      title: song.title || meta?.title || "Untitled",
-      artist: song.artist ?? meta?.artist ?? "ScoutBangers",
+      title: displayTitle(song, meta),
+      artist: displayArtist(song, meta) ?? "ScoutBangers",
       album: meta?.album ?? "ScoutBangers",
       artwork,
     })

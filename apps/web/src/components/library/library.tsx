@@ -5,6 +5,7 @@ import { usePlayer } from "@/hooks/usePlayer"
 import { EmptyState } from "./empty-state"
 import { SearchInput } from "./search-input"
 import { SongList } from "./song-list"
+import { SortSelect } from "./sort-select"
 
 /**
  * The library view: search input + filtered song list. State is read directly
@@ -27,7 +28,10 @@ export function Library() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-3 pt-3 pb-4 md:px-6 md:pt-4">
-      <SearchInput value={search} onChange={setSearch} />
+      <div className="flex items-center gap-2">
+        <SearchInput value={search} onChange={setSearch} className="flex-1" />
+        <SortSelect />
+      </div>
 
       {loading && songs.length === 0 ? (
         <EmptyState variant="loading" />

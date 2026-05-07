@@ -1,4 +1,5 @@
 import { Loader2, RefreshCw } from "lucide-react"
+import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
@@ -20,17 +21,22 @@ export function Header({ className }: HeaderProps) {
       )}
     >
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-3 py-2 md:px-6 md:py-3">
-        <h1 className="flex items-center gap-2">
-          <img
-            src="/icon-header.png"
-            alt=""
-            width={45}
-            height={36}
-            className="h-9 w-auto rounded-md"
-          />
-          <span className="text-foreground text-base font-semibold tracking-tight md:text-lg">
-            ScoutBangers
-          </span>
+        <h1>
+          <Link
+            to="/"
+            className="flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+          >
+            <img
+              src="/icon-header.png"
+              alt=""
+              width={45}
+              height={36}
+              className="h-9 w-auto rounded-md"
+            />
+            <span className="text-foreground text-base font-semibold tracking-tight md:text-lg">
+              ScoutBangers
+            </span>
+          </Link>
         </h1>
         <Button
           type="button"

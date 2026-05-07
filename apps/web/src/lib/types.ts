@@ -15,6 +15,8 @@ export interface Song {
 
 export type RepeatMode = "off" | "all" | "one"
 
+export type { SortMode } from "./sort"
+
 /** Snapshot of player state, exposed to consumers via {@link usePlayer}. */
 export interface PlayerState {
   songs: Song[]
@@ -27,6 +29,7 @@ export interface PlayerState {
   shuffle: boolean
   repeat: RepeatMode
   search: string
+  sort: import("./sort").SortMode
   loading: boolean
   error: string | null
   /** Surfaced from the `<audio>` element's error event. Cleared on play. */
@@ -45,6 +48,7 @@ export interface PlayerActions {
   toggleShuffle: () => void
   cycleRepeat: () => void
   setSearch: (search: string) => void
+  setSort: (sort: import("./sort").SortMode) => void
   reload: () => void
 }
 
