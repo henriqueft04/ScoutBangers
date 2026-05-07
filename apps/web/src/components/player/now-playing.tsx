@@ -1,3 +1,4 @@
+import { useTrackMetadata } from "@/hooks/useTrackMetadata"
 import { usePlayer } from "@/hooks/usePlayer"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -9,29 +10,39 @@ interface NowPlayingProps {
 
 /**
  * The "what's playing" block on the left side of the PlayerBar: artwork +
- * title + artist. When nothing is loaded, shows a friendly idle state.
+ * title + artist. Pulls embedded tags so the bar shows real album art and an
+ * artist even when the filename doesn't have an `Artist - Title` shape.
  */
 export function NowPlaying({ className }: NowPlayingProps) {
   const { songs, currentIndex } = usePlayer()
   const song = currentIndex !== null ? songs[currentIndex] : undefined
+  const meta = useTrackMetadata(song?.id, Boolean(song))
+  const title = song ? (song.title || meta?.title || "Untitled") : null
+  const artist = song?.artist ?? meta?.artist
 
   return (
-    <div
-      className={cn(
-        "flex min-w-0 items-center gap-3",
-        className
-      )}
-    >
-      <SongArtwork className="size-10 md:size-12" />
+    <div className={cn("flex min-w-0 items-center gap-3", className)}>
+      <div className="size-10 shrink-0 md:size-12">
+        {meta?.pictureUrl ? (
+          <img
+            src={meta.pictureUrl}
+            alt=""
+            decoding="async"
+            className="size-full rounded-md object-cover"
+          />
+        ) : (
+          <SongArtwork className="size-full" />
+        )}
+      </div>
       <div className="min-w-0 flex-1">
         {song ? (
           <>
             <p className="text-foreground truncate text-sm font-medium">
-              {song.title}
+              {title}
             </p>
-            {song.artist && (
+            {artist && (
               <p className="text-muted-foreground truncate text-xs">
-                {song.artist}
+                {artist}
               </p>
             )}
           </>
