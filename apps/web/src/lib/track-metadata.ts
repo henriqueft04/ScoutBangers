@@ -52,6 +52,86 @@ let cooldownUntil = 0
 let lastFetchAt = 0
 let queue: Promise<unknown> = Promise.resolve()
 
+/**
+ * Persistent cache: text + base64 artwork keyed by Drive file id.
+ * Survives page reloads; the whole library (~80 songs × ~50 KB) fits
+ * comfortably under localStorage's 5 MB budget. We catch QuotaExceeded
+ * and downgrade to text-only when we hit the wall.
+ */
+const STORAGE_KEY = "scoutbangers:track-metadata-v1"
+
+interface PersistedEntry {
+  artist?: string
+  album?: string
+  title?: string
+  pictureDataUrl?: string
+  pictureType?: string
+}
+
+function loadPersistedCache(): void {
+  if (typeof localStorage === "undefined") return
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return
+    const parsed = JSON.parse(raw) as Record<string, PersistedEntry>
+    for (const [id, entry] of Object.entries(parsed)) {
+      const metadata: TrackMetadata = {
+        artist: entry.artist,
+        album: entry.album,
+        title: entry.title,
+        pictureDataUrl: entry.pictureDataUrl,
+        pictureType: entry.pictureType,
+      }
+      // pictureUrl is recreated from the data URL on demand; the data URL
+      // works directly in <img src> too, so we just use it as the URL.
+      if (entry.pictureDataUrl) metadata.pictureUrl = entry.pictureDataUrl
+      resolved.set(id, metadata)
+    }
+  } catch (error) {
+    console.warn("[track-metadata] failed to load persisted cache", error)
+  }
+}
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null
+function schedulePersist(): void {
+  if (typeof localStorage === "undefined") return
+  if (persistTimer) clearTimeout(persistTimer)
+  persistTimer = setTimeout(() => {
+    persistTimer = null
+    const out: Record<string, PersistedEntry> = {}
+    for (const [id, metadata] of resolved.entries()) {
+      out[id] = {
+        artist: metadata.artist,
+        album: metadata.album,
+        title: metadata.title,
+        pictureDataUrl: metadata.pictureDataUrl,
+        pictureType: metadata.pictureType,
+      }
+    }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(out))
+    } catch {
+      // Quota exceeded — try again without artwork (text only is a tiny
+      // fraction of the size and still solves the cold-start problem).
+      const lite: Record<string, PersistedEntry> = {}
+      for (const [id, metadata] of resolved.entries()) {
+        lite[id] = {
+          artist: metadata.artist,
+          album: metadata.album,
+          title: metadata.title,
+        }
+      }
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(lite))
+      } catch {
+        // give up — we still have the in-memory cache for this session
+      }
+    }
+  }, 500)
+}
+
+loadPersistedCache()
+
 /** Synchronous read of cached metadata. Returns `undefined` if not parsed yet. */
 export function peekTrackMetadata(songId: string): TrackMetadata | undefined {
   return resolved.get(songId)
@@ -97,6 +177,7 @@ export function ensureTrackMetadata(songId: string): Promise<TrackMetadata> {
       consecutiveFailures = 0
       resolved.set(songId, value)
       inflight.delete(songId)
+      schedulePersist()
       subscribers.get(songId)?.forEach((fn) => fn())
       globalSubscribers.forEach((fn) => fn())
       return value

@@ -92,22 +92,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: "SONGS", songs, loading, error })
   }, [songs, loading, error])
 
-  // Auto-play a song shared via ?song=<id> in the URL.
   const sharedSongHandled = React.useRef(false)
-  React.useEffect(() => {
-    if (sharedSongHandled.current || loading || songs.length === 0) return
-    const params = new URLSearchParams(window.location.search)
-    const id = params.get("song")
-    if (!id) return
-    sharedSongHandled.current = true
-    const index = songs.findIndex((s) => s.id === id)
-    if (index !== -1) play(index)
-    // Remove the param from the URL without adding a history entry.
-    const url = new URL(window.location.href)
-    url.searchParams.delete("song")
-    window.history.replaceState(null, "", url.pathname + (url.search || ""))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [songs, loading])
 
   // ---- Persistence -----------------------------------------------------
 
@@ -135,12 +120,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setCached<SortMode>(SORT_KEY, state.sort, PREFS_TTL_MS)
   }, [state.sort])
 
-  // Bulk prefetch is intentionally disabled: it stampedes Drive's API key and
-  // gets us 403'd. Metadata is loaded lazily as rows scroll into view (via
-  // the IntersectionObserver in SongRow), throttled by the global queue in
-  // `lib/track-metadata.ts`. Search-by-artist for not-yet-seen songs will
-  // populate as the user scrolls; the trade-off is acceptable for v2.
-  void prefetchAllMetadata // imported but only for opt-in callers
+  // Background prefetch: kick off after a short idle delay so the initial
+  // render isn't competing with metadata reads. All requests go through the
+  // global 2-req/s queue in `lib/track-metadata.ts`, and a persistent
+  // localStorage cache means subsequent visits skip the slow first pass.
+  React.useEffect(() => {
+    if (loading || songs.length === 0) return
+    const ids = songs.map((song) => song.id)
+    const handle = setTimeout(() => {
+      void prefetchAllMetadata(ids)
+    }, 1500)
+    return () => clearTimeout(handle)
+  }, [songs, loading])
 
   // ---- Deck helpers ----------------------------------------------------
 
@@ -468,6 +459,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     },
     [playIndex]
   )
+
+  // Auto-play a song shared via ?song=<id> in the URL.
+  React.useEffect(() => {
+    if (sharedSongHandled.current || loading || songs.length === 0) return
+    const params = new URLSearchParams(window.location.search)
+    const id = params.get("song")
+    if (!id) return
+    sharedSongHandled.current = true
+    const index = songs.findIndex((s) => s.id === id)
+    if (index !== -1) play(index)
+    const url = new URL(window.location.href)
+    url.searchParams.delete("song")
+    window.history.replaceState(null, "", url.pathname + (url.search || ""))
+  }, [songs, loading, play])
 
   const toggle = React.useCallback(() => {
     const active = getDeck(activeDeckRef.current)

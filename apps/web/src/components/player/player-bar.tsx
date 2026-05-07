@@ -28,10 +28,9 @@ interface PlayerBarProps {
  */
 export function PlayerBar({ className, onExpand }: PlayerBarProps) {
   return (
-    <footer
+    <div
       className={cn(
-        "border-border bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky inset-x-0 bottom-0 z-20 border-t backdrop-blur",
-        "pb-[env(safe-area-inset-bottom)]",
+        "border-border bg-background/95 supports-[backdrop-filter]:bg-background/80 border-t backdrop-blur",
         className
       )}
     >
@@ -64,6 +63,6 @@ export function PlayerBar({ className, onExpand }: PlayerBarProps) {
           </Button>
         </div>
       </div>
-    </footer>
+    </div>
   )
 }

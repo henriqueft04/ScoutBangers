@@ -1,11 +1,15 @@
-import { Loader2, Moon, RefreshCw, Sun } from "lucide-react"
+import * as React from "react"
+import { Loader2, LogIn, Moon, RefreshCw, Sun } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
+import { SignInDialog } from "@/components/auth/sign-in-dialog"
+import { useAuth } from "@/hooks/useAuth"
 import { usePlayer } from "@/hooks/usePlayer"
 import { useTheme } from "@/hooks/useTheme"
+import { supabaseConfigured } from "@/lib/supabase"
 
 interface HeaderProps {
   className?: string
@@ -14,6 +18,8 @@ interface HeaderProps {
 export function Header({ className }: HeaderProps) {
   const { reload, loading } = usePlayer()
   const { theme, toggle } = useTheme()
+  const { user, profile } = useAuth()
+  const [signInOpen, setSignInOpen] = React.useState(false)
   return (
     <header
       className={cn(
@@ -41,6 +47,36 @@ export function Header({ className }: HeaderProps) {
           </Link>
         </h1>
         <div className="flex items-center gap-1">
+          {supabaseConfigured && !user ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Sign in"
+              onClick={() => setSignInOpen(true)}
+              className="touch-manipulation"
+            >
+              <LogIn />
+            </Button>
+          ) : null}
+          {user ? (
+            <Link
+              to="/profile"
+              aria-label="Open profile"
+              className="bg-primary text-primary-foreground inline-flex size-7 items-center justify-center overflow-hidden rounded-full text-xs font-semibold"
+            >
+              {profile?.avatar_url || user.user_metadata?.avatar_url ? (
+                <img
+                  src={profile?.avatar_url ?? user.user_metadata?.avatar_url}
+                  alt=""
+                  className="size-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                (profile?.display_name ?? user.email ?? "U").charAt(0).toUpperCase()
+              )}
+            </Link>
+          ) : null}
           <Button
             type="button"
             variant="ghost"
@@ -63,6 +99,7 @@ export function Header({ className }: HeaderProps) {
             {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
           </Button>
         </div>
+        <SignInDialog open={signInOpen} onClose={() => setSignInOpen(false)} />
       </div>
     </header>
   )

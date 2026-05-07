@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.105.3",
     "@workspace/ui": "*",
     "lucide-react": "^1.14.0",
     "music-metadata": "^11.12.3",

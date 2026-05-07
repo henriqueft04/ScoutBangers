@@ -1,27 +1,42 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom"
 
 import { AppShell } from "@/components/layout/app-shell"
+import { AuthProvider } from "@/components/auth/auth-provider"
 import { ArtistPage } from "@/components/pages/artist-page"
+import { HomePage } from "@/components/pages/home-page"
 import { LibraryPage } from "@/components/pages/library-page"
+import { PlaylistsPage } from "@/components/pages/playlists-page"
+import { PlaylistDetailPage } from "@/components/pages/playlist-detail-page"
+import { ProfilePage } from "@/components/pages/profile-page"
 import { PlayerProvider } from "@/components/player/player-provider"
 
 /**
  * Routes:
- *   /             → library (default)
- *   /artist/:name → artist profile (Spotify-style)
+ *   /                    → home (top 10)
+ *   /music               → library / catalog
+ *   /playlists           → user's playlists
+ *   /playlists/:id       → individual playlist
+ *   /profile             → profile + stats
+ *   /artist/:name        → artist profile
  */
 export function App() {
   return (
     <BrowserRouter>
-      <PlayerProvider>
-        <AppShell>
-          <Routes>
-            <Route path="/" element={<LibraryPage />} />
-            <Route path="/artist/:name" element={<ArtistPage />} />
-            <Route path="*" element={<LibraryPage />} />
-          </Routes>
-        </AppShell>
-      </PlayerProvider>
+      <AuthProvider>
+        <PlayerProvider>
+          <AppShell>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/music" element={<LibraryPage />} />
+              <Route path="/playlists" element={<PlaylistsPage />} />
+              <Route path="/playlists/:id" element={<PlaylistDetailPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/artist/:name" element={<ArtistPage />} />
+              <Route path="*" element={<HomePage />} />
+            </Routes>
+          </AppShell>
+        </PlayerProvider>
+      </AuthProvider>
     </BrowserRouter>
   )
 }

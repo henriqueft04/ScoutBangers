@@ -6,7 +6,12 @@
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": ["dist/**"],
-      "env": ["DRIVE_FOLDER_ID", "GOOGLE_SERVICE_ACCOUNT_JSON"]
+      "env": [
+        "DRIVE_FOLDER_ID",
+        "GOOGLE_SERVICE_ACCOUNT_JSON",
+        "VITE_SUPABASE_URL",
+        "VITE_SUPABASE_ANON_KEY"
+      ]
     },
     "lint": {
       "dependsOn": ["^lint"]
