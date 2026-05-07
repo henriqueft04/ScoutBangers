@@ -51,7 +51,7 @@ export async function getDriveAccessToken(): Promise<string> {
   const keyDer = pemToDer(private_key)
   const cryptoKey = await crypto.subtle.importKey(
     "pkcs8",
-    keyDer,
+    keyDer.buffer as ArrayBuffer,
     { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
     false,
     ["sign"]
@@ -70,7 +70,7 @@ export async function getDriveAccessToken(): Promise<string> {
   const sigBuf = await crypto.subtle.sign(
     "RSASSA-PKCS1-v1_5",
     cryptoKey,
-    new TextEncoder().encode(`${header}.${payload}`)
+    new TextEncoder().encode(`${header}.${payload}`).buffer as ArrayBuffer
   )
   const jwt = `${header}.${payload}.${toBase64url(sigBuf)}`
 
