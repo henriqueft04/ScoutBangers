@@ -1,8 +1,9 @@
 import * as React from "react"
-import { Loader2, Trash2 } from "lucide-react"
+import { Globe, Loader2, Lock, Trash2 } from "lucide-react"
 import { Link, useParams } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
+import { cn } from "@workspace/ui/lib/utils"
 
 import { EmptyState } from "@/components/library/empty-state"
 import { SongList } from "@/components/library/song-list"
@@ -13,6 +14,8 @@ import { supabase } from "@/lib/supabase"
 interface PlaylistDetail {
   id: string
   name: string
+  is_public: boolean
+  is_owner: boolean
   song_ids: string[]
 }
 
@@ -25,14 +28,18 @@ export function PlaylistDetailPage() {
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
-    if (!supabase || !user || !id) return
+    if (!supabase || !id) return
     let cancelled = false
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     void (async () => {
       const [{ data: meta, error: metaErr }, { data: items, error: itemsErr }] =
         await Promise.all([
-          supabase.from("playlists").select("id, name").eq("id", id).single(),
+          supabase
+            .from("playlists")
+            .select("id, name, is_public, user_id")
+            .eq("id", id)
+            .single(),
           supabase
             .from("playlist_songs")
             .select("song_id, position")
@@ -53,6 +60,8 @@ export function PlaylistDetailPage() {
       setPlaylist({
         id: meta.id,
         name: meta.name,
+        is_public: meta.is_public,
+        is_owner: meta.user_id === user?.id,
         song_ids: (items ?? []).map((row) => row.song_id),
       })
       setLoading(false)
@@ -61,6 +70,24 @@ export function PlaylistDetailPage() {
       cancelled = true
     }
   }, [user, id])
+
+  // Allow owner to flip is_public.
+  const togglePublic = async () => {
+    if (!supabase || !playlist || !playlist.is_owner) return
+    const next = !playlist.is_public
+    setPlaylist((prev) => (prev ? { ...prev, is_public: next } : prev))
+    const { error } = await supabase
+      .from("playlists")
+      .update({ is_public: next })
+      .eq("id", playlist.id)
+    if (error) {
+      // Roll back on failure.
+      setPlaylist((prev) =>
+        prev ? { ...prev, is_public: !next } : prev
+      )
+      setError(error.message)
+    }
+  }
 
   const playlistSongs = React.useMemo(() => {
     if (!playlist) return []
@@ -92,18 +119,10 @@ export function PlaylistDetailPage() {
     )
   }
 
-  if (!user) {
-    return (
-      <div className="mx-auto w-full max-w-3xl px-3 pt-6 md:px-6">
-        <EmptyState variant="empty" message="Sign in to view this playlist." />
-      </div>
-    )
-  }
-
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-3 pt-3 pb-4 md:px-6 md:pt-4">
-      <header className="flex items-center justify-between">
-        <div>
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <Link
             to="/playlists"
             className="text-muted-foreground hover:text-foreground text-xs"
@@ -114,6 +133,31 @@ export function PlaylistDetailPage() {
             {playlist?.name ?? "Playlist"}
           </h2>
         </div>
+        {playlist?.is_owner ? (
+          <button
+            type="button"
+            onClick={togglePublic}
+            aria-label={
+              playlist.is_public
+                ? "Make playlist private"
+                : "Make playlist public"
+            }
+            aria-pressed={playlist.is_public}
+            className={cn(
+              "border-border inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+              playlist.is_public
+                ? "text-primary border-primary/30 bg-primary/5"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {playlist.is_public ? (
+              <Globe className="size-3.5" />
+            ) : (
+              <Lock className="size-3.5" />
+            )}
+            {playlist.is_public ? "Public" : "Private"}
+          </button>
+        ) : null}
       </header>
 
       {loading ? (

@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Loader2, Plus, Trash2 } from "lucide-react"
+import { Globe, Loader2, Lock, Plus, Trash2 } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase"
 interface PlaylistRow {
   id: string
   name: string
+  is_public: boolean
   created_at: string
   song_count: number
 }
@@ -35,7 +36,7 @@ export function PlaylistsPage() {
     setError(null)
     const { data, error } = await supabase
       .from("playlists")
-      .select("id, name, created_at")
+      .select("id, name, is_public, created_at")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
     if (error) {
@@ -46,6 +47,7 @@ export function PlaylistsPage() {
     const rows: PlaylistRow[] = (data ?? []).map((row) => ({
       id: row.id,
       name: row.name,
+      is_public: row.is_public,
       created_at: row.created_at,
       song_count: 0,
     }))
@@ -205,12 +207,23 @@ export function PlaylistsPage() {
               <div className="hover:bg-accent/40 flex items-center gap-2 rounded-md pr-1 transition-colors">
                 <Link
                   to={`/playlists/${playlist.id}`}
-                  className="flex flex-1 items-center justify-between px-3 py-2.5"
+                  className="flex flex-1 items-center justify-between gap-2 px-3 py-2.5"
                 >
-                  <span className="text-foreground text-sm font-medium">
-                    {playlist.name}
+                  <span className="text-foreground flex min-w-0 items-center gap-2 text-sm font-medium">
+                    {playlist.is_public ? (
+                      <Globe
+                        className="text-muted-foreground size-3.5 shrink-0"
+                        aria-label="Public"
+                      />
+                    ) : (
+                      <Lock
+                        className="text-muted-foreground size-3.5 shrink-0"
+                        aria-label="Private"
+                      />
+                    )}
+                    <span className="truncate">{playlist.name}</span>
                   </span>
-                  <span className="text-muted-foreground text-xs">
+                  <span className="text-muted-foreground shrink-0 text-xs">
                     {playlist.song_count}{" "}
                     {playlist.song_count === 1 ? "song" : "songs"}
                   </span>
