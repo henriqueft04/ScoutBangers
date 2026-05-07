@@ -92,6 +92,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: "SONGS", songs, loading, error })
   }, [songs, loading, error])
 
+  // Auto-play a song shared via ?song=<id> in the URL.
+  const sharedSongHandled = React.useRef(false)
+  React.useEffect(() => {
+    if (sharedSongHandled.current || loading || songs.length === 0) return
+    const params = new URLSearchParams(window.location.search)
+    const id = params.get("song")
+    if (!id) return
+    sharedSongHandled.current = true
+    const index = songs.findIndex((s) => s.id === id)
+    if (index !== -1) dispatch({ type: "PLAY", index })
+    // Remove the param from the URL without adding a history entry.
+    const url = new URL(window.location.href)
+    url.searchParams.delete("song")
+    window.history.replaceState(null, "", url.pathname + (url.search || ""))
+  }, [songs, loading])
+
   // ---- Persistence -----------------------------------------------------
 
   React.useEffect(() => {

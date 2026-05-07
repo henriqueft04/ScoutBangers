@@ -1,5 +1,5 @@
 import * as React from "react"
-import { ChevronDown, Download } from "lucide-react"
+import { Check, ChevronDown, Download, Share2 } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
@@ -31,6 +31,23 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
   const { songs, currentIndex } = usePlayer()
   const song = currentIndex !== null ? songs[currentIndex] : undefined
   const meta = useTrackMetadata(song?.id, Boolean(song))
+  const [copied, setCopied] = React.useState(false)
+
+  const handleShare = React.useCallback(async () => {
+    if (!song) return
+    const url = `${window.location.origin}/?song=${song.id}`
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: displayTitle(song, null), url })
+        return
+      } catch {
+        // user cancelled or API unavailable — fall through to clipboard
+      }
+    }
+    await navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }, [song])
 
   // Escape key closes (desktop).
   React.useEffect(() => {
@@ -102,14 +119,26 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
           Now Playing
         </p>
         {song ? (
-          <a
-            href={`/api/stream/${song.id}`}
-            download={title}
-            aria-label="Download song"
-            className="text-muted-foreground hover:text-foreground touch-manipulation inline-flex size-7 items-center justify-center rounded-md transition-colors"
-          >
-            <Download className="size-4" />
-          </a>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Share song"
+              onClick={handleShare}
+              className="touch-manipulation"
+            >
+              {copied ? <Check className="size-4" /> : <Share2 className="size-4" />}
+            </Button>
+            <a
+              href={`/api/stream/${song.id}`}
+              download={title}
+              aria-label="Download song"
+              className="text-muted-foreground hover:text-foreground touch-manipulation inline-flex size-7 items-center justify-center rounded-md transition-colors"
+            >
+              <Download className="size-4" />
+            </a>
+          </div>
         ) : (
           <span className="size-7" aria-hidden />
         )}
