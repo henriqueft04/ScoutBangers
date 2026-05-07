@@ -1,4 +1,6 @@
-import { getDriveAccessToken } from "../_lib/drive-auth"
+// `.js` extension is required by Vercel's nodenext module resolution even
+// though the source is .ts — the extension refers to the compiled output.
+import { getDriveAccessToken } from "../_lib/drive-auth.js"
 
 /**
  * GET /api/stream/:id

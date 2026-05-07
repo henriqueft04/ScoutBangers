@@ -5,7 +5,8 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**"],
+      "env": ["DRIVE_FOLDER_ID", "GOOGLE_SERVICE_ACCOUNT_JSON"]
     },
     "lint": {
       "dependsOn": ["^lint"]
