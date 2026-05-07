@@ -3,6 +3,7 @@ import { Loader2, LogOut } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
+import { cn } from "@workspace/ui/lib/utils"
 
 import { SignInDialog } from "@/components/auth/sign-in-dialog"
 import { EmptyState } from "@/components/library/empty-state"
@@ -31,11 +32,27 @@ function formatDate(iso: string): string {
 }
 
 export function ProfilePage() {
-  const { user, profile, loading: authLoading, signOut } = useAuth()
+  const { user, profile, loading: authLoading, signOut, refreshProfile } =
+    useAuth()
   const { songs } = usePlayer()
   const [topSongs, setTopSongs] = React.useState<TopSong[] | null>(null)
   const [topArtists, setTopArtists] = React.useState<TopArtist[] | null>(null)
   const [signInOpen, setSignInOpen] = React.useState(false)
+  const [savingPrivacy, setSavingPrivacy] = React.useState(false)
+
+  const shareActivity = profile?.share_activity ?? true
+
+  const togglePrivacy = async () => {
+    if (!supabase || !user) return
+    setSavingPrivacy(true)
+    const next = !shareActivity
+    await supabase
+      .from("profiles")
+      .update({ share_activity: next })
+      .eq("id", user.id)
+    await refreshProfile()
+    setSavingPrivacy(false)
+  }
 
   React.useEffect(() => {
     if (!supabase || !user) return
@@ -158,6 +175,45 @@ export function ProfilePage() {
             Sign out
           </Button>
         </div>
+      </section>
+
+      <section className="border-border bg-card rounded-md border p-4">
+        <h3 className="text-muted-foreground mb-2 text-xs uppercase tracking-wider">
+          Privacy
+        </h3>
+        <button
+          type="button"
+          onClick={togglePrivacy}
+          disabled={savingPrivacy}
+          className="flex w-full items-center justify-between gap-3 text-left"
+          aria-pressed={shareActivity}
+        >
+          <span className="flex flex-col">
+            <span className="text-foreground text-sm font-medium">
+              Share my activity
+            </span>
+            <span className="text-muted-foreground text-xs">
+              {shareActivity
+                ? "Friends can see what you're listening to."
+                : "Hidden — your plays still count, but no one sees them."}
+            </span>
+          </span>
+          <span
+            role="presentation"
+            className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+              shareActivity ? "bg-primary" : "bg-muted",
+              savingPrivacy && "opacity-60"
+            )}
+          >
+            <span
+              className={cn(
+                "bg-background size-5 rounded-full shadow transition-transform",
+                shareActivity ? "translate-x-5" : "translate-x-0.5"
+              )}
+            />
+          </span>
+        </button>
       </section>
 
       <section className="flex flex-col gap-2">

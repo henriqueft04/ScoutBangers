@@ -11,6 +11,8 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   display_name text,
   avatar_url text,
+  -- When false, the user is hidden from the friends activity feed.
+  share_activity boolean not null default true,
   created_at timestamptz not null default now()
 );
 
@@ -232,6 +234,33 @@ as $$
   limit lim;
 $$;
 
+create or replace function public.recent_plays(lim int default 50)
+returns table (
+  song_id text,
+  user_id uuid,
+  display_name text,
+  avatar_url text,
+  played_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    p.song_id,
+    p.user_id,
+    prof.display_name,
+    prof.avatar_url,
+    p.played_at
+  from public.plays p
+  join public.profiles prof on prof.id = p.user_id
+  where p.user_id is not null
+    and prof.share_activity = true
+  order by p.played_at desc
+  limit lim;
+$$;
+
 grant execute on function public.top_songs_global(int) to anon, authenticated;
 grant execute on function public.top_songs_for_user(uuid, int) to authenticated;
 grant execute on function public.top_artists_for_user(uuid, int) to authenticated;
+grant execute on function public.recent_plays(int) to anon, authenticated;

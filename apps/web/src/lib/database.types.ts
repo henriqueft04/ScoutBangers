@@ -12,18 +12,21 @@ export interface Database {
           id: string
           display_name: string | null
           avatar_url: string | null
+          share_activity: boolean
           created_at: string
         }
         Insert: {
           id: string
           display_name?: string | null
           avatar_url?: string | null
+          share_activity?: boolean
           created_at?: string
         }
         Update: {
           id?: string
           display_name?: string | null
           avatar_url?: string | null
+          share_activity?: boolean
           created_at?: string
         }
         Relationships: []
@@ -126,6 +129,16 @@ export interface Database {
       top_artists_for_user: {
         Args: { uid: string; lim?: number }
         Returns: { artist: string; play_count: number }[]
+      }
+      recent_plays: {
+        Args: { lim?: number }
+        Returns: {
+          song_id: string
+          user_id: string
+          display_name: string | null
+          avatar_url: string | null
+          played_at: string
+        }[]
       }
     }
     Enums: Record<string, never>

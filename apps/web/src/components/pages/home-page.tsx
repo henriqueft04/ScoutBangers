@@ -1,6 +1,7 @@
 import * as React from "react"
 
 import { EmptyState } from "@/components/library/empty-state"
+import { FriendsFeed } from "@/components/library/friends-feed"
 import { SongRow } from "@/components/library/song-row"
 import { usePlayer } from "@/hooks/usePlayer"
 import { supabase, supabaseConfigured } from "@/lib/supabase"
@@ -80,7 +81,9 @@ export function HomePage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-3 pt-3 pb-4 md:px-6 md:pt-4">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-3 pt-3 pb-4 md:px-6 md:pt-4">
+      <FriendsFeed />
+
       <header className="flex items-baseline justify-between">
         <h2 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">
           Top 10
