@@ -88,9 +88,11 @@ export default async function handler(request: Request): Promise<Response> {
 
   const files: DriveFile[] = []
   let pageToken: string | undefined
+  let page = 0
 
   try {
     do {
+      page++
       const params = new URLSearchParams({
         q: `'${folderId}' in parents and mimeType contains 'audio/' and trashed = false`,
         fields:
@@ -99,9 +101,12 @@ export default async function handler(request: Request): Promise<Response> {
       })
       if (pageToken) params.set("pageToken", pageToken)
 
+      console.log(`[songs] page ${page} fetch start`)
       const driveResponse = await fetch(`${DRIVE_LIST_URL}?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(10_000),
       })
+      console.log(`[songs] page ${page} response status ${driveResponse.status}`)
       if (!driveResponse.ok) {
         const detail = await driveResponse.text()
         return jsonResponse(
@@ -114,6 +119,7 @@ export default async function handler(request: Request): Promise<Response> {
         )
       }
       const data = (await driveResponse.json()) as DriveListResponse
+      console.log(`[songs] page ${page} parsed ${data.files.length} files, nextPageToken=${!!data.nextPageToken}`)
       files.push(...data.files)
       pageToken = data.nextPageToken
     } while (pageToken)
