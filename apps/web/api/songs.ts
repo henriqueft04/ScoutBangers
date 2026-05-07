@@ -1,17 +1,18 @@
+import { getDriveAccessToken } from "./_lib/drive-auth"
+
 /**
  * GET /api/songs
  *
  * Lists every audio file in the Drive folder identified by DRIVE_FOLDER_ID and
- * returns a sorted manifest. Server-side so the API key never reaches the
- * client. Cached for 5 minutes on the Vercel edge with stale-while-revalidate
- * so weekly Drive uploads propagate without hammering the Drive API.
+ * returns a sorted manifest. Authenticated as a Google service account so we
+ * get proper authenticated quotas (no more IP-level abuse-detection hits) and
+ * the folder can stay private — share it with the service-account email
+ * instead of "anyone with link".
  *
  * Required env vars:
- *   - DRIVE_API_KEY       Google Cloud API key with Drive API enabled
- *   - DRIVE_FOLDER_ID     ID of a publicly-shared Drive folder
+ *   - GOOGLE_SERVICE_ACCOUNT_JSON  Full service-account JSON pasted whole
+ *   - DRIVE_FOLDER_ID              ID of the Drive folder shared with the SA
  */
-
-export const config = { runtime: "edge" }
 
 const DRIVE_LIST_URL = "https://www.googleapis.com/drive/v3/files"
 
@@ -49,10 +50,7 @@ function parseSongName(filename: string): {
   return { title: withoutExt.trim() }
 }
 
-function jsonResponse(
-  body: unknown,
-  init: ResponseInit = {}
-): Response {
+function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
     ...init,
     headers: {
@@ -63,17 +61,27 @@ function jsonResponse(
 }
 
 export default async function handler(request: Request): Promise<Response> {
-  const apiKey = process.env.DRIVE_API_KEY
   const folderId = process.env.DRIVE_FOLDER_ID
-
-  if (!apiKey || !folderId) {
+  if (!folderId) {
     return jsonResponse(
-      { error: "Server misconfigured: DRIVE_API_KEY or DRIVE_FOLDER_ID is unset." },
+      { error: "Server misconfigured: DRIVE_FOLDER_ID is unset." },
       { status: 500 }
     )
   }
 
-  // Allow the client to bust the edge cache with ?bust=...
+  let token: string
+  try {
+    token = await getDriveAccessToken()
+  } catch (error) {
+    return jsonResponse(
+      {
+        error: "Failed to obtain Drive access token",
+        detail: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 }
+    )
+  }
+
   const bust = new URL(request.url).searchParams.has("bust")
 
   const files: DriveFile[] = []
@@ -86,15 +94,20 @@ export default async function handler(request: Request): Promise<Response> {
         fields:
           "nextPageToken,files(id,name,mimeType,size,modifiedTime)",
         pageSize: "1000",
-        key: apiKey,
       })
       if (pageToken) params.set("pageToken", pageToken)
 
-      const driveResponse = await fetch(`${DRIVE_LIST_URL}?${params}`)
+      const driveResponse = await fetch(`${DRIVE_LIST_URL}?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
       if (!driveResponse.ok) {
         const detail = await driveResponse.text()
         return jsonResponse(
-          { error: "Drive API request failed", status: driveResponse.status, detail },
+          {
+            error: "Drive API request failed",
+            status: driveResponse.status,
+            detail,
+          },
           { status: 502 }
         )
       }
