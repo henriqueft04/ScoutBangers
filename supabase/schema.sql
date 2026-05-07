@@ -68,6 +68,13 @@ create table if not exists public.playlist_songs (
 create index if not exists playlist_songs_position_idx
   on public.playlist_songs(playlist_id, position);
 
+-- One "Favorites" playlist per user. Partial index so other playlist
+-- names can still have duplicates if a user wants two playlists named
+-- the same thing.
+create unique index if not exists playlists_one_favorites_per_user
+  on public.playlists (user_id)
+  where name = 'Favorites';
+
 -- ===== plays ====================================================
 -- One row per "play" event, logged when a song crosses 30 s of elapsed
 -- playback (Spotify's rule). Anonymous plays are stored with user_id NULL
@@ -86,6 +93,10 @@ create index if not exists plays_user_idx on public.plays(user_id);
 create index if not exists plays_played_at_idx on public.plays(played_at);
 create index if not exists plays_artist_idx
   on public.plays(artist) where artist is not null;
+-- Composite index supports the rate-limit check on insert.
+create index if not exists plays_user_song_played_idx
+  on public.plays (user_id, song_id, played_at desc)
+  where user_id is not null;
 
 -- ===== row-level security ========================================
 alter table public.profiles enable row level security;
@@ -173,10 +184,24 @@ create policy "playlist_songs_delete_own" on public.playlist_songs
     )
   );
 
--- plays: anyone may insert (anonymous + authed); users may read own rows
+-- plays: anyone may insert (anonymous + authed); authenticated inserts
+-- are rate-limited to 1 per (user, song) per minute so signed-in users
+-- can't spam the global top-10. Users may read their own rows.
 drop policy if exists "plays_insert_self_or_anon" on public.plays;
 create policy "plays_insert_self_or_anon" on public.plays
-  for insert with check (user_id is null or auth.uid() = user_id);
+  for insert
+  with check (
+    user_id is null
+    or (
+      auth.uid() = user_id
+      and not exists (
+        select 1 from public.plays existing
+        where existing.user_id = plays.user_id
+          and existing.song_id = plays.song_id
+          and existing.played_at > now() - interval '60 seconds'
+      )
+    )
+  );
 
 drop policy if exists "plays_read_own" on public.plays;
 create policy "plays_read_own" on public.plays

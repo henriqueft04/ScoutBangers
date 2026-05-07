@@ -1,4 +1,5 @@
 import { getDriveAccessToken } from "../_lib/drive-auth.js"
+import { listFolderFileIds } from "../_lib/folder-files.js"
 
 export const config = { runtime: "edge" }
 
@@ -7,6 +8,10 @@ export const config = { runtime: "edge" }
  *
  * Streaming proxy for a single Drive audio file. Forwards the client's
  * Range header to Drive and pipes the response body through.
+ *
+ * Validates the requested id against an allowlist of files actually in
+ * the configured folder so the endpoint can't be abused to proxy
+ * arbitrary Drive files. Allowlist is cached for 5 minutes per folder.
  */
 
 const DRIVE_FILE_URL = "https://www.googleapis.com/drive/v3/files"
@@ -21,6 +26,13 @@ const FORWARDED_HEADERS = [
 ] as const
 
 export default async function handler(request: Request): Promise<Response> {
+  const folderId = process.env.DRIVE_FOLDER_ID
+  if (!folderId) {
+    return new Response("Server misconfigured: DRIVE_FOLDER_ID is unset.", {
+      status: 500,
+    })
+  }
+
   let token: string
   try {
     token = await getDriveAccessToken()
@@ -33,6 +45,22 @@ export default async function handler(request: Request): Promise<Response> {
 
   const id = request.url.split("?")[0].split("/").filter(Boolean).pop()
   if (!id) return new Response("Missing file id", { status: 400 })
+
+  // Allowlist check: only stream files that are actually in the folder.
+  // Fail closed on Drive errors — better to return a transient error than
+  // proxy an unverified file.
+  let allowedIds: Set<string>
+  try {
+    allowedIds = await listFolderFileIds(token, folderId)
+  } catch (error) {
+    return new Response(
+      `Couldn't verify file: ${error instanceof Error ? error.message : String(error)}`,
+      { status: 502 }
+    )
+  }
+  if (!allowedIds.has(id)) {
+    return new Response("Not found", { status: 404 })
+  }
 
   const driveUrl = `${DRIVE_FILE_URL}/${encodeURIComponent(id)}?alt=media`
 
