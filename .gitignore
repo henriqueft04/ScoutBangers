@@ -1,0 +1,65 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+.pnp.cjs
+
+# Environment — never commit secrets. .env.example is committed and tracked.
+.env
+.env.*
+!.env.example
+
+# Build outputs
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Caches
+.turbo/
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+.swc/
+.vite/
+node_modules/.tmp/
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Vercel
+.vercel/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editors / IDEs
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+
+# OS junk
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*.pem
+
+# Local scratch
+.history/
+.tmp/
+*.local
