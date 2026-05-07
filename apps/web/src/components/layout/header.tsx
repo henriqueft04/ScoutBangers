@@ -1,10 +1,11 @@
-import { Loader2, RefreshCw } from "lucide-react"
+import { Loader2, Moon, RefreshCw, Sun } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { usePlayer } from "@/hooks/usePlayer"
+import { useTheme } from "@/hooks/useTheme"
 
 interface HeaderProps {
   className?: string
@@ -12,6 +13,7 @@ interface HeaderProps {
 
 export function Header({ className }: HeaderProps) {
   const { reload, loading } = usePlayer()
+  const { theme, toggle } = useTheme()
   return (
     <header
       className={cn(
@@ -38,21 +40,29 @@ export function Header({ className }: HeaderProps) {
             </span>
           </Link>
         </h1>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Refresh songs"
-          onClick={reload}
-          disabled={loading}
-          className="touch-manipulation"
-        >
-          {loading ? (
-            <Loader2 className="animate-spin" />
-          ) : (
-            <RefreshCw />
-          )}
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            onClick={toggle}
+            className="touch-manipulation"
+          >
+            {theme === "dark" ? <Sun /> : <Moon />}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Refresh songs"
+            onClick={reload}
+            disabled={loading}
+            className="touch-manipulation"
+          >
+            {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+          </Button>
+        </div>
       </div>
     </header>
   )

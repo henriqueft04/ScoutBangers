@@ -79,11 +79,9 @@
 }
 
 /*
- * ScoutBangers two-color palette.
- *   white surface: #F0F3F5
- *   red accent:    #7B2D26
- * Soft tints derive from rgb(123 45 38 / <alpha>).
- * Light-only theme; any `dark:` variants in component classes are dead paths.
+ * ScoutBangers palette — red #7B2D26 + white/dark surface.
+ * Light: near-white #F0F3F5 background, red text/accents.
+ * Dark:  near-black #1A1110 background, red text/accents.
  */
 :root {
     --background: #f0f3f5;
@@ -97,7 +95,7 @@
     --secondary: rgb(123 45 38 / 0.08);
     --secondary-foreground: #7b2d26;
     --muted: rgb(123 45 38 / 0.05);
-    --muted-foreground: rgb(123 45 38 / 0.65);
+    --muted-foreground: rgb(123 45 38 / 0.55);
     --accent: rgb(123 45 38 / 0.1);
     --accent-foreground: #7b2d26;
     --destructive: #7b2d26;
@@ -118,6 +116,40 @@
     --sidebar-accent-foreground: #7b2d26;
     --sidebar-border: rgb(123 45 38 / 0.15);
     --sidebar-ring: #7b2d26;
+}
+
+.dark {
+    --background: #1a1110;
+    --foreground: #f0d8d6;
+    --card: #231615;
+    --card-foreground: #f0d8d6;
+    --popover: #231615;
+    --popover-foreground: #f0d8d6;
+    --primary: #c0524a;
+    --primary-foreground: #1a1110;
+    --secondary: rgb(192 82 74 / 0.12);
+    --secondary-foreground: #f0d8d6;
+    --muted: rgb(192 82 74 / 0.08);
+    --muted-foreground: rgb(240 216 214 / 0.55);
+    --accent: rgb(192 82 74 / 0.15);
+    --accent-foreground: #f0d8d6;
+    --destructive: #c0524a;
+    --border: rgb(192 82 74 / 0.2);
+    --input: rgb(192 82 74 / 0.2);
+    --ring: #c0524a;
+    --chart-1: rgb(192 82 74 / 1);
+    --chart-2: rgb(192 82 74 / 0.8);
+    --chart-3: rgb(192 82 74 / 0.6);
+    --chart-4: rgb(192 82 74 / 0.4);
+    --chart-5: rgb(192 82 74 / 0.2);
+    --sidebar: #231615;
+    --sidebar-foreground: #f0d8d6;
+    --sidebar-primary: #c0524a;
+    --sidebar-primary-foreground: #1a1110;
+    --sidebar-accent: rgb(192 82 74 / 0.12);
+    --sidebar-accent-foreground: #f0d8d6;
+    --sidebar-border: rgb(192 82 74 / 0.2);
+    --sidebar-ring: #c0524a;
 }
 
 @layer base {
