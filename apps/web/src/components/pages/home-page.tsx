@@ -21,13 +21,17 @@ export function HomePage() {
   const { songs, currentIndex, isPlaying, play, loading } = usePlayer()
   const [ranked, setRanked] = React.useState<RankedSong[] | null>(null)
   const [rpcError, setRpcError] = React.useState<string | null>(null)
+  // Tick changes when the playing song changes — used to refresh top-10
+  // counts so the chart updates as the user listens without leaving the page.
+  const songIdKey = currentIndex !== null ? songs[currentIndex]?.id ?? "" : ""
 
   React.useEffect(() => {
     if (!supabaseConfigured || !supabase) return
     if (songs.length === 0) return
     let cancelled = false
 
-    void (async () => {
+    const fetchTop = async () => {
+      if (!supabase) return
       const { data, error } = await supabase.rpc("top_songs_global", { lim: 10 })
       if (cancelled) return
       if (error) {
@@ -45,12 +49,19 @@ export function HomePage() {
         }
       }
       setRanked(out)
-    })()
+    }
 
+    void fetchTop()
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void fetchTop()
+    }
+    document.addEventListener("visibilitychange", onVisibility)
     return () => {
       cancelled = true
+      document.removeEventListener("visibilitychange", onVisibility)
     }
-  }, [songs])
+  }, [songs, songIdKey])
 
   const display: RankedSong[] = React.useMemo(() => {
     if (ranked && ranked.length > 0) return ranked

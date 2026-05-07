@@ -469,10 +469,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (s.shuffle) {
         const order = shuffledIndices(s.songs.length, index)
         dispatch({ type: "SET_SHUFFLE_ORDER", order, shufflePos: 0 })
-        playIndex(index, 0, { crossfade: true })
+        playIndex(index, 0)
         return
       }
-      playIndex(index, undefined, { crossfade: true })
+      playIndex(index)
     },
     [playIndex]
   )
@@ -514,7 +514,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const next = React.useCallback(() => {
     const advance = computeAdvance(1, false)
-    if (advance) playIndex(advance.index, advance.shufflePos, { crossfade: true })
+    if (advance) playIndex(advance.index, advance.shufflePos)
   }, [computeAdvance, playIndex])
 
   const prev = React.useCallback(() => {
@@ -524,7 +524,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       return
     }
     const advance = computeAdvance(-1, false)
-    if (advance) playIndex(advance.index, advance.shufflePos, { crossfade: true })
+    if (advance) playIndex(advance.index, advance.shufflePos)
   }, [computeAdvance, playIndex, getDeck])
 
   const seek = React.useCallback(

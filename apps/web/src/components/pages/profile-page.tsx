@@ -40,7 +40,9 @@ export function ProfilePage() {
   React.useEffect(() => {
     if (!supabase || !user) return
     let cancelled = false
-    void (async () => {
+
+    const fetchStats = async () => {
+      if (!supabase || !user) return
       const [songsRes, artistsRes] = await Promise.all([
         supabase.rpc("top_songs_for_user", { uid: user.id, lim: 5 }),
         supabase.rpc("top_artists_for_user", { uid: user.id, lim: 5 }),
@@ -67,9 +69,17 @@ export function ProfilePage() {
           }))
         )
       }
-    })()
+    }
+
+    void fetchStats()
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void fetchStats()
+    }
+    document.addEventListener("visibilitychange", onVisibility)
     return () => {
       cancelled = true
+      document.removeEventListener("visibilitychange", onVisibility)
     }
   }, [user, songs])
 
