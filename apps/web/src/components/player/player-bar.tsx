@@ -2,6 +2,7 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { MainControls } from "./main-controls"
 import { NowPlaying } from "./now-playing"
+import { PlaybackErrorBanner } from "./playback-error-banner"
 import { ProgressBar } from "./progress-bar"
 import { VolumeControl } from "./volume-control"
 
@@ -26,6 +27,8 @@ export function PlayerBar({ className }: PlayerBarProps) {
         className
       )}
     >
+      <PlaybackErrorBanner />
+
       {/* Mobile: thin progress bar without time labels at the very top. */}
       <div className="px-3 pt-1 md:hidden">
         <ProgressBar compact />

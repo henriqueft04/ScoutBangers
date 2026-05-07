@@ -72,6 +72,22 @@ export default async function handler(request: Request): Promise<Response> {
     )
   }
 
+  // Even with status 200, Drive may return an HTML "scan virus" or "quota
+  // exceeded" page for some files. The audio element treats HTML as a decode
+  // error with no useful message — surface a real one here.
+  const upstreamType = upstream.headers.get("content-type") ?? ""
+  if (
+    !upstreamType.startsWith("audio/") &&
+    !upstreamType.startsWith("video/") &&
+    upstreamType !== "application/octet-stream"
+  ) {
+    const detail = await upstream.text()
+    return new Response(
+      `Drive returned non-audio content (${upstreamType}). Snippet: ${detail.slice(0, 400)}`,
+      { status: 502 }
+    )
+  }
+
   const responseHeaders = new Headers()
   for (const header of FORWARDED_HEADERS) {
     const value = upstream.headers.get(header)

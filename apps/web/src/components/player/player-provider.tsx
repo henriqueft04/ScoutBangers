@@ -84,6 +84,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (current.currentIndex !== index) {
         audio.src = streamUrl(song.id)
         dispatch({ type: "TIME", position: 0 })
+        dispatch({ type: "PLAYBACK_ERROR", message: null })
       }
       dispatch({ type: "SET_INDEX", index, shufflePos })
       // Browsers may block autoplay; the play() rejection just leaves us paused.
@@ -154,6 +155,39 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         volume: audio.volume,
         muted: audio.muted,
       })
+    const handleError = () => {
+      const err = audio.error
+      if (!err) {
+        dispatch({ type: "PLAYBACK_ERROR", message: "Unknown playback error" })
+        return
+      }
+      const codeName =
+        err.code === MediaError.MEDIA_ERR_ABORTED
+          ? "aborted"
+          : err.code === MediaError.MEDIA_ERR_NETWORK
+            ? "network error"
+            : err.code === MediaError.MEDIA_ERR_DECODE
+              ? "decode error"
+              : err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
+                ? "format not supported"
+                : `code ${err.code}`
+      const message = err.message
+        ? `${codeName} — ${err.message}`
+        : codeName
+      const s = stateRef.current
+      const songName =
+        s.currentIndex !== null ? s.songs[s.currentIndex]?.title : null
+      console.error(
+        "[player] audio error",
+        { code: err.code, message: err.message, song: songName, src: audio.currentSrc }
+      )
+      dispatch({
+        type: "PLAYBACK_ERROR",
+        message: songName
+          ? `Couldn't play "${songName}": ${message}`
+          : `Playback failed: ${message}`,
+      })
+    }
     const handleEnded = () => {
       const s = stateRef.current
       if (s.repeat === "one" && s.currentIndex !== null) {
@@ -176,6 +210,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     audio.addEventListener("durationchange", handleDuration)
     audio.addEventListener("volumechange", handleVolume)
     audio.addEventListener("ended", handleEnded)
+    audio.addEventListener("error", handleError)
 
     return () => {
       audio.removeEventListener("play", handlePlay)
@@ -185,6 +220,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       audio.removeEventListener("durationchange", handleDuration)
       audio.removeEventListener("volumechange", handleVolume)
       audio.removeEventListener("ended", handleEnded)
+      audio.removeEventListener("error", handleError)
     }
   }, [computeAdvance, playIndex])
 
@@ -285,6 +321,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       search: state.search,
       loading: state.loading,
       error: state.error,
+      playbackError: state.playbackError,
       play,
       toggle,
       next,
@@ -310,6 +347,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       state.search,
       state.loading,
       state.error,
+      state.playbackError,
       play,
       toggle,
       next,

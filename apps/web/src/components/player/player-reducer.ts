@@ -23,6 +23,7 @@ export type PlayerAction =
   | { type: "TOGGLE_SHUFFLE" }
   | { type: "CYCLE_REPEAT" }
   | { type: "SEARCH"; query: string }
+  | { type: "PLAYBACK_ERROR"; message: string | null }
 
 export const initialPlayerState: InternalPlayerState = {
   songs: [],
@@ -37,6 +38,7 @@ export const initialPlayerState: InternalPlayerState = {
   search: "",
   loading: true,
   error: null,
+  playbackError: null,
   shuffleOrder: null,
   shufflePos: 0,
 }
@@ -104,5 +106,7 @@ export function playerReducer(
       return { ...state, repeat: REPEAT_CYCLE[state.repeat] }
     case "SEARCH":
       return { ...state, search: action.query }
+    case "PLAYBACK_ERROR":
+      return { ...state, playbackError: action.message, isPlaying: false }
   }
 }

@@ -29,6 +29,8 @@ export interface PlayerState {
   search: string
   loading: boolean
   error: string | null
+  /** Surfaced from the `<audio>` element's error event. Cleared on play. */
+  playbackError: string | null
 }
 
 /** Imperative actions available on the player. */
