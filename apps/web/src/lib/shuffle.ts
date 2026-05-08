@@ -31,3 +31,21 @@ export function shuffledIndices(length: number, firstIndex?: number): number[] {
   ;[shuffled[0], shuffled[at]] = [shuffled[at]!, shuffled[0]!]
   return shuffled
 }
+
+/**
+ * Shuffles a list while keeping the (optional) current song at its
+ * original position. Used when toggling shuffle mid-playback so the
+ * audible track doesn't jump and the upcoming queue gets a fresh
+ * random order.
+ */
+export function shufflePreservingCurrent<T>(
+  list: readonly T[],
+  current: T | null
+): T[] {
+  if (current === null || list.length <= 1) return shuffle(list)
+  const idx = list.indexOf(current)
+  if (idx === -1) return shuffle(list)
+  const others = [...list.slice(0, idx), ...list.slice(idx + 1)]
+  const shuffled = shuffle(others)
+  return [...shuffled.slice(0, idx), current, ...shuffled.slice(idx)]
+}

@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Globe, Loader2, Lock, Trash2 } from "lucide-react"
+import { Globe, ListPlus, Loader2, Lock, Trash2 } from "lucide-react"
 import { Link, useParams } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
@@ -8,6 +8,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { EmptyState } from "@/components/library/empty-state"
 import { SongList } from "@/components/library/song-list"
 import { useAuth } from "@/hooks/useAuth"
+import { usePlayFromList } from "@/hooks/usePlayFromList"
 import { usePlayer } from "@/hooks/usePlayer"
 import { supabase } from "@/lib/supabase"
 
@@ -22,7 +23,8 @@ interface PlaylistDetail {
 export function PlaylistDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user, loading: authLoading } = useAuth()
-  const { songs, currentIndex, isPlaying, play } = usePlayer()
+  const { songs, currentIndex, isPlaying, queueAddMany } = usePlayer()
+  const playFromList = usePlayFromList()
   const [playlist, setPlaylist] = React.useState<PlaylistDetail | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
@@ -133,31 +135,46 @@ export function PlaylistDetailPage() {
             {playlist?.name ?? "Playlist"}
           </h2>
         </div>
-        {playlist?.is_owner ? (
-          <button
-            type="button"
-            onClick={togglePublic}
-            aria-label={
-              playlist.is_public
-                ? "Make playlist private"
-                : "Make playlist public"
-            }
-            aria-pressed={playlist.is_public}
-            className={cn(
-              "border-border inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
-              playlist.is_public
-                ? "text-primary border-primary/30 bg-primary/5"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {playlist.is_public ? (
-              <Globe className="size-3.5" />
-            ) : (
-              <Lock className="size-3.5" />
-            )}
-            {playlist.is_public ? "Public" : "Private"}
-          </button>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {playlist && playlistSongs.length > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label="Add playlist to queue"
+              onClick={() => queueAddMany(playlist.song_ids)}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <ListPlus className="size-4" />
+              Queue
+            </Button>
+          ) : null}
+          {playlist?.is_owner ? (
+            <button
+              type="button"
+              onClick={togglePublic}
+              aria-label={
+                playlist.is_public
+                  ? "Make playlist private"
+                  : "Make playlist public"
+              }
+              aria-pressed={playlist.is_public}
+              className={cn(
+                "border-border inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                playlist.is_public
+                  ? "text-primary border-primary/30 bg-primary/5"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {playlist.is_public ? (
+                <Globe className="size-3.5" />
+              ) : (
+                <Lock className="size-3.5" />
+              )}
+              {playlist.is_public ? "Public" : "Private"}
+            </button>
+          ) : null}
+        </div>
       </header>
 
       {loading ? (
@@ -183,9 +200,7 @@ export function PlaylistDetailPage() {
             isPlaying={isPlaying}
             onPlay={(idx) => {
               const song = playlistSongs[idx]
-              if (!song) return
-              const indexInAll = songs.findIndex((s) => s.id === song.id)
-              if (indexInAll !== -1) play(indexInAll)
+              if (song) playFromList(song, playlistSongs)
             }}
           />
           <ul className="mt-4 flex flex-col gap-1">

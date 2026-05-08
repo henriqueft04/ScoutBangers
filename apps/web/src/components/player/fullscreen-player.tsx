@@ -15,6 +15,8 @@ import { displayArtist, displayTitle } from "@/lib/song-display"
 import { MainControls } from "./main-controls"
 import { PlaybackErrorBanner } from "./playback-error-banner"
 import { ProgressBar } from "./progress-bar"
+import { QueuePanel } from "./queue-panel"
+import { QueueToggleButton } from "./queue-toggle-button"
 import { VolumeControl } from "./volume-control"
 
 interface FullscreenPlayerProps {
@@ -33,6 +35,7 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
   const song = currentIndex !== null ? songs[currentIndex] : undefined
   const meta = useTrackMetadata(song?.id, Boolean(song))
   const [copied, setCopied] = React.useState(false)
+  const [queueOpen, setQueueOpen] = React.useState(false)
 
   const handleShare = React.useCallback(async () => {
     if (!song) return
@@ -121,14 +124,13 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
         </p>
         {song ? (
           <div className="flex items-center gap-1">
-            <FavoriteButton songId={song.id} size="md" stopPropagation={false} />
             <Button
               type="button"
               variant="ghost"
               size="icon"
               aria-label="Share song"
               onClick={handleShare}
-              className="touch-manipulation size-10"
+              className="touch-manipulation hidden size-10 md:inline-flex"
             >
               {copied ? <Check className="size-5" /> : <Share2 className="size-5" />}
             </Button>
@@ -162,29 +164,77 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
           )}
         </div>
 
-        <div className="w-full max-w-sm text-center">
-          <h2 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">
-            <MarqueeText className="w-full text-center">{title}</MarqueeText>
-          </h2>
-          {artist ? (
-            <Link
-              to={artistHref(artist)}
-              onClick={onClose}
-              className="text-muted-foreground hover:text-foreground mt-1 inline-block max-w-full truncate text-sm hover:underline"
-            >
-              {artist}
-            </Link>
-          ) : (
-            song && (
-              <span className="text-muted-foreground mt-1 block text-sm" />
-            )
-          )}
+        <div className="flex w-full max-w-sm items-center gap-2 md:gap-3">
+          <div className="min-w-0 flex-1 text-center">
+            <h2 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">
+              <MarqueeText className="w-full text-center">{title}</MarqueeText>
+            </h2>
+            {artist ? (
+              <Link
+                to={artistHref(artist)}
+                onClick={onClose}
+                className="text-muted-foreground hover:text-foreground mt-1 inline-block max-w-full truncate text-sm hover:underline"
+              >
+                {artist}
+              </Link>
+            ) : (
+              song && (
+                <span className="text-muted-foreground mt-1 block text-sm" />
+              )
+            )}
+          </div>
+          {song ? (
+            <FavoriteButton
+              songId={song.id}
+              size="md"
+              stopPropagation={false}
+              className="hidden md:inline-flex"
+            />
+          ) : null}
         </div>
 
         <div className="flex w-full max-w-sm flex-col gap-4">
           <ProgressBar />
           <MainControls size="lg" />
-          <VolumeControl className="mt-2 hidden md:flex md:justify-center" />
+          {/* Mobile actions row: share | heart | queue */}
+          {song ? (
+            <div className="flex items-center justify-between px-2 md:hidden">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Share song"
+                onClick={handleShare}
+                className="touch-manipulation size-11"
+              >
+                {copied ? (
+                  <Check className="size-5" />
+                ) : (
+                  <Share2 className="size-5" />
+                )}
+              </Button>
+              <FavoriteButton
+                songId={song.id}
+                size="md"
+                stopPropagation={false}
+              />
+              <QueueToggleButton
+                open={queueOpen}
+                onClick={() => setQueueOpen((v) => !v)}
+              />
+            </div>
+          ) : null}
+          {/* Desktop: queue button left of the volume slider */}
+          {song ? (
+            <div className="mt-2 hidden items-center gap-3 md:flex">
+              <QueueToggleButton
+                open={queueOpen}
+                onClick={() => setQueueOpen((v) => !v)}
+                sizeClass="size-10"
+              />
+              <VolumeControl className="flex-1" />
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -192,6 +242,15 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
         aria-hidden
         style={{ height: "env(safe-area-inset-bottom)" }}
       />
+
+      {queueOpen ? (
+        <div
+          className="bg-background animate-in slide-in-from-right absolute inset-0 z-10 duration-200 ease-out"
+          style={{ paddingTop: "env(safe-area-inset-top)" }}
+        >
+          <QueuePanel onClose={() => setQueueOpen(false)} />
+        </div>
+      ) : null}
     </div>
   )
 }

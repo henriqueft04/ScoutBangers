@@ -5,8 +5,7 @@ import { Link } from "react-router-dom"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { usePlayer } from "@/hooks/usePlayer"
-import { useTrackMetadata } from "@/hooks/useTrackMetadata"
-import { useInView } from "@/hooks/useInView"
+import { useTrackVisuals } from "@/hooks/useTrackVisuals"
 import { displayTitle } from "@/lib/song-display"
 import { relativeTime } from "@/lib/relative-time"
 import { supabase, supabaseConfigured } from "@/lib/supabase"
@@ -129,8 +128,10 @@ interface FeedRowProps {
 }
 
 function FeedRow({ entry, song, onPlay }: FeedRowProps) {
-  const [ref, inView] = useInView<HTMLDivElement>()
-  const meta = useTrackMetadata(entry.songId, inView && Boolean(song))
+  const { ref, meta } = useTrackVisuals<HTMLDivElement>(
+    entry.songId,
+    Boolean(song)
+  )
   const title = song ? displayTitle(song, meta) : "Unavailable"
   const playable = Boolean(song)
   const initials = entry.displayName.charAt(0).toUpperCase()

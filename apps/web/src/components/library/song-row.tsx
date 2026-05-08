@@ -1,18 +1,19 @@
 import * as React from "react"
-import { Pause, Play } from "lucide-react"
+import { ListPlus, Pause, Play } from "lucide-react"
 import { Link } from "react-router-dom"
 
+import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
-import { useInView } from "@/hooks/useInView"
-import { useTrackMetadata } from "@/hooks/useTrackMetadata"
+import { usePlayer } from "@/hooks/usePlayer"
+import { useTrackVisuals } from "@/hooks/useTrackVisuals"
 import { artistHref } from "@/lib/artists"
 import { displayArtist, displayTitle } from "@/lib/song-display"
 import type { Song } from "@/lib/types"
 
 import { FavoriteButton } from "./favorite-button"
 import { MarqueeText } from "./marquee-text"
-import { SongArtwork } from "./song-artwork"
+import { TrackArtwork } from "./track-artwork"
 
 interface SongRowProps {
   song: Song
@@ -26,18 +27,19 @@ interface SongRowProps {
   playCount?: number
 }
 
+const SWIPE_THRESHOLD_PX = 80
+const SWIPE_MAX_PX = 120
+
 /**
- * One row in the library list. The whole row triggers playback; the artist
- * sub-link navigates to the artist page when present (clicks on the link
- * stop propagation so they don't also start playback).
+ * One row in the library list. Tap to play, swipe right to add to queue.
  *
  * Implemented as `role="button"` rather than a `<button>` element so we can
  * legally nest a `<Link>` for the artist — `<a>` inside `<button>` is invalid
  * HTML. Keyboard activation is wired explicitly to keep this accessible.
  *
- * Embedded tags (artwork + artist + tag-title) are loaded lazily once the
- * row scrolls into view. The marquee animation only runs on the currently-
- * playing row to keep big lists calm.
+ * Embedded tags (artwork + artist + tag-title) load lazily once the
+ * row scrolls into view. The marquee animation only runs on the
+ * currently-playing row to keep big lists calm.
  */
 export function SongRow({
   song,
@@ -48,8 +50,8 @@ export function SongRow({
   rank,
   playCount,
 }: SongRowProps) {
-  const [ref, inView] = useInView<HTMLDivElement>()
-  const meta = useTrackMetadata(song.id, inView)
+  const { ref, meta } = useTrackVisuals<HTMLDivElement>(song.id)
+  const { queueAdd } = usePlayer()
 
   const Icon = isCurrent && isPlaying ? Pause : Play
   const title = displayTitle(song, meta)
@@ -69,83 +71,161 @@ export function SongRow({
     [handleActivate]
   )
 
-  return (
-    <div
-      ref={ref}
-      role="button"
-      tabIndex={0}
-      onClick={handleActivate}
-      onKeyDown={handleKeyDown}
-      data-current={isCurrent || undefined}
-      aria-label={
-        isCurrent && isPlaying ? `Pause ${title}` : `Play ${title}`
+  // Swipe-right to enqueue. Tracks finger movement; if the user drags
+  // past SWIPE_THRESHOLD_PX horizontally we add the song to the queue
+  // and snap back. Vertical movement cancels (so list scrolling wins).
+  const startXRef = React.useRef<number | null>(null)
+  const startYRef = React.useRef<number | null>(null)
+  const swipingRef = React.useRef(false)
+  const [offset, setOffset] = React.useState(0)
+  const [enqueueFlash, setEnqueueFlash] = React.useState(false)
+
+  const onTouchStart = (event: React.TouchEvent) => {
+    const t = event.touches[0]
+    if (!t) return
+    startXRef.current = t.clientX
+    startYRef.current = t.clientY
+    swipingRef.current = false
+  }
+
+  const onTouchMove = (event: React.TouchEvent) => {
+    const t = event.touches[0]
+    if (!t || startXRef.current === null || startYRef.current === null) return
+    const dx = t.clientX - startXRef.current
+    const dy = t.clientY - startYRef.current
+    if (!swipingRef.current) {
+      // Lock direction once the user has clearly committed horizontally.
+      if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        swipingRef.current = true
+      } else if (Math.abs(dy) > 10) {
+        // User is scrolling — bail.
+        startXRef.current = null
+        startYRef.current = null
+        return
       }
-      className={cn(
-        "group/row flex w-full touch-manipulation cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left transition-colors",
-        "hover:bg-muted active:bg-accent",
-        "focus-visible:ring-ring/40 focus-visible:ring-3 focus-visible:outline-none",
-        "data-[current]:bg-accent",
-        "min-h-14 md:min-h-12"
-      )}
-    >
-      {rank !== undefined ? (
-        <span
-          aria-hidden
-          className={cn(
-            "w-5 shrink-0 text-center text-base font-semibold tabular-nums md:w-6",
-            isCurrent ? "text-primary" : "text-muted-foreground"
-          )}
-        >
-          {rank}
-        </span>
-      ) : null}
-      <div className="relative size-10 shrink-0 md:size-11">
-        {meta?.pictureUrl ? (
-          <img
-            src={meta.pictureUrl}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="size-full rounded-md object-cover"
-          />
-        ) : (
-          <SongArtwork className="size-full" />
+    }
+    if (swipingRef.current && dx > 0) {
+      setOffset(Math.min(dx, SWIPE_MAX_PX))
+    }
+  }
+
+  const onTouchEnd = () => {
+    if (swipingRef.current && offset >= SWIPE_THRESHOLD_PX) {
+      queueAdd(song.id)
+      setEnqueueFlash(true)
+      window.setTimeout(() => setEnqueueFlash(false), 700)
+    }
+    setOffset(0)
+    swipingRef.current = false
+    startXRef.current = null
+    startYRef.current = null
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      {/* Background reveal during swipe */}
+      <div
+        aria-hidden
+        className={cn(
+          "absolute inset-y-0 left-0 flex items-center justify-start rounded-md pl-4 transition-opacity",
+          "bg-primary/10 text-primary",
+          offset > 8 || enqueueFlash ? "opacity-100" : "opacity-0"
         )}
-        <span
-          className={cn(
-            "bg-foreground/40 text-primary-foreground pointer-events-none absolute inset-0 hidden items-center justify-center rounded-md",
-            "group-hover/row:flex group-data-[current]/row:flex"
-          )}
-        >
-          <Icon className="size-4 fill-current" />
+      >
+        <ListPlus className="size-5" />
+        <span className="ml-2 text-xs font-medium uppercase tracking-wider">
+          {enqueueFlash ? "Added" : "Queue"}
         </span>
       </div>
-      <div className="min-w-0 flex-1">
-        <MarqueeText
-          enabled={isCurrent}
-          className={cn(
-            "text-sm font-medium",
-            isCurrent ? "text-primary" : "text-foreground"
-          )}
-        >
-          {title}
-        </MarqueeText>
-        {playCount !== undefined ? (
-          <p className="text-muted-foreground text-xs tabular-nums">
-            {playCount.toLocaleString()}{" "}
-            {playCount === 1 ? "play" : "plays"}
-          </p>
-        ) : artist ? (
-          <Link
-            to={artistHref(artist)}
-            onClick={(event) => event.stopPropagation()}
-            className="text-muted-foreground hover:text-foreground inline-block max-w-full truncate text-xs hover:underline"
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={handleActivate}
+        onKeyDown={handleKeyDown}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        data-current={isCurrent || undefined}
+        aria-label={
+          isCurrent && isPlaying ? `Pause ${title}` : `Play ${title}`
+        }
+        style={{
+          transform: offset > 0 ? `translateX(${offset}px)` : undefined,
+          transition: offset > 0 ? "none" : "transform 200ms ease-out",
+        }}
+        className={cn(
+          "group/row bg-background flex w-full touch-pan-y cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left",
+          "hover:bg-muted active:bg-accent transition-colors",
+          "focus-visible:ring-ring/40 focus-visible:ring-3 focus-visible:outline-none",
+          "data-[current]:bg-accent",
+          "min-h-14 md:min-h-12"
+        )}
+      >
+        {rank !== undefined ? (
+          <span
+            aria-hidden
+            className={cn(
+              "w-5 shrink-0 text-center text-base font-semibold tabular-nums md:w-6",
+              isCurrent ? "text-primary" : "text-muted-foreground"
+            )}
           >
-            {artist}
-          </Link>
+            {rank}
+          </span>
         ) : null}
+        <TrackArtwork
+          meta={meta}
+          className="size-10 md:size-11"
+          overlay={
+            <span
+              className={cn(
+                "bg-foreground/40 text-primary-foreground pointer-events-none absolute inset-0 hidden items-center justify-center rounded-md",
+                "group-hover/row:flex group-data-[current]/row:flex"
+              )}
+            >
+              <Icon className="size-4 fill-current" />
+            </span>
+          }
+        />
+        <div className="min-w-0 flex-1">
+          <MarqueeText
+            enabled={isCurrent}
+            className={cn(
+              "text-sm font-medium",
+              isCurrent ? "text-primary" : "text-foreground"
+            )}
+          >
+            {title}
+          </MarqueeText>
+          {playCount !== undefined ? (
+            <p className="text-muted-foreground text-xs tabular-nums">
+              {playCount.toLocaleString()}{" "}
+              {playCount === 1 ? "play" : "plays"}
+            </p>
+          ) : artist ? (
+            <Link
+              to={artistHref(artist)}
+              onClick={(event) => event.stopPropagation()}
+              className="text-muted-foreground hover:text-foreground inline-block max-w-full truncate text-xs hover:underline"
+            >
+              {artist}
+            </Link>
+          ) : null}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Add to queue"
+          onClick={(event) => {
+            event.stopPropagation()
+            queueAdd(song.id)
+          }}
+          className="text-muted-foreground hover:text-foreground touch-manipulation"
+        >
+          <ListPlus className="size-4" />
+        </Button>
+        <FavoriteButton songId={song.id} size="sm" />
       </div>
-      <FavoriteButton songId={song.id} size="sm" />
     </div>
   )
 }

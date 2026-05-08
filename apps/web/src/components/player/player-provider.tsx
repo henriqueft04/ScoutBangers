@@ -3,7 +3,7 @@ import * as React from "react"
 import { useSongs } from "@/hooks/useSongs"
 import { streamUrl } from "@/lib/audio-url"
 import { fadeVolume, type FadeHandle } from "@/lib/fade"
-import { shuffledIndices } from "@/lib/shuffle"
+import { shufflePreservingCurrent } from "@/lib/shuffle"
 import { getCached, setCached } from "@/lib/storage"
 import { prefetchAllMetadata } from "@/lib/track-metadata"
 import type { PlayerContextValue, SortMode } from "@/lib/types"
@@ -17,7 +17,13 @@ import {
 
 const VOLUME_KEY = "scoutbangers:volume"
 const SORT_KEY = "scoutbangers:sort"
+const PLAYBACK_KEY = "scoutbangers:playback"
 const PREFS_TTL_MS = 365 * 24 * 60 * 60 * 1000
+
+interface PersistedPlayback {
+  songId: string
+  position: number
+}
 
 const VALID_SORTS: ReadonlyArray<SortMode> = ["default", "title", "artist"]
 
@@ -68,6 +74,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const crossfadeArmedRef = React.useRef(false)
   /** Song id that is currently preloaded onto the idle deck (if any). */
   const prefetchedIdRef = React.useRef<string | null>(null)
+  /** True while we're swapping the audio.src — causes a transient pause
+   *  event we want to ignore so the OS lock-screen UI doesn't flicker. */
+  const switchingSrcRef = React.useRef(false)
 
   const [state, dispatch] = React.useReducer(
     playerReducer,
@@ -120,6 +129,46 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setCached<SortMode>(SORT_KEY, state.sort, PREFS_TTL_MS)
   }, [state.sort])
 
+  // Persist current song + position so a refresh doesn't lose context.
+  // Position writes are throttled to once every 5 s.
+  const lastPositionWriteRef = React.useRef(0)
+  React.useEffect(() => {
+    if (state.currentIndex === null) return
+    const song = state.songs[state.currentIndex]
+    if (!song) return
+    const now = Date.now()
+    if (now - lastPositionWriteRef.current < 5000) return
+    lastPositionWriteRef.current = now
+    setCached<PersistedPlayback>(
+      PLAYBACK_KEY,
+      { songId: song.id, position: state.position },
+      PREFS_TTL_MS
+    )
+  }, [state.currentIndex, state.position, state.songs])
+
+  // Restore previous song + position once songs have loaded. Doesn't
+  // auto-play (browser autoplay policy needs a fresh user gesture);
+  // user clicks play and resumes from where they left off.
+  const playbackRestoredRef = React.useRef(false)
+  React.useEffect(() => {
+    if (playbackRestoredRef.current) return
+    if (loading || songs.length === 0) return
+    playbackRestoredRef.current = true
+
+    const stored = getCached<PersistedPlayback>(PLAYBACK_KEY)
+    if (!stored) return
+    const index = songs.findIndex((s) => s.id === stored.songId)
+    if (index === -1) return
+
+    const audio = deckARef.current
+    if (!audio) return
+    audio.src = streamUrl(stored.songId)
+    audio.currentTime = stored.position
+    activeDeckRef.current = 0
+    dispatch({ type: "SET_INDEX", index })
+    dispatch({ type: "TIME", position: stored.position })
+  }, [songs, loading])
+
   // Background prefetch: kick off after a short idle delay so the initial
   // render isn't competing with metadata reads. All requests go through the
   // global 2-req/s queue in `lib/track-metadata.ts`, and a persistent
@@ -164,46 +213,70 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     (
       direction: 1 | -1,
       auto: boolean
-    ): { index: number; shufflePos: number } | null => {
+    ): { index: number; fromQueue?: boolean } | null => {
       const s = stateRef.current
       if (s.songs.length === 0) return null
 
-      if (auto && s.repeat === "one" && s.currentIndex !== null) {
-        return { index: s.currentIndex, shufflePos: s.shufflePos }
-      }
-
-      if (s.shuffle && s.shuffleOrder) {
-        let pos = s.shufflePos + direction
-        if (pos >= s.shuffleOrder.length) {
-          if (s.repeat === "all") pos = 0
-          else return null
-        } else if (pos < 0) {
-          pos = s.shuffleOrder.length - 1
+      // Forward navigation: user queue takes priority over natural next.
+      if (direction === 1 && s.userQueue.length > 0) {
+        const head = s.userQueue[0]
+        if (head) {
+          const idx = s.songs.findIndex((song) => song.id === head.songId)
+          if (idx !== -1) return { index: idx, fromQueue: true }
         }
-        return { index: s.shuffleOrder[pos]!, shufflePos: pos }
       }
 
-      const current = s.currentIndex ?? -1
-      let next = current + direction
-      if (next >= s.songs.length) {
+      if (auto && s.repeat === "one" && s.currentIndex !== null) {
+        return { index: s.currentIndex }
+      }
+
+      // Walk playbackList based on the current song's position there.
+      const list = s.playbackList.length > 0
+        ? s.playbackList
+        : s.songs.map((song) => song.id)
+      if (list.length === 0) return null
+
+      const currentSongId =
+        s.currentIndex !== null ? s.songs[s.currentIndex]?.id ?? null : null
+      const here = currentSongId ? list.indexOf(currentSongId) : -1
+      let next = here + direction
+      if (next >= list.length) {
         if (s.repeat === "all") next = 0
         else return null
       } else if (next < 0) {
-        next = s.songs.length - 1
+        next = list.length - 1
       }
-      return { index: next, shufflePos: s.shufflePos }
+
+      const nextSongId = list[next]
+      if (!nextSongId) return null
+      const idx = s.songs.findIndex((song) => song.id === nextSongId)
+      if (idx === -1) return null
+      return { index: idx }
     },
     []
   )
 
+  // Drop the first occurrence of a song id from the user queue. Called
+  // whenever a song actually starts playing — keeps the displayed queue
+  // consistent with what's left to play (user-explicit duplicates remain
+  // until each is consumed in turn).
+  const consumeQueueSong = React.useCallback((songId: string) => {
+    const s = stateRef.current
+    const queueIdx = s.userQueue.findIndex((item) => item.songId === songId)
+    if (queueIdx === -1) return
+    dispatch({
+      type: "QUEUE_SET",
+      queue: [
+        ...s.userQueue.slice(0, queueIdx),
+        ...s.userQueue.slice(queueIdx + 1),
+      ],
+    })
+  }, [])
+
   // ---- Core playback ---------------------------------------------------
 
   const playIndex = React.useCallback(
-    (
-      index: number,
-      shufflePos?: number,
-      opts: { crossfade?: boolean } = {}
-    ) => {
+    (index: number, opts: { crossfade?: boolean } = {}) => {
       const s = stateRef.current
       const song = s.songs[index]
       const activeId = activeDeckRef.current
@@ -211,6 +284,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       const active = getDeck(activeId)
       const idle = getDeck(idleId)
       if (!song || !active || !idle) return
+
+      // Drain the first occurrence of this song from the user queue (if any).
+      // Lets the queue UI stay unique on play even when the song was in there.
+      consumeQueueSong(song.id)
 
       const newSrc = streamUrl(song.id)
       const sameSong = s.currentIndex === index
@@ -233,14 +310,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (!wantsCrossfade) {
         cancelFades()
         idle.pause()
+        // Suppress the transient pause event the audio element emits when
+        // we change src — without this, isPlaying briefly flips to false
+        // and the OS lock-screen UI dims/blanks until play() resolves.
+        switchingSrcRef.current = true
         if (active.src !== window.location.origin + newSrc) {
           active.src = newSrc
         } else {
           active.currentTime = 0
         }
         active.volume = userTargetVolume()
-        void active.play().catch(() => {})
-        dispatch({ type: "SET_INDEX", index, shufflePos })
+        const playPromise = active.play().catch(() => {})
+        void Promise.resolve(playPromise).finally(() => {
+          switchingSrcRef.current = false
+        })
+        dispatch({ type: "SET_INDEX", index })
         dispatch({ type: "TIME", position: 0 })
         dispatch({ type: "PLAYBACK_ERROR", message: null })
         return
@@ -270,11 +354,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         active.pause()
       })
 
-      dispatch({ type: "SET_INDEX", index, shufflePos })
+      dispatch({ type: "SET_INDEX", index })
       dispatch({ type: "TIME", position: 0 })
       dispatch({ type: "PLAYBACK_ERROR", message: null })
     },
-    [getDeck, userTargetVolume, cancelFades, setFade]
+    [getDeck, userTargetVolume, cancelFades, setFade, consumeQueueSong]
   )
 
   const handleEnded = React.useCallback(() => {
@@ -294,7 +378,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
     const advance = computeAdvance(1, true)
     if (advance) {
-      playIndex(advance.index, advance.shufflePos)
+      playIndex(advance.index)
     } else {
       dispatch({ type: "SET_PLAYING", isPlaying: false })
     }
@@ -318,7 +402,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         if (isActive()) dispatch({ type: "SET_PLAYING", isPlaying: true })
       }
       const handlePause = () => {
-        if (isActive() && !crossfadeArmedRef.current) {
+        if (
+          isActive() &&
+          !crossfadeArmedRef.current &&
+          !switchingSrcRef.current
+        ) {
           dispatch({ type: "SET_PLAYING", isPlaying: false })
         }
       }
@@ -356,7 +444,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           const advance = computeAdvance(1, true)
           if (advance) {
             crossfadeArmedRef.current = true
-            playIndex(advance.index, advance.shufflePos, { crossfade: true })
+            playIndex(advance.index, { crossfade: true })
           }
         }
       }
@@ -464,14 +552,25 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   // ---- Public actions --------------------------------------------------
 
   const play = React.useCallback(
-    (index: number) => {
+    (index: number, contextSongIds?: string[]) => {
       const s = stateRef.current
-      if (s.shuffle) {
-        const order = shuffledIndices(s.songs.length, index)
-        dispatch({ type: "SET_SHUFFLE_ORDER", order, shufflePos: 0 })
-        playIndex(index, 0)
-        return
-      }
+      const song = s.songs[index]
+      if (!song) return
+
+      // Build the natural list for this play context. If the caller
+      // didn't pass one, fall back to the current library sort order.
+      const natural =
+        contextSongIds && contextSongIds.length > 0
+          ? contextSongIds
+          : s.songs.map((sg) => sg.id)
+
+      // If shuffle is on, scramble the upcoming portion (preserving
+      // the clicked song where it is). Otherwise use the natural order.
+      const list = s.shuffle
+        ? shufflePreservingCurrent(natural, song.id)
+        : natural
+
+      dispatch({ type: "SET_PLAYBACK_LIST", list, natural })
       playIndex(index)
     },
     [playIndex]
@@ -514,7 +613,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const next = React.useCallback(() => {
     const advance = computeAdvance(1, false)
-    if (advance) playIndex(advance.index, advance.shufflePos)
+    if (advance) playIndex(advance.index)
   }, [computeAdvance, playIndex])
 
   const prev = React.useCallback(() => {
@@ -524,7 +623,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       return
     }
     const advance = computeAdvance(-1, false)
-    if (advance) playIndex(advance.index, advance.shufflePos)
+    if (advance) playIndex(advance.index)
   }, [computeAdvance, playIndex, getDeck])
 
   const seek = React.useCallback(
@@ -565,7 +664,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, [getDeck])
 
   const toggleShuffle = React.useCallback(() => {
-    dispatch({ type: "TOGGLE_SHUFFLE" })
+    const s = stateRef.current
+    const currentSongId =
+      s.currentIndex !== null ? s.songs[s.currentIndex]?.id ?? null : null
+    dispatch({ type: "TOGGLE_SHUFFLE", currentSongId })
   }, [])
 
   const cycleRepeat = React.useCallback(() => {
@@ -578,6 +680,122 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const setSort = React.useCallback((sort: SortMode) => {
     dispatch({ type: "SET_SORT", sort })
+  }, [])
+
+  // ---- Queue actions ---------------------------------------------------
+
+  // Each queue entry needs a stable per-occurrence key so framer-motion
+  // Reorder can identify it across re-renders even when the same song
+  // id is queued multiple times.
+  const newKey = (): string =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2) + Date.now().toString(36)
+
+  const queueAdd = React.useCallback((songId: string) => {
+    const s = stateRef.current
+    dispatch({
+      type: "QUEUE_SET",
+      queue: [...s.userQueue, { key: newKey(), songId }],
+    })
+  }, [])
+
+  const queueAddMany = React.useCallback((songIds: string[]) => {
+    if (songIds.length === 0) return
+    const s = stateRef.current
+    dispatch({
+      type: "QUEUE_SET",
+      queue: [
+        ...s.userQueue,
+        ...songIds.map((songId) => ({ key: newKey(), songId })),
+      ],
+    })
+  }, [])
+
+  const queueRemove = React.useCallback((index: number) => {
+    const s = stateRef.current
+    if (index < 0 || index >= s.userQueue.length) return
+    dispatch({
+      type: "QUEUE_SET",
+      queue: [
+        ...s.userQueue.slice(0, index),
+        ...s.userQueue.slice(index + 1),
+      ],
+    })
+  }, [])
+
+  const queueMove = React.useCallback((from: number, to: number) => {
+    const s = stateRef.current
+    if (
+      from < 0 ||
+      from >= s.userQueue.length ||
+      to < 0 ||
+      to >= s.userQueue.length ||
+      from === to
+    )
+      return
+    const next = [...s.userQueue]
+    const [moved] = next.splice(from, 1)
+    if (moved !== undefined) next.splice(to, 0, moved)
+    dispatch({ type: "QUEUE_SET", queue: next })
+  }, [])
+
+  // Accept either bare song ids (legacy callers) or full QueueItem
+  // objects. We map ids to fresh-keyed items, but if the caller passed
+  // existing items (e.g. drag reorder) we keep their stable keys so
+  // the in-flight drag stays bound to the correct row.
+  const queueSet = React.useCallback(
+    (input: string[] | import("@/lib/types").QueueItem[]) => {
+      const queue = (input as Array<string | { key: string; songId: string }>)
+        .map((entry) =>
+          typeof entry === "string"
+            ? { key: newKey(), songId: entry }
+            : entry
+        )
+      dispatch({ type: "QUEUE_SET", queue })
+    },
+    []
+  )
+
+  const queueClear = React.useCallback(() => {
+    dispatch({ type: "QUEUE_SET", queue: [] })
+  }, [])
+
+  const reorderUpcoming = React.useCallback((newUpcoming: string[]) => {
+    const s = stateRef.current
+    const list = s.playbackList
+    const currentSongId =
+      s.currentIndex !== null ? s.songs[s.currentIndex]?.id ?? null : null
+    if (!currentSongId) return
+    const here = list.indexOf(currentSongId)
+    if (here === -1) return
+    const next = [...list.slice(0, here + 1), ...newUpcoming]
+    dispatch({
+      type: "SET_PLAYBACK_LIST",
+      list: next,
+      natural: s.playbackNatural,
+    })
+  }, [])
+
+  const removeFromUpcoming = React.useCallback((songId: string) => {
+    const s = stateRef.current
+    const currentSongId =
+      s.currentIndex !== null ? s.songs[s.currentIndex]?.id ?? null : null
+    if (!currentSongId || songId === currentSongId) return
+    const here = s.playbackList.indexOf(currentSongId)
+    if (here === -1) return
+    // Only drop occurrences AFTER the current song so the past stays
+    // intact (matters if we ever expose history-based prev navigation).
+    const next: string[] = []
+    for (let i = 0; i < s.playbackList.length; i++) {
+      if (i > here && s.playbackList[i] === songId) continue
+      next.push(s.playbackList[i]!)
+    }
+    dispatch({
+      type: "SET_PLAYBACK_LIST",
+      list: next,
+      natural: s.playbackNatural,
+    })
   }, [])
 
   // ---- Public context value --------------------------------------------
@@ -598,6 +816,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       loading: state.loading,
       error: state.error,
       playbackError: state.playbackError,
+      userQueue: state.userQueue,
+      playbackList: state.playbackList,
       play,
       toggle,
       next,
@@ -610,6 +830,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setSearch,
       setSort,
       reload,
+      queueAdd,
+      queueAddMany,
+      queueRemove,
+      queueMove,
+      queueSet,
+      queueClear,
+      reorderUpcoming,
+      removeFromUpcoming,
     }),
     [
       state.songs,
@@ -626,6 +854,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       state.loading,
       state.error,
       state.playbackError,
+      state.userQueue,
+      state.playbackList,
       play,
       toggle,
       next,
@@ -638,6 +868,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setSearch,
       setSort,
       reload,
+      queueAdd,
+      queueAddMany,
+      queueRemove,
+      queueMove,
+      queueSet,
+      queueClear,
+      reorderUpcoming,
+      removeFromUpcoming,
     ]
   )
 

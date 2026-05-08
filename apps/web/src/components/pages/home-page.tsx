@@ -77,7 +77,14 @@ export function HomePage() {
     const song = display[index]
     if (!song) return
     const indexInAll = songs.findIndex((s) => s.id === song.id)
-    if (indexInAll !== -1) play(indexInAll)
+    if (indexInAll === -1) return
+    // Context: the top-10 in rank order, then the rest of the library
+    // (skipping any songs already counted in the top-10) so the queue
+    // continues naturally after the chart ends.
+    const topIds = display.map((s) => s.id)
+    const topSet = new Set(topIds)
+    const rest = songs.filter((s) => !topSet.has(s.id)).map((s) => s.id)
+    play(indexInAll, [...topIds, ...rest])
   }
 
   return (

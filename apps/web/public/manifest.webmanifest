@@ -7,8 +7,14 @@
   "display": "standalone",
   "orientation": "portrait",
   "theme_color": "#7B2D26",
-  "background_color": "#F0F3F5",
+  "background_color": "#7B2D26",
   "icons": [
+    {
+      "src": "/SB-Square.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "/icon-192.png",
       "sizes": "192x192",

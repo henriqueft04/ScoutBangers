@@ -1,5 +1,6 @@
 import { useFilteredSongs } from "@/hooks/useFilteredSongs"
 import { useDebouncedValue } from "@/hooks/useDebouncedValue"
+import { usePlayFromList } from "@/hooks/usePlayFromList"
 import { usePlayer } from "@/hooks/usePlayer"
 
 import { EmptyState } from "./empty-state"
@@ -16,12 +17,12 @@ export function Library() {
     songs,
     search,
     setSearch,
-    play,
     currentIndex,
     isPlaying,
     loading,
     error,
   } = usePlayer()
+  const playFromList = usePlayFromList()
 
   const debouncedSearch = useDebouncedValue(search, 120)
   const filtered = useFilteredSongs(songs, debouncedSearch)
@@ -57,9 +58,7 @@ export function Library() {
           isPlaying={isPlaying}
           onPlay={(filteredIndex) => {
             const song = filtered[filteredIndex]
-            if (!song) return
-            const indexInAll = songs.findIndex((s) => s.id === song.id)
-            if (indexInAll !== -1) play(indexInAll)
+            if (song) playFromList(song, filtered)
           }}
         />
       )}
