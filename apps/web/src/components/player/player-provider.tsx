@@ -31,7 +31,12 @@ const CROSSFADE_MS = 2000
 /** Trigger auto-crossfade when this many seconds remain on the current song. */
 const CROSSFADE_LEAD_SECONDS = CROSSFADE_MS / 1000
 /** Begin prefetching the next song's audio onto the idle deck this far in. */
-const PREFETCH_PROGRESS = 0.5
+/** Trigger the idle-deck preload this far into the current song.
+ *  Earlier = more reliable when the tab is backgrounded (Android/iOS
+ *  throttle `timeupdate` to ~1 Hz when hidden, which can mean a 0.5
+ *  trigger fires too late if the song is short). 0.25 gives plenty
+ *  of lead time and the network cost is the same. */
+const PREFETCH_PROGRESS = 0.25
 
 interface PersistedVolume {
   volume: number
@@ -40,6 +45,45 @@ interface PersistedVolume {
 
 type DeckId = 0 | 1
 const otherDeck = (deck: DeckId): DeckId => (deck === 0 ? 1 : 0)
+
+/** Set of song ids whose audio body we've already kicked into the
+ *  browser's HTTP cache. Module scope so it survives re-renders. */
+const warmedSongIds = new Set<string>()
+
+/**
+ * Fire-and-forget GETs for the next N upcoming songs in the playback
+ * list. The browser caches each response in its HTTP cache (Vercel
+ * already serves the proxy with Cache-Control: immutable for full
+ * responses), so a subsequent audio fetch is a cache hit.
+ *
+ * Once warmed, ids are remembered for the page session — we don't
+ * re-warm. Skips the active deck's currently-playing song.
+ */
+function warmHttpCacheForUpcoming(
+  state: { songs: Array<{ id: string; modifiedTime: string }>; playbackList: string[]; currentIndex: number | null },
+  count: number
+): void {
+  const currentId =
+    state.currentIndex !== null ? state.songs[state.currentIndex]?.id : null
+  if (!currentId) return
+  const here = state.playbackList.indexOf(currentId)
+  if (here === -1) return
+  let warmed = 0
+  for (
+    let i = here + 1;
+    i < state.playbackList.length && warmed < count;
+    i++
+  ) {
+    const id = state.playbackList[i]!
+    if (warmedSongIds.has(id)) {
+      warmed++
+      continue
+    }
+    warmedSongIds.add(id)
+    void fetch(`/api/stream/${id}`).catch(() => undefined)
+    warmed++
+  }
+}
 
 /**
  * Owns two `<audio>` elements (a "two-deck" architecture) and exposes player
@@ -309,10 +353,32 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
       if (!wantsCrossfade) {
         cancelFades()
+        // Fast path: if the idle deck already has this song preloaded
+        // (we prime it at 50% of the current track), swap decks instead
+        // of refetching on the active deck. Critical for backgrounded
+        // / locked playback — Android & iOS suspend new network fetches
+        // when the page is hidden, but a deck that's already loaded
+        // can play() instantly without a roundtrip.
+        const idleHasSong =
+          idle.src.endsWith(newSrc) ||
+          (idle.currentSrc && idle.currentSrc.endsWith(newSrc))
+        if (idleHasSong) {
+          activeDeckRef.current = idleId
+          idle.currentTime = 0
+          idle.volume = userTargetVolume()
+          void idle.play().catch(() => {})
+          active.pause()
+          prefetchedIdRef.current = null
+          dispatch({ type: "SET_INDEX", index })
+          dispatch({ type: "TIME", position: 0 })
+          dispatch({ type: "PLAYBACK_ERROR", message: null })
+          return
+        }
+        // Slow path: load on the active deck. Suppress the transient
+        // pause event during src swap — without this, isPlaying briefly
+        // flips to false and the OS lock-screen UI dims until play()
+        // resolves.
         idle.pause()
-        // Suppress the transient pause event the audio element emits when
-        // we change src — without this, isPlaying briefly flips to false
-        // and the OS lock-screen UI dims/blanks until play() resolves.
         switchingSrcRef.current = true
         if (active.src !== window.location.origin + newSrc) {
           active.src = newSrc
@@ -417,7 +483,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         const duration = audio.duration
         if (!Number.isFinite(duration) || duration <= 0) return
 
-        // Prefetch next song onto idle deck when past halfway.
+        // Prefetch next song onto idle deck when past PREFETCH_PROGRESS,
+        // and ALSO warm the browser's HTTP cache for the next few songs
+        // beyond that. Cheap on WiFi, makes auto-advance instant.
         if (
           !prefetchedIdRef.current &&
           audio.currentTime / duration >= PREFETCH_PROGRESS
@@ -433,6 +501,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
               }
             }
           }
+          warmHttpCacheForUpcoming(stateRef.current, 5)
         }
 
         // Auto-trigger crossfade when within 2s of the end.

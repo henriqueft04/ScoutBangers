@@ -62,7 +62,12 @@ export default async function handler(request: Request): Promise<Response> {
     return new Response("Not found", { status: 404 })
   }
 
-  const driveUrl = `${DRIVE_FILE_URL}/${encodeURIComponent(id)}?alt=media`
+  // acknowledgeAbuse=true bypasses Drive's virus-scan confirmation page
+  // for large files. Without it, Drive returns an HTML interstitial
+  // instead of the binary, which the audio element can't decode.
+  const driveUrl = `${DRIVE_FILE_URL}/${encodeURIComponent(
+    id
+  )}?alt=media&acknowledgeAbuse=true`
 
   const upstreamHeaders: Record<string, string> = {
     Authorization: `Bearer ${token}`,

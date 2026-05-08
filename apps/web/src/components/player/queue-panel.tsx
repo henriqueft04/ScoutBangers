@@ -3,6 +3,7 @@ import { GripVertical, Trash2, X } from "lucide-react"
 import {
   motion,
   Reorder,
+  useDragControls,
   useMotionValue,
   useMotionValueEvent,
 } from "framer-motion"
@@ -222,20 +223,17 @@ function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProp
   const title = song ? displayTitle(song, meta) : "Unavailable"
   const artist = song ? displayArtist(song, meta) : undefined
 
-  // Two coexisting drag systems:
-  //   - Outer Reorder.Item handles Y (reorder) via Reorder.Group's axis.
-  //   - Inner motion.div handles X (swipe-left to remove). Constraints
-  //     are left-only with snap-back, so a swipe rebounds unless it
-  //     crosses the threshold.
-  // framer-motion direction-locks each drag to its own axis, so the
-  // user can drag vertically (reorder) or horizontally (swipe-remove)
-  // but not both — which is the desired UX.
+  // Two coexisting gestures:
+  //   - Reorder.Item handles Y reorder, but only when the drag starts
+  //     from the grip handle (`dragListener={false}` + dragControls so
+  //     the rest of the row stays free for vertical scrolling).
+  //   - Inner motion.div handles X swipe-left to remove. CSS
+  //     `touch-action: pan-y` lets the browser keep vertical pan
+  //     (queue scroll) while JS claims horizontal pan.
+  const dragControls = useDragControls()
   const x = useMotionValue(0)
   const [showRemoveBg, setShowRemoveBg] = React.useState(false)
 
-  // Reflect the live x value as a class toggle for the red "Remove"
-  // background — toggling React state on every motion-value update is
-  // cheap and lets us animate opacity declaratively.
   useMotionValueEvent(x, "change", (latest) => {
     setShowRemoveBg(latest <= -8)
   })
@@ -243,6 +241,9 @@ function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProp
   return (
     <Reorder.Item
       value={value}
+      drag="y"
+      dragListener={false}
+      dragControls={dragControls}
       whileDrag={{
         scale: 1.02,
         boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
@@ -273,16 +274,23 @@ function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProp
         dragElastic={{ left: 0.4, right: 0 }}
         dragMomentum={false}
         dragSnapToOrigin
-        style={{ x }}
+        style={{ x, touchAction: "pan-y" }}
         onDragEnd={(_, info) => {
           if (info.offset.x <= -SWIPE_REMOVE_THRESHOLD) onRemove()
         }}
-        className="bg-background hover:bg-muted/60 relative flex min-w-0 cursor-grab items-center gap-2 rounded-md px-2 py-2 active:cursor-grabbing"
+        className="bg-background hover:bg-muted/60 relative flex min-w-0 items-center gap-2 rounded-md px-2 py-2"
       >
-        <GripVertical
-          aria-hidden
-          className="text-muted-foreground size-4 shrink-0"
-        />
+        {/* Drag handle — only this element initiates Y reorder. */}
+        <span
+          aria-label="Drag to reorder"
+          onPointerDown={(event) => {
+            event.stopPropagation()
+            dragControls.start(event)
+          }}
+          className="text-muted-foreground touch-none cursor-grab shrink-0 active:cursor-grabbing"
+        >
+          <GripVertical className="size-4" />
+        </span>
         <div
           ref={ref}
           onClick={(event) => {
