@@ -28,19 +28,22 @@ export interface TrackMetadata {
 const PARTIAL_BYTES = 512 * 1024
 
 /**
- * Single global gap between metadata fetches. With one in-flight request and
- * a 500 ms gap that's 2 req/s — well under Drive's documented per-project
- * limits and gentle enough to coexist with audio playback's Range requests.
+ * Gap between metadata fetches. Service-account auth doesn't trigger
+ * Drive's IP-level abuse detector the way the old API key did, so we
+ * can be more aggressive than the legacy 500 ms. 200 ms = ~5 req/s,
+ * still well within Drive's per-project quota and won't choke audio
+ * Range requests.
  */
-const FETCH_GAP_MS = 500
+const FETCH_GAP_MS = 200
 
 /**
- * Circuit breaker config: after this many consecutive failures (typically a
- * Drive 403 abuse trip), stop all metadata fetching for `COOLDOWN_MS` so we
- * don't compound the problem.
+ * Circuit breaker — only kicks in on a sustained run of failures (real
+ * problem). Was 3 with a 5-minute cooldown for the old IP-abuse case;
+ * that turned a single transient 502 into 5 minutes of missing
+ * thumbnails. Loosened to 10 failures and 60 s cooldown.
  */
-const FAILURE_THRESHOLD = 3
-const COOLDOWN_MS = 5 * 60 * 1000
+const FAILURE_THRESHOLD = 10
+const COOLDOWN_MS = 60 * 1000
 
 const resolved = new Map<string, TrackMetadata>()
 const inflight = new Map<string, Promise<TrackMetadata>>()

@@ -1,6 +1,6 @@
 import * as React from "react"
 import { GripVertical, Trash2, X } from "lucide-react"
-import { Reorder, useMotionValue } from "framer-motion"
+import { Reorder } from "framer-motion"
 
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
@@ -213,17 +213,17 @@ function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProp
   const title = song ? displayTitle(song, meta) : "Unavailable"
   const artist = song ? displayArtist(song, meta) : undefined
 
-  // Swipe-left to remove. Uses framer-motion's onPan event listener,
-  // which runs alongside the Reorder.Item's built-in Y drag. We lock
-  // direction on the first significant movement so vertical drags
-  // continue to feel like reorder and horizontal drags become a remove
-  // gesture. The X offset is animated via a motion value applied to
-  // Reorder.Item itself — framer-motion composes it with its internal
-  // y transform without conflict.
-  const x = useMotionValue(0)
-  const directionRef = React.useRef<"x" | "y" | null>(null)
-  const [showRemoveBg, setShowRemoveBg] = React.useState(false)
-  const swipingLeftRef = React.useRef(false)
+  // Swipe-left to remove. Listens to framer-motion's onPan events on
+  // Reorder.Item — these fire alongside the built-in Y drag without
+  // requiring us to disable it. We only update the visual X offset
+  // when the gesture is dominantly horizontal-left, so vertical drags
+  // continue to feel like reorder.
+  //
+  // The X translate is on an inner div (plain inline style) instead of
+  // Reorder.Item itself — framer-motion drives Reorder.Item's transform
+  // for the Y reorder animation, and putting an x motion value there
+  // can interleave with that and end up fighting it.
+  const [offset, setOffset] = React.useState(0)
 
   return (
     <Reorder.Item
@@ -235,41 +235,22 @@ function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProp
       }}
       dragElastic={0}
       dragMomentum={false}
-      style={{ x }}
-      onPanStart={() => {
-        directionRef.current = null
-        swipingLeftRef.current = false
-      }}
       onPan={(_, info) => {
-        if (!directionRef.current) {
-          const adx = Math.abs(info.offset.x)
-          const ady = Math.abs(info.offset.y)
-          if (adx <= 6 && ady <= 6) return
-          directionRef.current = adx > ady ? "x" : "y"
-        }
-        if (directionRef.current !== "x") return
-        if (info.offset.x < 0) {
-          swipingLeftRef.current = true
-          const clamped = Math.max(info.offset.x, -SWIPE_REMOVE_MAX)
-          x.set(clamped)
-          setShowRemoveBg(clamped <= -8)
+        // Only commit to a horizontal-left swipe when X dominates.
+        if (info.offset.x < 0 && Math.abs(info.offset.x) > Math.abs(info.offset.y)) {
+          setOffset(Math.max(info.offset.x, -SWIPE_REMOVE_MAX))
         } else {
-          x.set(0)
-          setShowRemoveBg(false)
+          setOffset(0)
         }
       }}
       onPanEnd={(_, info) => {
-        if (
-          directionRef.current === "x" &&
-          swipingLeftRef.current &&
-          info.offset.x <= -SWIPE_REMOVE_THRESHOLD
-        ) {
+        const wasHorizontalLeft =
+          info.offset.x < 0 &&
+          Math.abs(info.offset.x) > Math.abs(info.offset.y)
+        if (wasHorizontalLeft && info.offset.x <= -SWIPE_REMOVE_THRESHOLD) {
           onRemove()
         }
-        x.set(0)
-        setShowRemoveBg(false)
-        directionRef.current = null
-        swipingLeftRef.current = false
+        setOffset(0)
       }}
       className="relative"
     >
@@ -278,7 +259,7 @@ function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProp
         aria-hidden
         className={cn(
           "bg-destructive/10 text-destructive pointer-events-none absolute inset-0 flex items-center justify-end rounded-md pr-4 transition-opacity",
-          showRemoveBg ? "opacity-100" : "opacity-0"
+          offset < -8 ? "opacity-100" : "opacity-0"
         )}
       >
         <Trash2 className="size-5" />
@@ -286,7 +267,13 @@ function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProp
           Remove
         </span>
       </div>
-      <div className="bg-background hover:bg-muted/60 relative flex min-w-0 cursor-grab items-center gap-2 rounded-md px-2 py-2 active:cursor-grabbing">
+      <div
+        style={{
+          transform: offset !== 0 ? `translateX(${offset}px)` : undefined,
+          transition: offset !== 0 ? "none" : "transform 200ms ease-out",
+        }}
+        className="bg-background hover:bg-muted/60 relative flex min-w-0 cursor-grab items-center gap-2 rounded-md px-2 py-2 active:cursor-grabbing"
+      >
         <GripVertical
           aria-hidden
           className="text-muted-foreground size-4 shrink-0"
@@ -295,7 +282,7 @@ function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProp
           ref={ref}
           onClick={(event) => {
             // Suppress click after a swipe.
-            if (Math.abs(x.get()) > 4) {
+            if (Math.abs(offset) > 4) {
               event.preventDefault()
               return
             }
