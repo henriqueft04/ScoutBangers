@@ -1,6 +1,7 @@
 import * as React from "react"
 
 import { displayArtist, displayTitle } from "@/lib/song-display"
+import { getPictureDataUrl } from "@/lib/track-metadata"
 
 import { useTrackMetadata } from "./useTrackMetadata"
 import { usePlayer } from "./usePlayer"
@@ -104,29 +105,46 @@ export function useMediaSession(): void {
   }, [supported])
 
   // Metadata: title / artist / artwork. Updated whenever the song or its
-  // embedded tags change.
+  // embedded tags change. Cached IDB entries only carry a Blob, not a
+  // data URL — `getPictureDataUrl` lazily generates and caches one.
   React.useEffect(() => {
     if (!supported) return
     if (!song) {
       navigator.mediaSession.metadata = null
       return
     }
-    const artwork: MediaImage[] = meta?.pictureDataUrl
-      ? [
-          {
-            src: meta.pictureDataUrl,
-            sizes: "512x512",
-            type: meta.pictureType ?? "image/jpeg",
-          },
-        ]
-      : FALLBACK_ARTWORK
 
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: displayTitle(song, meta),
-      artist: displayArtist(song, meta) ?? "ScoutBangers",
-      album: meta?.album ?? "ScoutBangers",
-      artwork,
-    })
+    const setMetadata = (dataUrl: string | undefined) => {
+      const artwork: MediaImage[] = dataUrl
+        ? [
+            {
+              src: dataUrl,
+              sizes: "512x512",
+              type: meta?.pictureType ?? "image/jpeg",
+            },
+          ]
+        : FALLBACK_ARTWORK
+
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: displayTitle(song, meta),
+        artist: displayArtist(song, meta) ?? "ScoutBangers",
+        album: meta?.album ?? "ScoutBangers",
+        artwork,
+      })
+    }
+
+    // Synchronous best-effort first so OS controls update fast.
+    setMetadata(meta?.pictureDataUrl)
+    // Then lazily upgrade with the data URL if we only have a blob.
+    if (!meta?.pictureDataUrl && meta?.pictureBlob) {
+      let cancelled = false
+      void getPictureDataUrl(song.id).then((dataUrl) => {
+        if (!cancelled && dataUrl) setMetadata(dataUrl)
+      })
+      return () => {
+        cancelled = true
+      }
+    }
   }, [supported, song, meta])
 
   // Reflect playing/paused so OS controls stay in sync with our UI.

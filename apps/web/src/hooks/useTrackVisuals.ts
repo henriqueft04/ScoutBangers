@@ -18,12 +18,20 @@ interface UseTrackVisualsResult<E extends Element = HTMLElement> {
  * Replaces the `const [ref, inView] = useInView(); const meta =
  * useTrackMetadata(songId, inView)` pair that was duplicated across
  * SongRow, QueueRow, UpcomingRow, and the friends feed.
+ *
+ * Pass `modifiedTime` so the cache self-invalidates when a song is
+ * re-uploaded — see useTrackMetadata.
  */
 export function useTrackVisuals<E extends Element = HTMLElement>(
   songId: string | undefined,
-  enabled: boolean = true
+  enabled: boolean = true,
+  modifiedTime?: string
 ): UseTrackVisualsResult<E> {
   const [ref, inView] = useInView<E>()
-  const meta = useTrackMetadata(songId, enabled && inView && Boolean(songId))
+  const meta = useTrackMetadata(
+    songId,
+    enabled && inView && Boolean(songId),
+    modifiedTime
+  )
   return { ref, meta, inView }
 }

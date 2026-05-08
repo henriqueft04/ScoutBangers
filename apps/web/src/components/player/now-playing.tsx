@@ -29,7 +29,7 @@ interface NowPlayingProps {
 export function NowPlaying({ className, onExpand }: NowPlayingProps) {
   const { songs, currentIndex } = usePlayer()
   const song = currentIndex !== null ? songs[currentIndex] : undefined
-  const meta = useTrackMetadata(song?.id, Boolean(song))
+  const meta = useTrackMetadata(song?.id, Boolean(song), song?.modifiedTime)
   const title = song ? displayTitle(song, meta) : null
   const artist = song ? displayArtist(song, meta) : undefined
 

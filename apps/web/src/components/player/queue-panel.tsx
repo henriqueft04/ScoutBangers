@@ -209,7 +209,11 @@ const SWIPE_REMOVE_THRESHOLD = 80
 const SWIPE_REMOVE_MAX = 140
 
 function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProps<V>) {
-  const { ref, meta } = useTrackVisuals<HTMLDivElement>(song?.id)
+  const { ref, meta } = useTrackVisuals<HTMLDivElement>(
+    song?.id,
+    true,
+    song?.modifiedTime
+  )
   const title = song ? displayTitle(song, meta) : "Unavailable"
   const artist = song ? displayArtist(song, meta) : undefined
 

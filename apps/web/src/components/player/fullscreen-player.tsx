@@ -34,7 +34,7 @@ interface FullscreenPlayerProps {
 export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
   const { songs, currentIndex } = usePlayer()
   const song = currentIndex !== null ? songs[currentIndex] : undefined
-  const meta = useTrackMetadata(song?.id, Boolean(song))
+  const meta = useTrackMetadata(song?.id, Boolean(song), song?.modifiedTime)
   const [copied, setCopied] = React.useState(false)
   const [queueOpenRaw, setQueueOpenRaw] = React.useState(false)
 

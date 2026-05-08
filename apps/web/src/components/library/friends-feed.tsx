@@ -130,7 +130,8 @@ interface FeedRowProps {
 function FeedRow({ entry, song, onPlay }: FeedRowProps) {
   const { ref, meta } = useTrackVisuals<HTMLDivElement>(
     entry.songId,
-    Boolean(song)
+    Boolean(song),
+    song?.modifiedTime
   )
   const title = song ? displayTitle(song, meta) : "Unavailable"
   const playable = Boolean(song)

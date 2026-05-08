@@ -17,10 +17,15 @@ const NULL_SNAPSHOT = (): TrackMetadata | null => null
  *
  * Reads are cache-backed via `useSyncExternalStore`, so multiple components
  * asking for the same song share one network call and one in-memory entry.
+ *
+ * Pass `modifiedTime` (from the `/api/songs` manifest) to make the cache
+ * self-invalidating: if the file is re-uploaded with new tags, the
+ * cached entry is dropped and re-fetched automatically.
  */
 export function useTrackMetadata(
   songId: string | undefined,
-  enabled = true
+  enabled = true,
+  modifiedTime?: string
 ): TrackMetadata | null {
   const subscribe = React.useMemo(() => {
     if (!songId) return NULL_SUBSCRIBE
@@ -40,8 +45,8 @@ export function useTrackMetadata(
 
   React.useEffect(() => {
     if (!songId || !enabled) return
-    void ensureTrackMetadata(songId)
-  }, [songId, enabled])
+    void ensureTrackMetadata(songId, modifiedTime)
+  }, [songId, enabled, modifiedTime])
 
   return meta
 }

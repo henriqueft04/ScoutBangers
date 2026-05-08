@@ -50,7 +50,11 @@ export function SongRow({
   rank,
   playCount,
 }: SongRowProps) {
-  const { ref, meta } = useTrackVisuals<HTMLDivElement>(song.id)
+  const { ref, meta } = useTrackVisuals<HTMLDivElement>(
+    song.id,
+    true,
+    song.modifiedTime
+  )
   const { queueAdd } = usePlayer()
 
   const Icon = isCurrent && isPlaying ? Pause : Play

@@ -1,6 +1,11 @@
 import { parseBlob } from "music-metadata"
 
 import { streamUrl } from "./audio-url"
+import {
+  deletePersisted,
+  getAllPersisted,
+  putPersisted,
+} from "./track-metadata-store"
 
 /**
  * Metadata extracted from an audio file's embedded tags (ID3, MP4 atoms,
@@ -18,6 +23,8 @@ export interface TrackMetadata {
    *  same-origin Blob URLs. */
   pictureDataUrl?: string
   pictureType?: string
+  /** Original picture as a Blob, retained so we can persist to IDB. */
+  pictureBlob?: Blob
 }
 
 /**
@@ -58,84 +65,70 @@ let lastFetchAt = 0
 let queue: Promise<unknown> = Promise.resolve()
 
 /**
- * Persistent cache: text + base64 artwork keyed by Drive file id.
- * Survives page reloads; the whole library (~80 songs × ~50 KB) fits
- * comfortably under localStorage's 5 MB budget. We catch QuotaExceeded
- * and downgrade to text-only when we hit the wall.
+ * Persistent cache lives in IndexedDB (see `track-metadata-store.ts`).
+ * Pictures are stored as Blobs (no base64 overhead) and the per-entry
+ * `modifiedTime` lets us invalidate when a song is re-uploaded with
+ * new tags.
+ *
+ * In-memory `resolved` is the working cache: hydrated from IDB on
+ * startup, written-through on every successful fetch.
  */
-const STORAGE_KEY = "scoutbangers:track-metadata-v1"
+const LEGACY_STORAGE_KEY = "scoutbangers:track-metadata-v1"
 
-interface PersistedEntry {
-  artist?: string
-  album?: string
-  title?: string
-  pictureDataUrl?: string
-  pictureType?: string
-}
+/** Per-entry modifiedTime, used to invalidate when the file changes. */
+const cachedModifiedTime = new Map<string, string | undefined>()
 
-function loadPersistedCache(): void {
-  if (typeof localStorage === "undefined") return
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return
-    const parsed = JSON.parse(raw) as Record<string, PersistedEntry>
-    for (const [id, entry] of Object.entries(parsed)) {
-      const metadata: TrackMetadata = {
-        artist: entry.artist,
-        album: entry.album,
-        title: entry.title,
-        pictureDataUrl: entry.pictureDataUrl,
-        pictureType: entry.pictureType,
-      }
-      // pictureUrl is recreated from the data URL on demand; the data URL
-      // works directly in <img src> too, so we just use it as the URL.
-      if (entry.pictureDataUrl) metadata.pictureUrl = entry.pictureDataUrl
-      resolved.set(id, metadata)
-    }
-  } catch (error) {
-    console.warn("[track-metadata] failed to load persisted cache", error)
-  }
-}
-
-let persistTimer: ReturnType<typeof setTimeout> | null = null
-function schedulePersist(): void {
-  if (typeof localStorage === "undefined") return
-  if (persistTimer) clearTimeout(persistTimer)
-  persistTimer = setTimeout(() => {
-    persistTimer = null
-    const out: Record<string, PersistedEntry> = {}
-    for (const [id, metadata] of resolved.entries()) {
-      out[id] = {
-        artist: metadata.artist,
-        album: metadata.album,
-        title: metadata.title,
-        pictureDataUrl: metadata.pictureDataUrl,
-        pictureType: metadata.pictureType,
-      }
-    }
+async function loadPersistedCache(): Promise<void> {
+  // One-time cleanup of the old localStorage cache so it stops eating
+  // the 5 MB budget. The IDB cache supersedes it.
+  if (typeof localStorage !== "undefined") {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(out))
+      localStorage.removeItem(LEGACY_STORAGE_KEY)
     } catch {
-      // Quota exceeded — try again without artwork (text only is a tiny
-      // fraction of the size and still solves the cold-start problem).
-      const lite: Record<string, PersistedEntry> = {}
-      for (const [id, metadata] of resolved.entries()) {
-        lite[id] = {
-          artist: metadata.artist,
-          album: metadata.album,
-          title: metadata.title,
-        }
-      }
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(lite))
-      } catch {
-        // give up — we still have the in-memory cache for this session
-      }
+      /* ignore */
     }
-  }, 500)
+  }
+
+  const entries = await getAllPersisted()
+  for (const entry of entries) {
+    const metadata: TrackMetadata = {
+      artist: entry.artist,
+      album: entry.album,
+      title: entry.title,
+      pictureType: entry.pictureType,
+      pictureBlob: entry.pictureBlob,
+    }
+    if (entry.pictureBlob) {
+      metadata.pictureUrl = URL.createObjectURL(entry.pictureBlob)
+      // Skip the data URL on hydration — it's only needed by
+      // MediaSession when the song plays. `getPictureDataUrl` below
+      // creates it lazily and caches it back into the metadata entry.
+    }
+    resolved.set(entry.songId, metadata)
+    cachedModifiedTime.set(entry.songId, entry.modifiedTime)
+  }
+  globalSubscribers.forEach((fn) => fn())
 }
 
-loadPersistedCache()
+/**
+ * Lazily generate (and cache) a data URL for the picture. Used by
+ * `useMediaSession` since iOS lock-screen art needs a data URL — Blob
+ * URLs aren't reliably loadable from the OS process. Avoids paying the
+ * base64 conversion cost for every cached song on startup.
+ */
+export async function getPictureDataUrl(
+  songId: string
+): Promise<string | undefined> {
+  const meta = resolved.get(songId)
+  if (!meta) return undefined
+  if (meta.pictureDataUrl) return meta.pictureDataUrl
+  if (!meta.pictureBlob) return undefined
+  const dataUrl = await blobToDataUrl(meta.pictureBlob)
+  meta.pictureDataUrl = dataUrl
+  return dataUrl
+}
+
+void loadPersistedCache()
 
 /** Synchronous read of cached metadata. Returns `undefined` if not parsed yet. */
 export function peekTrackMetadata(songId: string): TrackMetadata | undefined {
@@ -166,23 +159,51 @@ export function subscribeToAnyMetadata(listener: () => void): () => void {
 }
 
 /**
- * Kick off (or join) a metadata fetch. All work goes through a single global
- * queue (with a 500 ms gap between requests) so multiple visible rows don't
- * stampede Drive. A circuit breaker pauses the queue after repeated failures.
+ * Kick off (or join) a metadata fetch. All work goes through a single
+ * global queue with a small gap between requests so visible rows don't
+ * stampede Drive.
+ *
+ * `modifiedTime` (when supplied — the songs manifest carries it) is
+ * used to invalidate the cached entry: if it doesn't match what we
+ * cached previously, the entry is evicted and re-fetched. Lets a
+ * re-uploaded file update its tags without a manual cache clear.
  */
-export function ensureTrackMetadata(songId: string): Promise<TrackMetadata> {
+export function ensureTrackMetadata(
+  songId: string,
+  modifiedTime?: string
+): Promise<TrackMetadata> {
   const cached = resolved.get(songId)
-  if (cached) return Promise.resolve(cached)
+  if (cached) {
+    const cachedMtime = cachedModifiedTime.get(songId)
+    if (!modifiedTime || cachedMtime === modifiedTime) {
+      return Promise.resolve(cached)
+    }
+    // Stale: evict and fall through to re-fetch.
+    resolved.delete(songId)
+    cachedModifiedTime.delete(songId)
+    void deletePersisted(songId)
+  }
 
   const pending = inflight.get(songId)
   if (pending) return pending
 
   const promise = enqueue(() => fetchAndParse(songId))
-    .then((value) => {
+    .then(async (value) => {
       consecutiveFailures = 0
       resolved.set(songId, value)
+      cachedModifiedTime.set(songId, modifiedTime)
       inflight.delete(songId)
-      schedulePersist()
+      // Persist (best-effort, async, no await on the caller side).
+      void putPersisted({
+        songId,
+        modifiedTime,
+        artist: value.artist,
+        album: value.album,
+        title: value.title,
+        pictureBlob: value.pictureBlob,
+        pictureType: value.pictureType,
+        cachedAt: Date.now(),
+      })
       subscribers.get(songId)?.forEach((fn) => fn())
       globalSubscribers.forEach((fn) => fn())
       return value
@@ -268,6 +289,7 @@ async function toTrackMetadata(
     })
     result.pictureUrl = URL.createObjectURL(pictureBlob)
     result.pictureType = picture.format
+    result.pictureBlob = pictureBlob
     result.pictureDataUrl = await blobToDataUrl(pictureBlob)
   }
   return result
