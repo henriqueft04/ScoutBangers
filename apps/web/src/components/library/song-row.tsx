@@ -27,7 +27,7 @@ interface SongRowProps {
   playCount?: number
 }
 
-const SWIPE_THRESHOLD_PX = 80
+const SWIPE_THRESHOLD_PX = 70
 const SWIPE_MAX_PX = 120
 
 /**
@@ -71,36 +71,46 @@ export function SongRow({
     [handleActivate]
   )
 
-  // Swipe-right to enqueue. Tracks finger movement; if the user drags
-  // past SWIPE_THRESHOLD_PX horizontally we add the song to the queue
-  // and snap back. Vertical movement cancels (so list scrolling wins).
+  // Swipe-right to enqueue. Pointer-based so it works for touch, mouse,
+  // and trackpad alike. If the user drags past SWIPE_THRESHOLD_PX
+  // horizontally we add the song to the queue and snap back. Vertical
+  // movement cancels (so list scrolling wins).
   const startXRef = React.useRef<number | null>(null)
   const startYRef = React.useRef<number | null>(null)
   const swipingRef = React.useRef(false)
+  const pointerIdRef = React.useRef<number | null>(null)
   const [offset, setOffset] = React.useState(0)
   const [enqueueFlash, setEnqueueFlash] = React.useState(false)
 
-  const onTouchStart = (event: React.TouchEvent) => {
-    const t = event.touches[0]
-    if (!t) return
-    startXRef.current = t.clientX
-    startYRef.current = t.clientY
+  const onPointerDown = (event: React.PointerEvent) => {
+    // Only the primary pointer (not a right-click etc.).
+    if (event.pointerType === "mouse" && event.button !== 0) return
+    startXRef.current = event.clientX
+    startYRef.current = event.clientY
     swipingRef.current = false
+    pointerIdRef.current = event.pointerId
   }
 
-  const onTouchMove = (event: React.TouchEvent) => {
-    const t = event.touches[0]
-    if (!t || startXRef.current === null || startYRef.current === null) return
-    const dx = t.clientX - startXRef.current
-    const dy = t.clientY - startYRef.current
+  const onPointerMove = (event: React.PointerEvent) => {
+    if (
+      pointerIdRef.current !== event.pointerId ||
+      startXRef.current === null ||
+      startYRef.current === null
+    )
+      return
+    const dx = event.clientX - startXRef.current
+    const dy = event.clientY - startYRef.current
     if (!swipingRef.current) {
-      // Lock direction once the user has clearly committed horizontally.
-      if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      // Commit to a horizontal swipe once movement is clearly sideways.
+      if (dx > 10 && dx > Math.abs(dy) * 1.5) {
         swipingRef.current = true
+        // Capture the pointer so we keep getting events even if it
+        // leaves the row's hit-area mid-drag.
+        ;(event.target as Element).setPointerCapture?.(event.pointerId)
       } else if (Math.abs(dy) > 10) {
-        // User is scrolling — bail.
         startXRef.current = null
         startYRef.current = null
+        pointerIdRef.current = null
         return
       }
     }
@@ -109,7 +119,7 @@ export function SongRow({
     }
   }
 
-  const onTouchEnd = () => {
+  const onPointerEnd = () => {
     if (swipingRef.current && offset >= SWIPE_THRESHOLD_PX) {
       queueAdd(song.id)
       setEnqueueFlash(true)
@@ -119,6 +129,7 @@ export function SongRow({
     swipingRef.current = false
     startXRef.current = null
     startYRef.current = null
+    pointerIdRef.current = null
   }
 
   return (
@@ -140,11 +151,19 @@ export function SongRow({
       <div
         role="button"
         tabIndex={0}
-        onClick={handleActivate}
+        onClick={(event) => {
+          // Treat as a tap only when no real swipe happened.
+          if (offset > 4) {
+            event.preventDefault()
+            return
+          }
+          handleActivate()
+        }}
         onKeyDown={handleKeyDown}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        onPointerCancel={onPointerEnd}
         data-current={isCurrent || undefined}
         aria-label={
           isCurrent && isPlaying ? `Pause ${title}` : `Play ${title}`
