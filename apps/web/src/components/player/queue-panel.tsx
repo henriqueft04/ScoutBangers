@@ -1,6 +1,6 @@
 import * as React from "react"
-import { Trash2, X } from "lucide-react"
-import { Reorder } from "framer-motion"
+import { GripVertical, Trash2, X } from "lucide-react"
+import { Reorder, useMotionValue } from "framer-motion"
 
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
@@ -205,10 +205,25 @@ interface ReorderableRowProps<V> {
  * queue) and `{ id: string }` (upcoming list) without sharing a value
  * shape.
  */
+const SWIPE_REMOVE_THRESHOLD = 80
+const SWIPE_REMOVE_MAX = 140
+
 function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProps<V>) {
   const { ref, meta } = useTrackVisuals<HTMLDivElement>(song?.id)
   const title = song ? displayTitle(song, meta) : "Unavailable"
   const artist = song ? displayArtist(song, meta) : undefined
+
+  // Swipe-left to remove. Uses framer-motion's onPan event listener,
+  // which runs alongside the Reorder.Item's built-in Y drag. We lock
+  // direction on the first significant movement so vertical drags
+  // continue to feel like reorder and horizontal drags become a remove
+  // gesture. The X offset is animated via a motion value applied to
+  // Reorder.Item itself — framer-motion composes it with its internal
+  // y transform without conflict.
+  const x = useMotionValue(0)
+  const directionRef = React.useRef<"x" | "y" | null>(null)
+  const [showRemoveBg, setShowRemoveBg] = React.useState(false)
+  const swipingLeftRef = React.useRef(false)
 
   return (
     <Reorder.Item
@@ -220,37 +235,99 @@ function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProp
       }}
       dragElastic={0}
       dragMomentum={false}
-      className="bg-background hover:bg-muted/60 flex min-w-0 cursor-grab items-center gap-2 rounded-md px-2 py-2 active:cursor-grabbing"
-    >
-      <div
-        ref={ref}
-        onClick={onPlay}
-        className="flex min-w-0 flex-1 items-center gap-3"
-      >
-        <TrackArtwork meta={meta} className="size-10" />
-        <div className="min-w-0 flex-1">
-          <p className="text-foreground truncate text-sm font-medium">
-            {title}
-          </p>
-          {artist ? (
-            <p className="text-muted-foreground truncate text-xs">{artist}</p>
-          ) : null}
-        </div>
-      </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Remove from queue"
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => {
-          event.stopPropagation()
+      style={{ x }}
+      onPanStart={() => {
+        directionRef.current = null
+        swipingLeftRef.current = false
+      }}
+      onPan={(_, info) => {
+        if (!directionRef.current) {
+          const adx = Math.abs(info.offset.x)
+          const ady = Math.abs(info.offset.y)
+          if (adx <= 6 && ady <= 6) return
+          directionRef.current = adx > ady ? "x" : "y"
+        }
+        if (directionRef.current !== "x") return
+        if (info.offset.x < 0) {
+          swipingLeftRef.current = true
+          const clamped = Math.max(info.offset.x, -SWIPE_REMOVE_MAX)
+          x.set(clamped)
+          setShowRemoveBg(clamped <= -8)
+        } else {
+          x.set(0)
+          setShowRemoveBg(false)
+        }
+      }}
+      onPanEnd={(_, info) => {
+        if (
+          directionRef.current === "x" &&
+          swipingLeftRef.current &&
+          info.offset.x <= -SWIPE_REMOVE_THRESHOLD
+        ) {
           onRemove()
-        }}
-        className="text-muted-foreground hover:text-destructive shrink-0"
+        }
+        x.set(0)
+        setShowRemoveBg(false)
+        directionRef.current = null
+        swipingLeftRef.current = false
+      }}
+      className="relative"
+    >
+      {/* Red destructive background reveal when swiping left */}
+      <div
+        aria-hidden
+        className={cn(
+          "bg-destructive/10 text-destructive pointer-events-none absolute inset-0 flex items-center justify-end rounded-md pr-4 transition-opacity",
+          showRemoveBg ? "opacity-100" : "opacity-0"
+        )}
       >
-        <Trash2 className="size-4" />
-      </Button>
+        <Trash2 className="size-5" />
+        <span className="ml-2 text-xs font-medium uppercase tracking-wider">
+          Remove
+        </span>
+      </div>
+      <div className="bg-background hover:bg-muted/60 relative flex min-w-0 cursor-grab items-center gap-2 rounded-md px-2 py-2 active:cursor-grabbing">
+        <GripVertical
+          aria-hidden
+          className="text-muted-foreground size-4 shrink-0"
+        />
+        <div
+          ref={ref}
+          onClick={(event) => {
+            // Suppress click after a swipe.
+            if (Math.abs(x.get()) > 4) {
+              event.preventDefault()
+              return
+            }
+            onPlay()
+          }}
+          className="flex min-w-0 flex-1 items-center gap-3"
+        >
+          <TrackArtwork meta={meta} className="size-10" />
+          <div className="min-w-0 flex-1">
+            <p className="text-foreground truncate text-sm font-medium">
+              {title}
+            </p>
+            {artist ? (
+              <p className="text-muted-foreground truncate text-xs">{artist}</p>
+            ) : null}
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Remove from queue"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation()
+            onRemove()
+          }}
+          className="text-muted-foreground hover:text-destructive shrink-0"
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      </div>
     </Reorder.Item>
   )
 }

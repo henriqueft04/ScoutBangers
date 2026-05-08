@@ -1,4 +1,5 @@
 import * as React from "react"
+import { AnimatePresence, motion } from "framer-motion"
 import { Check, ChevronDown, Download, Share2 } from "lucide-react"
 import { Link } from "react-router-dom"
 
@@ -35,7 +36,41 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
   const song = currentIndex !== null ? songs[currentIndex] : undefined
   const meta = useTrackMetadata(song?.id, Boolean(song))
   const [copied, setCopied] = React.useState(false)
-  const [queueOpen, setQueueOpen] = React.useState(false)
+  const [queueOpenRaw, setQueueOpenRaw] = React.useState(false)
+
+  // Derive queueOpen from `open` so it's automatically false whenever
+  // the fullscreen sheet is closed — no effect needed, no stale state
+  // on re-open.
+  const queueOpen = open && queueOpenRaw
+  const setQueueOpen = setQueueOpenRaw
+
+  // OS back button while the queue panel is open should close just the
+  // queue, not the fullscreen sheet. Push a marker on open and listen
+  // for popstate; ignore the navigation when state.queue is set.
+  React.useEffect(() => {
+    if (!open || !queueOpen) return
+    const marker = { fullscreen: true, queue: true }
+    window.history.pushState(marker, "")
+    const onPop = (event: PopStateEvent) => {
+      // Only close the queue if the new state is no longer the queue
+      // marker. Without this guard the fullscreen popstate listener
+      // would also fire and tear the whole sheet down.
+      const state = event.state as { queue?: boolean } | null
+      if (state?.queue) return
+      setQueueOpen(false)
+    }
+    window.addEventListener("popstate", onPop)
+    return () => {
+      window.removeEventListener("popstate", onPop)
+      if (
+        typeof window.history.state === "object" &&
+        window.history.state !== null &&
+        (window.history.state as { queue?: boolean }).queue
+      ) {
+        window.history.back()
+      }
+    }
+  }, [open, queueOpen, setQueueOpen])
 
   const handleShare = React.useCallback(async () => {
     if (!song) return
@@ -69,7 +104,13 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
     if (!open) return
     const marker = { fullscreen: true }
     window.history.pushState(marker, "")
-    const onPop = () => onClose()
+    const onPop = (event: PopStateEvent) => {
+      // If the new state still belongs to the fullscreen sheet (e.g.
+      // we just dropped from the deeper queue marker), stay open.
+      const state = event.state as { fullscreen?: boolean } | null
+      if (state?.fullscreen) return
+      onClose()
+    }
     window.addEventListener("popstate", onPop)
     return () => {
       window.removeEventListener("popstate", onPop)
@@ -243,14 +284,42 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
         style={{ height: "env(safe-area-inset-bottom)" }}
       />
 
-      {queueOpen ? (
-        <div
-          className="bg-background animate-in slide-in-from-right absolute inset-0 z-10 duration-200 ease-out"
-          style={{ paddingTop: "env(safe-area-inset-top)" }}
-        >
-          <QueuePanel onClose={() => setQueueOpen(false)} />
-        </div>
-      ) : null}
+      <AnimatePresence>
+        {queueOpen ? (
+          <motion.div
+            key="queue-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="absolute inset-0 z-10 flex items-end justify-center md:items-center md:p-6"
+            onClick={() => setQueueOpen(false)}
+          >
+            <div className="bg-background/60 absolute inset-0 backdrop-blur-sm" />
+            <motion.div
+              key="queue-sheet"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Queue"
+              onClick={(event) => event.stopPropagation()}
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", stiffness: 380, damping: 35 }}
+              className="bg-card text-card-foreground border-border relative flex h-[78%] w-full max-w-md flex-col overflow-hidden rounded-t-2xl border shadow-2xl md:h-[80vh] md:rounded-2xl"
+              style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+            >
+              <div className="flex justify-center pt-2 md:hidden">
+                <span
+                  aria-hidden
+                  className="bg-muted-foreground/30 h-1 w-10 rounded-full"
+                />
+              </div>
+              <QueuePanel onClose={() => setQueueOpen(false)} />
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   )
 }
