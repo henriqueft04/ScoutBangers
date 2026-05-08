@@ -354,7 +354,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (!wantsCrossfade) {
         cancelFades()
         // Fast path: if the idle deck already has this song preloaded
-        // (we prime it at 50% of the current track), swap decks instead
+        // (we prime it at 25% of the current track), swap decks instead
         // of refetching on the active deck. Critical for backgrounded
         // / locked playback — Android & iOS suspend new network fetches
         // when the page is hidden, but a deck that's already loaded
@@ -362,11 +362,23 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         const idleHasSong =
           idle.src.endsWith(newSrc) ||
           (idle.currentSrc && idle.currentSrc.endsWith(newSrc))
+        console.info("[player] playIndex non-crossfade", {
+          newSrc,
+          idleSrc: idle.src,
+          idleCurrentSrc: idle.currentSrc,
+          idleHasSong,
+          hidden: typeof document !== "undefined" ? document.hidden : null,
+        })
         if (idleHasSong) {
           activeDeckRef.current = idleId
           idle.currentTime = 0
           idle.volume = userTargetVolume()
-          void idle.play().catch(() => {})
+          idle
+            .play()
+            .then(() => console.info("[player] idle.play resolved"))
+            .catch((err) =>
+              console.warn("[player] idle.play rejected", err)
+            )
           active.pause()
           prefetchedIdRef.current = null
           dispatch({ type: "SET_INDEX", index })
@@ -428,6 +440,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   )
 
   const handleEnded = React.useCallback(() => {
+    console.info("[player] handleEnded fired", {
+      crossfadeArmed: crossfadeArmedRef.current,
+      hidden: typeof document !== "undefined" ? document.hidden : null,
+    })
     if (crossfadeArmedRef.current) {
       // We already fired the crossfade earlier; nothing to do.
       crossfadeArmedRef.current = false
