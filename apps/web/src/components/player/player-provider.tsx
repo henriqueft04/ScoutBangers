@@ -575,7 +575,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         }
       }
       const handleEndedEvt = () => {
-        if (isActive()) handleEnded()
+        if (!isActive()) return
+        // Some VBR files report a wildly wrong audio.duration (the
+        // browser estimates it from the bit-rate of the first frame
+        // when there's no Xing/Info header). When playback truly ends
+        // we know the real length is the final currentTime — correct
+        // the UI so the progress bar doesn't show "1:03 left" forever.
+        if (
+          Number.isFinite(audio.currentTime) &&
+          audio.currentTime > 0 &&
+          audio.currentTime < audio.duration - 1
+        ) {
+          dispatch({ type: "DURATION", duration: audio.currentTime })
+        }
+        handleEnded()
       }
       const handleError = () => {
         if (!isActive()) return
@@ -680,19 +693,28 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Crossfade trigger that survives backgrounded throttling.
+      // Fires when within CROSSFADE_LEAD_SECONDS of the reported end
+      // OR when the audio has actually ended (catches VBR files where
+      // audio.duration is overestimated and the song ends silently
+      // before the duration math says it should).
       const duration = active.duration
-      if (
-        actuallyPlaying &&
+      const endsSoon =
         Number.isFinite(duration) &&
         duration > 0 &&
+        duration - active.currentTime <= CROSSFADE_LEAD_SECONDS
+      if (
         !crossfadeArmedRef.current &&
         stateRef.current.repeat !== "one" &&
-        duration - active.currentTime <= CROSSFADE_LEAD_SECONDS
+        ((actuallyPlaying && endsSoon) || active.ended)
       ) {
         const advance = computeAdvance(1, true)
         if (advance) {
           console.info("[player] interval-crossfade fire", {
-            remaining: duration - active.currentTime,
+            remaining:
+              Number.isFinite(duration) && duration > 0
+                ? duration - active.currentTime
+                : null,
+            audioEnded: active.ended,
             hidden: typeof document !== "undefined" ? document.hidden : null,
           })
           crossfadeArmedRef.current = true
