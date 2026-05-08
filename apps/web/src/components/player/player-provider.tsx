@@ -424,20 +424,33 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         idle.src = newSrc
       }
       idle.currentTime = 0
-      idle.volume = 0
-      void idle.play().catch(() => {})
-
       activeDeckRef.current = idleId
 
-      const oldDeckId = activeId
-      const newDeckId = idleId
       const target = userTargetVolume()
-      setFade(oldDeckId, fadeVolume(active, 0, CROSSFADE_MS))
-      setFade(newDeckId, fadeVolume(idle, target, CROSSFADE_MS))
-      void fadesRef.current[oldDeckId]?.promise.then(() => {
-        // The old deck has fully faded; stop it and free the buffer.
+      const isHidden =
+        typeof document !== "undefined" && document.hidden
+
+      if (isHidden) {
+        // requestAnimationFrame is suspended on hidden tabs — a faded
+        // crossfade would leave the new deck stuck at volume 0 and
+        // the user would hear silence until the page comes back. Hard
+        // cut instead. The transition isn't audible anyway.
+        idle.volume = target
+        void idle.play().catch(() => {})
         active.pause()
-      })
+        console.info("[player] crossfade: hard cut (hidden)")
+      } else {
+        idle.volume = 0
+        void idle.play().catch(() => {})
+        const oldDeckId = activeId
+        const newDeckId = idleId
+        setFade(oldDeckId, fadeVolume(active, 0, CROSSFADE_MS))
+        setFade(newDeckId, fadeVolume(idle, target, CROSSFADE_MS))
+        void fadesRef.current[oldDeckId]?.promise.then(() => {
+          // The old deck has fully faded; stop it and free the buffer.
+          active.pause()
+        })
+      }
 
       dispatch({ type: "SET_INDEX", index })
       dispatch({ type: "TIME", position: 0 })
@@ -623,6 +636,29 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       for (const fn of cleanups) fn()
     }
   }, [computeAdvance, getDeck, handleEnded, playIndex])
+
+  // ---- Resume from background: rescue stalled fades --------------------
+  // If a crossfade started just before the page got hidden, rAF was
+  // suspended and the volume ramp may be stuck mid-fade (audio playing
+  // at the wrong volume). When we return to the foreground, snap the
+  // active deck to the user's target volume and pause the idle.
+  React.useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") return
+      const active = getDeck(activeDeckRef.current)
+      const idle = getDeck(otherDeck(activeDeckRef.current))
+      if (!active) return
+      cancelFades()
+      const s = stateRef.current
+      const target = s.muted ? 0 : s.volume
+      active.volume = target
+      if (idle && !idle.paused) idle.pause()
+    }
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility)
+    }
+  }, [getDeck, cancelFades])
 
   // ---- Reconciliation: sync isPlaying to the audio's actual state ------
   // Some browsers (notably mobile Safari) fire `play`/`pause` events out
