@@ -426,31 +426,29 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       idle.currentTime = 0
       activeDeckRef.current = idleId
 
+      // Always start the new deck at full target volume — no fade-in.
+      // A faded ramp-in only works in the foreground (rAF), and on a
+      // hidden tab a stalled fade leaves the new song silently
+      // advancing while the OS suspends our audio session entirely.
       const target = userTargetVolume()
-      const isHidden =
-        typeof document !== "undefined" && document.hidden
+      idle.volume = target
+      void idle.play().catch(() => {})
 
-      if (isHidden) {
-        // requestAnimationFrame is suspended on hidden tabs — a faded
-        // crossfade would leave the new deck stuck at volume 0 and
-        // the user would hear silence until the page comes back. Hard
-        // cut instead. The transition isn't audible anyway.
-        idle.volume = target
-        void idle.play().catch(() => {})
+      // Fade the OLD deck out so the transition is still smooth when
+      // visible. If rAF is throttled (hidden), the old deck simply
+      // keeps playing at full volume until it reaches its natural
+      // end — which is fine, both decks playing briefly keeps the
+      // audio session continuously alive across the swap.
+      setFade(activeId, fadeVolume(active, 0, CROSSFADE_MS))
+      void fadesRef.current[activeId]?.promise.then(() => {
         active.pause()
-        console.info("[player] crossfade: hard cut (hidden)")
-      } else {
-        idle.volume = 0
-        void idle.play().catch(() => {})
-        const oldDeckId = activeId
-        const newDeckId = idleId
-        setFade(oldDeckId, fadeVolume(active, 0, CROSSFADE_MS))
-        setFade(newDeckId, fadeVolume(idle, target, CROSSFADE_MS))
-        void fadesRef.current[oldDeckId]?.promise.then(() => {
-          // The old deck has fully faded; stop it and free the buffer.
-          active.pause()
-        })
-      }
+      })
+      // Safety pause: if the rAF fade got stuck (hidden tab), ensure
+      // the old deck is paused after a generous window so it doesn't
+      // bleed into the new song forever.
+      setTimeout(() => {
+        if (!active.paused) active.pause()
+      }, CROSSFADE_MS + 1500)
 
       dispatch({ type: "SET_INDEX", index })
       dispatch({ type: "TIME", position: 0 })
