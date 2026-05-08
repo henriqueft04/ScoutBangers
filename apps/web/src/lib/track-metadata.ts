@@ -22,10 +22,12 @@ export interface TrackMetadata {
 
 /**
  * Bytes to fetch when reading a track's metadata. Most ID3 tags (including
- * embedded album art) sit at the front of the file; we pull 512 KB to handle
- * larger embedded artwork without a second roundtrip.
+ * embedded album art) sit at the front of the file. 2 MB is enough to
+ * cover commonly-large embedded covers (e.g. 1024×1024 PNGs run a few
+ * hundred KB but extreme cases push past 512 KB) without paying for the
+ * whole audio body.
  */
-const PARTIAL_BYTES = 512 * 1024
+const PARTIAL_BYTES = 2 * 1024 * 1024
 
 /**
  * Gap between metadata fetches. Service-account auth doesn't trigger
@@ -206,27 +208,59 @@ async function fetchAndParse(songId: string): Promise<TrackMetadata> {
   if (Date.now() < cooldownUntil) {
     throw new Error("metadata fetcher in cooldown")
   }
+
+  // Pass 1: head of the file. Fast, covers ID3 + most front-loaded MP4
+  // moov atoms. The vast majority of files are decoded here.
+  let metadata = await fetchRange(songId, PARTIAL_BYTES)
+  let result = await toTrackMetadata(metadata)
+
+  // Pass 2: if nothing landed (typical of MP4/M4A with the moov atom
+  // at the end), fall back to the full file. We still cap at 30 MB to
+  // avoid choking on bizarrely large rips.
+  const isMp4Like =
+    metadata.format.container?.toLowerCase().includes("mp4") ||
+    metadata.format.container?.toLowerCase().includes("m4a") ||
+    false
+  const noUsefulMeta =
+    !metadata.common.picture?.[0] &&
+    !metadata.common.title &&
+    !metadata.common.artist
+  if (isMp4Like && noUsefulMeta) {
+    try {
+      metadata = await fetchRange(songId, 30 * 1024 * 1024)
+      result = await toTrackMetadata(metadata)
+    } catch {
+      // Keep the (empty) pass-1 result.
+    }
+  }
+
+  return result
+}
+
+async function fetchRange(songId: string, bytes: number) {
   const response = await fetch(streamUrl(songId), {
-    headers: { Range: `bytes=0-${PARTIAL_BYTES - 1}` },
+    headers: { Range: `bytes=0-${bytes - 1}` },
   })
   if (response.status !== 200 && response.status !== 206) {
     throw new Error(`metadata fetch ${response.status}`)
   }
-
   const buffer = await response.arrayBuffer()
   const blob = new Blob([buffer])
-  const metadata = await parseBlob(blob, {
+  return parseBlob(blob, {
     skipCovers: false,
     skipPostHeaders: true,
     duration: false,
   })
+}
 
+async function toTrackMetadata(
+  metadata: Awaited<ReturnType<typeof parseBlob>>
+): Promise<TrackMetadata> {
   const result: TrackMetadata = {
     artist: metadata.common.artist || undefined,
     album: metadata.common.album || undefined,
     title: metadata.common.title || undefined,
   }
-
   const picture = metadata.common.picture?.[0]
   if (picture) {
     const pictureBlob = new Blob([new Uint8Array(picture.data)], {
@@ -236,7 +270,6 @@ async function fetchAndParse(songId: string): Promise<TrackMetadata> {
     result.pictureType = picture.format
     result.pictureDataUrl = await blobToDataUrl(pictureBlob)
   }
-
   return result
 }
 

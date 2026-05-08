@@ -20,12 +20,11 @@ interface FeedEntry {
 }
 
 /**
- * Recent plays from everyone, joined to the local song catalog so we
- * can render titles + artwork. Pulls from the `recent_plays` Supabase
- * RPC (granted to anon so the feed renders pre-sign-in).
- *
- * Refreshes on visibilitychange and when the playing song changes so
- * the feed stays warm without a hard refresh.
+ * Recent plays from everyone, rendered as a 2-row horizontal carousel
+ * (swipe / scroll sideways through the cards). Each card keeps the
+ * original avatar + name + song layout, just framed by a thin red
+ * border. "played" was replaced with the relative time so each row
+ * reads "Name · 5 min ago".
  */
 export function FriendsFeed() {
   const { songs, play } = usePlayer()
@@ -70,7 +69,6 @@ export function FriendsFeed() {
     }
   }, [])
 
-  // Resolve song metadata from local catalog.
   const songsById = React.useMemo(
     () => new Map(songs.map((song) => [song.id, song])),
     [songs]
@@ -105,17 +103,19 @@ export function FriendsFeed() {
           No friend activity yet — invite some friends to listen.
         </p>
       ) : (
-        <ul role="list" className="flex flex-col gap-px">
+        <div
+          role="list"
+          className="-mx-3 grid auto-cols-[16rem] grid-flow-col grid-rows-2 gap-2 overflow-x-auto px-3 pb-2 snap-x snap-mandatory md:-mx-6 md:auto-cols-[18rem] md:px-6"
+        >
           {entries.map((entry, index) => (
-            <li key={`${entry.userId}-${entry.songId}-${entry.playedAt}-${index}`}>
-              <FeedRow
-                entry={entry}
-                song={songsById.get(entry.songId)}
-                onPlay={handlePlay}
-              />
-            </li>
+            <FeedRow
+              key={`${entry.userId}-${entry.songId}-${entry.playedAt}-${index}`}
+              entry={entry}
+              song={songsById.get(entry.songId)}
+              onPlay={handlePlay}
+            />
           ))}
-        </ul>
+        </div>
       )}
     </section>
   )
@@ -139,7 +139,7 @@ function FeedRow({ entry, song, onPlay }: FeedRowProps) {
   return (
     <div
       ref={ref}
-      role={playable ? "button" : undefined}
+      role={playable ? "button" : "listitem"}
       tabIndex={playable ? 0 : undefined}
       onClick={playable ? () => onPlay(entry.songId) : undefined}
       onKeyDown={
@@ -154,7 +154,7 @@ function FeedRow({ entry, song, onPlay }: FeedRowProps) {
       }
       aria-label={playable ? `Play ${title}` : undefined}
       className={cn(
-        "group/feed flex items-center gap-3 rounded-md px-2 py-2 transition-colors",
+        "group/feed border-primary/30 flex snap-start items-center gap-3 rounded-md border px-2 py-2 transition-colors",
         playable
           ? "hover:bg-muted active:bg-accent cursor-pointer focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none touch-manipulation"
           : "opacity-60"
@@ -186,11 +186,10 @@ function FeedRow({ entry, song, onPlay }: FeedRowProps) {
           >
             {entry.displayName}
           </Link>
-          <span className="text-muted-foreground"> played</span>
+          <span className="text-muted-foreground"> · {relativeTime(entry.playedAt)}</span>
         </p>
         <p className="text-muted-foreground truncate text-xs">
           <span className="text-foreground">{title}</span>
-          <span> · {relativeTime(entry.playedAt)}</span>
         </p>
       </div>
       {playable ? (
