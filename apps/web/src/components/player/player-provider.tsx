@@ -29,18 +29,14 @@ const VALID_SORTS: ReadonlyArray<SortMode> = ["default", "title", "artist"]
 
 const CROSSFADE_MS = 2000
 /**
- * Trigger crossfade when this many seconds remain on the current song.
- * Two thresholds so we don't trade a smooth foreground transition for
- * the backgrounded reliability fix:
- *  - visible: matches CROSSFADE_MS so the 2-second fade ends right at
- *    the song's natural end (no audible early cut).
- *  - hidden:  generous buffer so the throttled setInterval (~1 Hz on
- *    backgrounded mobile tabs) still catches the trigger before the
- *    audio reaches `ended`. If audio fully ends, the OS suspends our
- *    JS and the next song never starts until the user re-opens.
+ * Trigger crossfade when this many seconds remain. Matches CROSSFADE_MS
+ * so the fade ends right at the natural end of the current song. The
+ * backgrounded reliability fix (interval-driven trigger, hard-cut path
+ * when hidden) handles backgrounded playback at this same threshold —
+ * browsers keep setInterval near 1 Hz on tabs that are actively
+ * playing audio, which is enough lead at a 2 s threshold.
  */
-const CROSSFADE_LEAD_SECONDS_VISIBLE = 2
-const CROSSFADE_LEAD_SECONDS_HIDDEN = 6
+const CROSSFADE_LEAD_SECONDS = 2
 /** Begin prefetching the next song's audio onto the idle deck this far in. */
 /** Trigger the idle-deck preload this far into the current song.
  *  Earlier = more reliable when the tab is backgrounded (Android/iOS
@@ -544,17 +540,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           warmHttpCacheForUpcoming(stateRef.current, 5)
         }
 
-        // Auto-trigger crossfade. Lead time depends on visibility —
-        // tight in the foreground for a smooth fade, generous when
-        // backgrounded so the throttled timer doesn't miss the window.
-        const lead =
-          typeof document !== "undefined" && document.hidden
-            ? CROSSFADE_LEAD_SECONDS_HIDDEN
-            : CROSSFADE_LEAD_SECONDS_VISIBLE
+        // Auto-trigger crossfade when within the lead window. Same
+        // threshold for visible and hidden — the interval timer below
+        // is the backup that survives backgrounded throttling.
         if (
           !crossfadeArmedRef.current &&
           stateRef.current.repeat !== "one" &&
-          duration - audio.currentTime <= lead
+          duration - audio.currentTime <= CROSSFADE_LEAD_SECONDS
         ) {
           const advance = computeAdvance(1, true)
           if (advance) {
@@ -689,17 +681,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
       // Crossfade trigger that survives backgrounded throttling.
       const duration = active.duration
-      const lead =
-        typeof document !== "undefined" && document.hidden
-          ? CROSSFADE_LEAD_SECONDS_HIDDEN
-          : CROSSFADE_LEAD_SECONDS_VISIBLE
       if (
         actuallyPlaying &&
         Number.isFinite(duration) &&
         duration > 0 &&
         !crossfadeArmedRef.current &&
         stateRef.current.repeat !== "one" &&
-        duration - active.currentTime <= lead
+        duration - active.currentTime <= CROSSFADE_LEAD_SECONDS
       ) {
         const advance = computeAdvance(1, true)
         if (advance) {
