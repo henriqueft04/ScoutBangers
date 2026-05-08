@@ -28,8 +28,15 @@ interface PersistedPlayback {
 const VALID_SORTS: ReadonlyArray<SortMode> = ["default", "title", "artist"]
 
 const CROSSFADE_MS = 2000
-/** Trigger auto-crossfade when this many seconds remain on the current song. */
-const CROSSFADE_LEAD_SECONDS = CROSSFADE_MS / 1000
+/**
+ * Trigger auto-crossfade when this many seconds remain. Larger than
+ * CROSSFADE_MS so backgrounded clients (where the timer is throttled
+ * to ~1 Hz on iOS / Android) still have a comfortable window to fire
+ * before the audio reaches its natural end. If we miss the window the
+ * audio session goes silent and the OS suspends our JS — and the next
+ * song never plays until the user re-opens the app.
+ */
+const CROSSFADE_LEAD_SECONDS = 6
 /** Begin prefetching the next song's audio onto the idle deck this far in. */
 /** Trigger the idle-deck preload this far into the current song.
  *  Earlier = more reliable when the tab is backgrounded (Android/iOS
@@ -620,8 +627,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   // ---- Reconciliation: sync isPlaying to the audio's actual state ------
   // Some browsers (notably mobile Safari) fire `play`/`pause` events out
   // of order during src changes, which can leave the icon out of sync.
-  // A 250 ms tick reads the audio element directly and dispatches only
-  // when state genuinely differs — cheap, eventually consistent.
+  // The same 1 s tick also drives the auto-advance crossfade — relying
+  // on `timeupdate` for that fails on backgrounded tabs where the
+  // event is throttled or skipped entirely. setInterval is throttled
+  // to ~1 Hz when hidden but still fires, which is enough lead time
+  // with CROSSFADE_LEAD_SECONDS = 6.
   React.useEffect(() => {
     const interval = setInterval(() => {
       const active = getDeck(activeDeckRef.current)
@@ -630,9 +640,30 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (actuallyPlaying !== stateRef.current.isPlaying) {
         dispatch({ type: "SET_PLAYING", isPlaying: actuallyPlaying })
       }
-    }, 250)
+
+      // Crossfade trigger that survives backgrounded throttling.
+      const duration = active.duration
+      if (
+        actuallyPlaying &&
+        Number.isFinite(duration) &&
+        duration > 0 &&
+        !crossfadeArmedRef.current &&
+        stateRef.current.repeat !== "one" &&
+        duration - active.currentTime <= CROSSFADE_LEAD_SECONDS
+      ) {
+        const advance = computeAdvance(1, true)
+        if (advance) {
+          console.info("[player] interval-crossfade fire", {
+            remaining: duration - active.currentTime,
+            hidden: typeof document !== "undefined" ? document.hidden : null,
+          })
+          crossfadeArmedRef.current = true
+          playIndex(advance.index, { crossfade: true })
+        }
+      }
+    }, 1000)
     return () => clearInterval(interval)
-  }, [getDeck])
+  }, [getDeck, computeAdvance, playIndex])
 
   // ---- Public actions --------------------------------------------------
 
