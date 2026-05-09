@@ -86,10 +86,20 @@ function tokenSet(s: string): Set<string> {
   return new Set(s.split(/\s+/).filter(Boolean))
 }
 
-function isSubset(needle: Set<string>, hay: Set<string>): boolean {
-  if (needle.size === 0) return false
-  for (const t of needle) if (!hay.has(t)) return false
-  return true
+/**
+ * Jaccard similarity between two token sets — |A ∩ B| / |A ∪ B|.
+ * 1 means identical, 0 means disjoint. Used to gate the
+ * token-overlap match path so a 3-token cache key like "hino de
+ * cenaculo" doesn't spuriously match an 8-token query like "hino
+ * xvi ciclo de cenaculo do nucleo este" just because the small
+ * set is a subset of the larger one.
+ */
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0
+  let intersection = 0
+  for (const t of a) if (b.has(t)) intersection++
+  const union = a.size + b.size - intersection
+  return intersection / union
 }
 
 /**
@@ -138,11 +148,18 @@ function fuzzyMatchKey(
         score = Math.max(score, 70)
       }
     }
+    // Token-overlap path: only credit token matches when the two
+    // sets are similar enough to be the same song. Strict Jaccard
+    // gate prevents a short cache key (e.g. "hino de cenaculo")
+    // from latching onto every song that happens to share its
+    // tokens (e.g. "hino xvi ciclo de cenaculo do nucleo este").
     for (const qTokens of queryTokens) {
-      if (isSubset(keyTokens, qTokens)) {
-        score = Math.max(score, 65)
-      } else if (isSubset(qTokens, keyTokens)) {
-        score = Math.max(score, 60)
+      const sim = jaccard(keyTokens, qTokens)
+      if (sim >= 0.85) {
+        // Reordered titles or tiny edits ("hino XII" vs "hino do XII").
+        score = Math.max(score, 70)
+      } else if (sim >= 0.7) {
+        score = Math.max(score, 62)
       }
     }
     if (score > bestScore) {
