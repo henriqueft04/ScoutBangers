@@ -1,13 +1,11 @@
 import * as React from "react"
 import { ListPlus, Pause, Play } from "lucide-react"
-import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { usePlayer } from "@/hooks/usePlayer"
 import { useTrackVisuals } from "@/hooks/useTrackVisuals"
-import { artistHref } from "@/lib/artists"
 import { displayArtist, displayTitle } from "@/lib/song-display"
 import type { Song } from "@/lib/types"
 
@@ -225,13 +223,13 @@ export function SongRow({
               {playCount === 1 ? "reprodução" : "reproduções"}
             </p>
           ) : artist ? (
-            <Link
-              to={artistHref(artist)}
-              onClick={(event) => event.stopPropagation()}
-              className="text-muted-foreground hover:text-foreground inline-block max-w-full truncate text-xs hover:underline"
-            >
+            // Plain text — not a link. Stops accidental taps on the
+            // artist line from navigating to the artist page when the
+            // user meant to play the song. Artist navigation is still
+            // available from the player bar / fullscreen player.
+            <p className="text-muted-foreground truncate text-xs">
               {artist}
-            </Link>
+            </p>
           ) : null}
         </div>
         <Button

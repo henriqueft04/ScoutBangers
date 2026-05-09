@@ -3,7 +3,9 @@ import * as React from "react"
 import { useSongs } from "@/hooks/useSongs"
 import { audioEngine, type FadeHandle } from "@/lib/audio-engine"
 import { streamUrl } from "@/lib/audio-url"
+import { rememberSearch } from "@/lib/search-history"
 import { shufflePreservingCurrent } from "@/lib/shuffle"
+import { displayArtist, displayTitle } from "@/lib/song-display"
 import { getCached, setCached } from "@/lib/storage"
 import {
   ensureTrackMetadata,
@@ -817,6 +819,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       const s = stateRef.current
       const song = s.songs[index]
       if (!song) return
+
+      // If a library search was active when the user picked this
+      // song, attribute the play to the search term so the dropdown
+      // can show "you ended up listening to ..." next time.
+      if (s.search.trim().length > 0) {
+        const meta = peekTrackMetadata(song.id)
+        rememberSearch(s.search, {
+          id: song.id,
+          title: displayTitle(song, meta),
+          artist: displayArtist(song, meta),
+        })
+      }
 
       // Build the natural list for this play context. If the caller
       // didn't pass one, fall back to the current library sort order.

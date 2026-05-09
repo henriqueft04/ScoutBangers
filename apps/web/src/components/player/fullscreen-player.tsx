@@ -1,7 +1,7 @@
 import * as React from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { Check, ChevronDown, Download, Share2 } from "lucide-react"
-import { Link } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
 
@@ -33,10 +33,53 @@ interface FullscreenPlayerProps {
  */
 export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
   const { songs, currentIndex } = usePlayer()
+  const navigate = useNavigate()
   const song = currentIndex !== null ? songs[currentIndex] : undefined
   const meta = useTrackMetadata(song?.id, Boolean(song), song?.modifiedTime)
   const [copied, setCopied] = React.useState(false)
   const [queueOpenRaw, setQueueOpenRaw] = React.useState(false)
+
+  /**
+   * Navigate from inside the fullscreen sheet to a route. Pops our
+   * `{fullscreen: true}` history marker FIRST (so the existing
+   * popstate handler also tears the sheet down), then pushes the
+   * destination once the pop has completed. Without this the sheet
+   * stays as a hidden middle entry in history and the user has to
+   * press back twice to get to where they were.
+   *
+   * The replace-via-react-router approach doesn't work here: by the
+   * time react-router sees `navigate(..., { replace: true })`, our
+   * marker isn't necessarily the entry it ends up rewriting (and
+   * the effect cleanup can't see the marker anymore either).
+   */
+  const handleInternalNavigate = React.useCallback(
+    (to: string) => {
+      const state = window.history.state
+      const hasFullscreenMarker =
+        state &&
+        typeof state === "object" &&
+        (state as { fullscreen?: boolean }).fullscreen === true
+
+      if (!hasFullscreenMarker) {
+        // Sheet wasn't pushed onto history (shouldn't happen, but
+        // safe fallback): just navigate normally.
+        onClose()
+        navigate(to)
+        return
+      }
+
+      const onPop = () => {
+        window.removeEventListener("popstate", onPop)
+        // The existing fullscreen popstate listener has already run
+        // and called onClose; we just need to push the destination
+        // on top of the now-marker-free history.
+        navigate(to)
+      }
+      window.addEventListener("popstate", onPop)
+      window.history.back()
+    },
+    [navigate, onClose]
+  )
 
   // Derive queueOpen from `open` so it's automatically false whenever
   // the fullscreen sheet is closed — no effect needed, no stale state
@@ -211,13 +254,13 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
               <MarqueeText className="w-full text-center">{title}</MarqueeText>
             </h2>
             {artist ? (
-              <Link
-                to={artistHref(artist)}
-                onClick={onClose}
+              <button
+                type="button"
+                onClick={() => handleInternalNavigate(artistHref(artist))}
                 className="text-muted-foreground hover:text-foreground mt-1 inline-block max-w-full truncate text-sm hover:underline"
               >
                 {artist}
-              </Link>
+              </button>
             ) : (
               song && (
                 <span className="text-muted-foreground mt-1 block text-sm" />
