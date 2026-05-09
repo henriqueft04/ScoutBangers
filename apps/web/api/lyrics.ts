@@ -1,25 +1,26 @@
-import mammoth from "mammoth"
-
 import { getDriveAccessToken } from "./_lib/drive-auth.js"
 
+export const config = { runtime: "edge" }
+
 /**
- * GET /api/lyrics — Node function (mammoth is not Edge-compatible).
+ * GET /api/lyrics — Edge function.
  *
- * Fetches the configured Google Doc lyrics file from Drive, parses
- * the .docx export with mammoth into markdown, splits by headings
- * into a normalized-title → lyrics map, and returns it as JSON.
+ * Fetches the configured Google Doc lyrics file from Drive as HTML
+ * directly (Drive does the conversion server-side, no mammoth
+ * needed), splits by headings into a normalized-title → lyrics map,
+ * and returns it as JSON.
  *
- * The doc is expected to have one heading per song (any heading
- * level), with the song's lyrics as the body until the next heading.
+ * The doc is expected to have one heading per song. Section
+ * structure is auto-detected per H1: H3 if the section contains
+ * any H3, otherwise H2.
  *
- * Cached aggressively at the edge — the doc rarely changes minute-
- * by-minute, and the browser maintains its own 24 h IDB cache on
- * top of this anyway.
+ * Cached aggressively at the edge — the doc rarely changes
+ * minute-by-minute, and the browser maintains its own 24 h cache
+ * on top of this.
  */
 
 const DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files"
-const DOCX_MIME =
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+const HTML_MIME = "text/html"
 
 interface LyricsPayload {
   /** ISO timestamp from Drive's modifiedTime, for staleness detection. */
@@ -55,14 +56,33 @@ function decodeHtmlEntities(s: string): string {
     )
 }
 
+/**
+ * Strip every span/element whose inline style or class style maps
+ * to the chord colour (#0BA6B8). Drive emits Docs-styled spans
+ * with `style="color:#0ba6b8"` (or via a `class` referencing a
+ * preceding <style>). We only handle the inline-style case here;
+ * if Drive uses class-based we fall back to the heuristic chord
+ * matcher in isChordOnlyLine below.
+ */
+function stripChordSpans(html: string): string {
+  // Drop the entire span/run if its style contains the chord color.
+  // This is done greedily-but-narrowly: <span style="...color:#0ba6b8...">...</span>
+  return html.replace(
+    /<(span|font)[^>]*\bstyle\s*=\s*"[^"]*color\s*:\s*#0ba6b8[^"]*"[^>]*>([\s\S]*?)<\/\1>/gi,
+    ""
+  )
+}
+
 function htmlBlockToText(html: string): string {
   return decodeHtmlEntities(
-    html
+    stripChordSpans(html)
       // Block-level breaks → newlines.
       .replace(/<\s*br\s*\/?\s*>/gi, "\n")
       .replace(/<\s*\/p\s*>/gi, "\n")
       .replace(/<\s*\/li\s*>/gi, "\n")
       .replace(/<\s*\/div\s*>/gi, "\n")
+      // Strip <style> blocks so their CSS doesn't leak into the body.
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
       // Strip the rest of the tags.
       .replace(/<[^>]+>/g, "")
   )
@@ -116,16 +136,12 @@ function bodyParagraphs(html: string): Paragraph[] {
   let m: RegExpExecArray | null
   while ((m = re.exec(html)) !== null) {
     const inner = m[1] ?? ""
-    // Bold paragraph either wraps its content in <strong>, or every
-    // text run inside it is bold. Treat the wrap-in-strong case as
-    // 'bold paragraph' since that's how mammoth emits it for the
-    // Cancioneiro's chorus sections.
-    const trimmedInner = inner.trim()
-    const bold =
-      /^<strong[^>]*>[\s\S]*<\/strong>$/i.test(trimmedInner) &&
-      !/<\/?strong[^>]*>/i.test(
-        trimmedInner.replace(/^<strong[^>]*>|<\/strong>$/gi, "")
-      )
+    // Drive marks bold via `font-weight:700` inline style on spans.
+    // If most of the runs in this paragraph are bold, treat it as a
+    // chorus / refrão paragraph. We approximate "most" by checking
+    // any presence — chorus sections in this Cancioneiro are
+    // uniformly bolded.
+    const bold = /font-weight\s*:\s*(7|800|900|bold)/i.test(inner)
     const text = htmlBlockToText(inner)
     if (text.length === 0) continue
     out.push({ text, bold })
@@ -271,9 +287,11 @@ export default async function handler(
   }
 
   // Fetch modifiedTime in parallel with the export so we can include
-  // it in the response for client-side cache invalidation.
+  // it in the response for client-side cache invalidation. Drive
+  // exports the Google Doc directly to HTML server-side — much
+  // faster than downloading a .docx and parsing locally.
   const metaUrl = `${DRIVE_FILES_URL}/${encodeURIComponent(fileId)}?fields=modifiedTime`
-  const exportUrl = `${DRIVE_FILES_URL}/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(DOCX_MIME)}`
+  const exportUrl = `${DRIVE_FILES_URL}/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(HTML_MIME)}`
   const headers = { Authorization: `Bearer ${token}` }
 
   let metaResponse: Response
@@ -292,45 +310,13 @@ export default async function handler(
 
   if (!exportResponse.ok) {
     const detail = await exportResponse.text()
-    // Files uploaded as .docx (not native Google Docs) don't support
-    // export — fall back to direct download.
-    if (exportResponse.status === 403 || exportResponse.status === 400) {
-      const fallbackUrl = `${DRIVE_FILES_URL}/${encodeURIComponent(fileId)}?alt=media`
-      try {
-        exportResponse = await fetch(fallbackUrl, { headers })
-      } catch (error) {
-        return new Response(
-          `Drive media fetch failed: ${error instanceof Error ? error.message : String(error)}`,
-          { status: 502 }
-        )
-      }
-      if (!exportResponse.ok) {
-        return new Response(
-          `Drive returned ${exportResponse.status}`,
-          { status: 502 }
-        )
-      }
-    } else {
-      return new Response(
-        `Drive returned ${exportResponse.status}: ${detail.slice(0, 400)}`,
-        { status: 502 }
-      )
-    }
-  }
-
-  const arrayBuffer = await exportResponse.arrayBuffer()
-  const buffer = Buffer.from(arrayBuffer)
-
-  let html: string
-  try {
-    const result = await mammoth.convertToHtml({ buffer })
-    html = result.value
-  } catch (error) {
     return new Response(
-      `Could not parse .docx: ${error instanceof Error ? error.message : String(error)}`,
-      { status: 500 }
+      `Drive returned ${exportResponse.status}: ${detail.slice(0, 400)}`,
+      { status: 502 }
     )
   }
+
+  const html = await exportResponse.text()
 
   let modifiedTime: string | null = null
   if (metaResponse.ok) {
