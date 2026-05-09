@@ -365,8 +365,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
       // Make sure metadata (and the canonical duration that comes with
       // it) is loading for this song. Cached after first play, so this
-      // is a no-op on revisits.
-      void ensureTrackMetadata(song.id, song.modifiedTime)
+      // is a no-op on revisits. When it resolves, re-dispatch duration
+      // if the user is still on this song — first plays often see the
+      // (estimated) audio.duration first, then upgrade to the exact
+      // tag duration once metadata parses.
+      void ensureTrackMetadata(song.id, song.modifiedTime).then((meta) => {
+        if (
+          meta.duration &&
+          stateRef.current.currentIndex !== null &&
+          stateRef.current.songs[stateRef.current.currentIndex]?.id === song.id
+        ) {
+          dispatch({ type: "DURATION", duration: meta.duration })
+        }
+      })
 
       const newSrc = streamUrl(song.id)
       const sameSong = s.currentIndex === index
@@ -418,6 +429,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           prefetchedIdRef.current = null
           dispatch({ type: "SET_INDEX", index })
           dispatch({ type: "TIME", position: 0 })
+          // The idle deck loaded its metadata while it was inactive,
+          // so handleDuration was skipped. Re-dispatch now that it's
+          // the active deck — otherwise the UI keeps showing the old
+          // song's duration until durationchange fires (which it
+          // doesn't, for a preloaded deck whose src didn't change).
+          dispatch({
+            type: "DURATION",
+            duration: Number.isFinite(canonicalDuration(idle))
+              ? canonicalDuration(idle)
+              : 0,
+          })
           dispatch({ type: "PLAYBACK_ERROR", message: null })
           return
         }
@@ -483,6 +505,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
       dispatch({ type: "SET_INDEX", index })
       dispatch({ type: "TIME", position: 0 })
+      // Same reason as the non-crossfade fast path — the new active
+      // deck loaded its metadata silently while it was idle.
+      dispatch({
+        type: "DURATION",
+        duration: Number.isFinite(canonicalDuration(idle))
+          ? canonicalDuration(idle)
+          : 0,
+      })
       dispatch({ type: "PLAYBACK_ERROR", message: null })
     },
     [getDeck, userTargetVolume, cancelFades, setFade, consumeQueueSong]
