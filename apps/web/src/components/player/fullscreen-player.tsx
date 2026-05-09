@@ -60,20 +60,27 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
         typeof state === "object" &&
         (state as { fullscreen?: boolean }).fullscreen === true
 
+      // If we're already at the destination URL (e.g. user is on
+      // /artist/foo, opens fullscreen, clicks the same artist),
+      // pushing it again would create a duplicate entry — same URL,
+      // requires two back-presses to actually leave the page.
+      const currentPath = window.location.pathname + window.location.search
+      const sameDestination = currentPath === to
+
       if (!hasFullscreenMarker) {
-        // Sheet wasn't pushed onto history (shouldn't happen, but
-        // safe fallback): just navigate normally.
         onClose()
-        navigate(to)
+        if (!sameDestination) navigate(to)
         return
       }
 
+      // Pop our fullscreen marker. The existing popstate listener
+      // tears the sheet down; if we're going somewhere new we then
+      // push the destination on top of the now-clean stack. If the
+      // destination is where we already were, popping the marker is
+      // all we needed — we're already there.
       const onPop = () => {
         window.removeEventListener("popstate", onPop)
-        // The existing fullscreen popstate listener has already run
-        // and called onClose; we just need to push the destination
-        // on top of the now-marker-free history.
-        navigate(to)
+        if (!sameDestination) navigate(to)
       }
       window.addEventListener("popstate", onPop)
       window.history.back()
