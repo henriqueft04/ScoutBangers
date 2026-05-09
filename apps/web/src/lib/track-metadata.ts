@@ -16,6 +16,15 @@ export interface TrackMetadata {
   artist?: string
   album?: string
   title?: string
+  /**
+   * Exact playback duration in seconds, sourced from the file's own
+   * tags (ID3v2 TLEN, Xing/Info header for VBR MP3, MP4 mvhd, etc.).
+   * Preferred over `audio.duration`, which the browser estimates from
+   * the bitrate of the first frame for tagless VBR files and is often
+   * tens of seconds off in either direction. `undefined` when the
+   * file lacks the relevant tag.
+   */
+  duration?: number
   /** Object URL for `<img src>`. Cached for the app's lifetime. */
   pictureUrl?: string
   /** Data URL (base64). Used for cross-process consumers like
@@ -95,6 +104,7 @@ async function loadPersistedCache(): Promise<void> {
       artist: entry.artist,
       album: entry.album,
       title: entry.title,
+      duration: entry.duration,
       pictureType: entry.pictureType,
       pictureBlob: entry.pictureBlob,
     }
@@ -175,10 +185,23 @@ export function ensureTrackMetadata(
   const cached = resolved.get(songId)
   if (cached) {
     const cachedMtime = cachedModifiedTime.get(songId)
-    if (!modifiedTime || cachedMtime === modifiedTime) {
+    const mtimeOk = !modifiedTime || cachedMtime === modifiedTime
+    // One-time migration: entries cached before we started tracking
+    // duration don't have the field. Refetch once so they pick it up.
+    // Identified by: meta exists, but no duration AND no picture (old
+    // empty-tag entries) — or has tags. We only re-fetch if there's
+    // ANY structured data (artist/album/title/picture) but no
+    // duration; an entry with neither tags nor duration is genuinely
+    // tagless and refetching wouldn't help.
+    const looksUpgradable =
+      cached.duration === undefined &&
+      Boolean(
+        cached.artist || cached.album || cached.title || cached.pictureBlob
+      )
+    if (mtimeOk && !looksUpgradable) {
       return Promise.resolve(cached)
     }
-    // Stale: evict and fall through to re-fetch.
+    // Stale or pre-duration entry: evict and re-fetch.
     resolved.delete(songId)
     cachedModifiedTime.delete(songId)
     void deletePersisted(songId)
@@ -200,6 +223,7 @@ export function ensureTrackMetadata(
         artist: value.artist,
         album: value.album,
         title: value.title,
+        duration: value.duration,
         pictureBlob: value.pictureBlob,
         pictureType: value.pictureType,
         cachedAt: Date.now(),
@@ -277,10 +301,15 @@ async function fetchRange(songId: string, bytes: number) {
 async function toTrackMetadata(
   metadata: Awaited<ReturnType<typeof parseBlob>>
 ): Promise<TrackMetadata> {
+  const reportedDuration = metadata.format.duration
   const result: TrackMetadata = {
     artist: metadata.common.artist || undefined,
     album: metadata.common.album || undefined,
     title: metadata.common.title || undefined,
+    duration:
+      typeof reportedDuration === "number" && reportedDuration > 0
+        ? reportedDuration
+        : undefined,
   }
   const picture = metadata.common.picture?.[0]
   if (picture) {

@@ -5,7 +5,11 @@ import { streamUrl } from "@/lib/audio-url"
 import { fadeVolume, type FadeHandle } from "@/lib/fade"
 import { shufflePreservingCurrent } from "@/lib/shuffle"
 import { getCached, setCached } from "@/lib/storage"
-import { prefetchAllMetadata } from "@/lib/track-metadata"
+import {
+  ensureTrackMetadata,
+  peekTrackMetadata,
+  prefetchAllMetadata,
+} from "@/lib/track-metadata"
 import type { PlayerContextValue, SortMode } from "@/lib/types"
 
 import { PlayerContext } from "./player-context"
@@ -90,6 +94,25 @@ function warmHttpCacheForUpcoming(
     void fetch(`/api/stream/${id}`).catch(() => undefined)
     warmed++
   }
+}
+
+/**
+ * Read the canonical playback duration for whatever song is loaded on
+ * an audio deck. Prefers the value parsed from the file's tags
+ * (TLEN / Xing / mvhd, surfaced via `peekTrackMetadata`) over
+ * `audio.duration`, which the browser estimates from first-frame
+ * bitrate and gets wrong by tens of seconds for tagless VBR files.
+ * Falls back to `audio.duration` when no metadata duration is cached.
+ */
+function canonicalDuration(audio: HTMLAudioElement): number {
+  const src = audio.currentSrc || audio.src
+  const match = src.match(/\/api\/stream\/([^/?#]+)/)
+  if (match) {
+    const id = decodeURIComponent(match[1]!)
+    const meta = peekTrackMetadata(id)
+    if (meta?.duration && meta.duration > 0) return meta.duration
+  }
+  return audio.duration
 }
 
 /**
@@ -340,6 +363,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       // Lets the queue UI stay unique on play even when the song was in there.
       consumeQueueSong(song.id)
 
+      // Make sure metadata (and the canonical duration that comes with
+      // it) is loading for this song. Cached after first play, so this
+      // is a no-op on revisits.
+      void ensureTrackMetadata(song.id, song.modifiedTime)
+
       const newSrc = streamUrl(song.id)
       const sameSong = s.currentIndex === index
       const wasPlaying = !active.paused
@@ -517,7 +545,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         if (!isActive()) return
         dispatch({ type: "TIME", position: audio.currentTime })
 
-        const duration = audio.duration
+        // Prefer the duration parsed from the file's own tags (TLEN /
+        // Xing / mvhd) over audio.duration, which the browser
+        // estimates from the first frame's bitrate and gets wrong by
+        // tens of seconds for tagless VBR files.
+        const duration = canonicalDuration(audio)
         if (!Number.isFinite(duration) || duration <= 0) return
 
         // Prefetch next song onto idle deck when past PREFETCH_PROGRESS,
@@ -541,9 +573,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           warmHttpCacheForUpcoming(stateRef.current, 5)
         }
 
-        // Auto-trigger crossfade when within the lead window. Same
-        // threshold for visible and hidden — the interval timer below
-        // is the backup that survives backgrounded throttling.
+        // Auto-trigger crossfade when within the lead window.
         if (
           !crossfadeArmedRef.current &&
           stateRef.current.repeat !== "one" &&
@@ -558,9 +588,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       }
       const handleDuration = () => {
         if (isActive()) {
+          const duration = canonicalDuration(audio)
           dispatch({
             type: "DURATION",
-            duration: Number.isFinite(audio.duration) ? audio.duration : 0,
+            duration: Number.isFinite(duration) ? duration : 0,
           })
         }
       }
@@ -577,18 +608,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       }
       const handleEndedEvt = () => {
         if (!isActive()) return
-        // Some VBR files report a wildly wrong audio.duration (the
-        // browser estimates it from the bit-rate of the first frame
-        // when there's no Xing/Info header). When playback truly ends
-        // we know the real length is the final currentTime — correct
-        // the UI so the progress bar doesn't show "1:03 left" forever.
-        if (
-          Number.isFinite(audio.currentTime) &&
-          audio.currentTime > 0 &&
-          audio.currentTime < audio.duration - 1
-        ) {
-          dispatch({ type: "DURATION", duration: audio.currentTime })
-        }
         handleEnded()
       }
       const handleError = () => {
@@ -698,7 +717,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       // OR when the audio has actually ended (catches VBR files where
       // audio.duration is overestimated and the song ends silently
       // before the duration math says it should).
-      const duration = active.duration
+      const duration = canonicalDuration(active)
       const endsSoon =
         Number.isFinite(duration) &&
         duration > 0 &&

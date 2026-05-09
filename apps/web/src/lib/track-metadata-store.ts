@@ -22,6 +22,7 @@ export interface PersistedMetadata {
   artist?: string
   album?: string
   title?: string
+  duration?: number
   pictureBlob?: Blob
   pictureType?: string
   cachedAt: number
