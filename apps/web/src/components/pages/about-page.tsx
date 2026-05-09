@@ -92,11 +92,10 @@ export function AboutPage() {
               </li>
               <li>
                 <strong className="text-foreground">Letras:</strong> abre uma
-                música no leitor inteiro e toca em "Letra" para veres a letra
+                música no leitor inteiro e toca no ícone da página para veres a letra
                 vinda diretamente do Cancioneiro. As letras atualizam-se
                 sozinhas quando o documento é editado. Se precisares dos
-                acordes, há um botão "Ver acordes" que abre o Cancioneiro na
-                música certa.
+                acordes, há um botão "Ver acordes" que abre o Cancioneiro com os acordes.
               </li>
               <li>
                 <strong className="text-foreground">Estatísticas pessoais:</strong>{" "}
