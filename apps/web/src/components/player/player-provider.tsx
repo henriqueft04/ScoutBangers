@@ -97,34 +97,6 @@ function warmHttpCacheForUpcoming(
 }
 
 /**
- * Pause the outgoing deck only after the incoming deck has actually
- * started producing audio output. Without this the swap is "pause
- * old, then call play() on new (async)" — a few-ms gap of silence
- * during which iOS / Android can revoke the audio session and the
- * lock-screen player blinks out for a moment. Listening for the
- * incoming deck's `playing` event (the moment when frames are
- * actually being decoded) keeps the audio output continuous.
- */
-function pauseAfterIncomingPlays(
-  outgoing: HTMLAudioElement,
-  incoming: HTMLAudioElement
-): void {
-  if (outgoing === incoming) return
-  let done = false
-  const finish = () => {
-    if (done) return
-    done = true
-    incoming.removeEventListener("playing", finish)
-    if (!outgoing.paused) outgoing.pause()
-  }
-  incoming.addEventListener("playing", finish)
-  // Fail-safe: if `playing` never fires (e.g. play() was rejected),
-  // pause the outgoing deck after a generous window so we don't end
-  // up with two decks running forever.
-  setTimeout(finish, 1500)
-}
-
-/**
  * Read the canonical playback duration for whatever song is loaded on
  * an audio deck. Prefers the value parsed from the file's tags
  * (TLEN / Xing / mvhd, surfaced via `peekTrackMetadata`) over
@@ -453,11 +425,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             .catch((err) =>
               console.warn("[player] idle.play rejected", err)
             )
-          // Don't pause the old deck until the new one is actually
-          // emitting frames — the gap of silence in between is what
-          // makes iOS revoke the audio session and the lock-screen
-          // player blink out for a moment between songs.
-          pauseAfterIncomingPlays(active, idle)
+          active.pause()
           prefetchedIdRef.current = null
           dispatch({ type: "SET_INDEX", index })
           dispatch({ type: "TIME", position: 0 })
@@ -520,14 +488,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         typeof document !== "undefined" && document.hidden
 
       if (isHidden) {
-        // Backgrounded: don't immediately pause the old deck — wait
-        // until the new one is actually emitting frames. The few-ms
-        // window of dead air between 'old paused' and 'new actually
-        // playing' is what makes iOS revoke the audio session and
-        // blink the lock-screen player out for a moment between
-        // songs. The fail-safe inside pauseAfterIncomingPlays still
-        // bounds it, so we never end up with two decks running.
-        pauseAfterIncomingPlays(active, idle)
+        // Backgrounded: pause the old deck immediately. Two simultaneous
+        // audio streams over a long window can make iOS revoke our
+        // audio session after a few transitions. The brief overlap
+        // with idle.play() above is enough to keep the session
+        // continuously alive across the swap.
+        active.pause()
       } else {
         // Visible: smooth fade-out for the old deck via rAF.
         setFade(activeId, fadeVolume(active, 0, CROSSFADE_MS))
