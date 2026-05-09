@@ -434,21 +434,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       idle.volume = target
       void idle.play().catch(() => {})
 
-      // Fade the OLD deck out so the transition is still smooth when
-      // visible. If rAF is throttled (hidden), the old deck simply
-      // keeps playing at full volume until it reaches its natural
-      // end — which is fine, both decks playing briefly keeps the
-      // audio session continuously alive across the swap.
-      setFade(activeId, fadeVolume(active, 0, CROSSFADE_MS))
-      void fadesRef.current[activeId]?.promise.then(() => {
+      const isHidden =
+        typeof document !== "undefined" && document.hidden
+
+      if (isHidden) {
+        // Backgrounded: pause the old deck immediately. Two simultaneous
+        // audio streams over a long window (the visible-path fade-out
+        // setTimeout is throttled when hidden and may not fire for ages)
+        // can make iOS revoke our audio session after a few transitions.
+        // The brief overlap with idle.play() above is enough to keep the
+        // session continuously alive across the swap.
         active.pause()
-      })
-      // Safety pause: if the rAF fade got stuck (hidden tab), ensure
-      // the old deck is paused after a generous window so it doesn't
-      // bleed into the new song forever.
-      setTimeout(() => {
-        if (!active.paused) active.pause()
-      }, CROSSFADE_MS + 1500)
+      } else {
+        // Visible: smooth fade-out for the old deck via rAF.
+        setFade(activeId, fadeVolume(active, 0, CROSSFADE_MS))
+        void fadesRef.current[activeId]?.promise.then(() => {
+          active.pause()
+        })
+      }
 
       dispatch({ type: "SET_INDEX", index })
       dispatch({ type: "TIME", position: 0 })
