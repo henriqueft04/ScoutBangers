@@ -45,6 +45,8 @@ class AudioEngine {
   private decks = new Map<HTMLAudioElement, DeckState>()
   /** Pending elements queued before the context was created. */
   private pending = new Set<HTMLAudioElement>()
+  /** Silent oscillator that keeps the audio thread continuously active. */
+  private keepalive: OscillatorNode | null = null
 
   /** True when the context exists and is running (audio session held). */
   get isRunning(): boolean {
@@ -75,9 +77,35 @@ class AudioEngine {
         this.attachInternal(audio)
       }
       this.pending.clear()
+      this.startKeepalive()
     }
     if (this.context.state === "suspended") {
       void this.context.resume().catch(() => undefined)
+    }
+  }
+
+  /**
+   * Drive the destination with an inaudible 0-frequency oscillator.
+   * Web Audio's audio thread then has continuous samples to render
+   * even when both deck sources are paused — without it, iOS sees
+   * the destination flat-line during a song change and revokes the
+   * audio session, blanking the lock-screen player. The signal is at
+   * gain 0 so the speaker output is identical to silence; the only
+   * thing it does is keep the session alive.
+   */
+  private startKeepalive(): void {
+    if (!this.context || this.keepalive) return
+    try {
+      const osc = this.context.createOscillator()
+      const gain = this.context.createGain()
+      gain.gain.value = 0
+      osc.frequency.value = 440
+      osc.connect(gain)
+      gain.connect(this.context.destination)
+      osc.start()
+      this.keepalive = osc
+    } catch {
+      /* best-effort */
     }
   }
 
