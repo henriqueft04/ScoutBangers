@@ -99,21 +99,32 @@ function warmHttpCacheForUpcoming(
 
 /**
  * Read the canonical playback duration for whatever song is loaded on
- * an audio deck. Prefers the value parsed from the file's tags
- * (TLEN / Xing / mvhd, surfaced via `peekTrackMetadata`) over
- * `audio.duration`, which the browser estimates from first-frame
- * bitrate and gets wrong by tens of seconds for tagless VBR files.
- * Falls back to `audio.duration` when no metadata duration is cached.
+ * an audio deck. Both sources lie sometimes:
+ *  - `audio.duration` is the browser's estimate; for tagless VBR
+ *    MP3s it's off by tens of seconds in either direction.
+ *  - `metadata.duration` comes from ID3/Xing/mvhd tags. Exact when
+ *    present, but some files have a wrong tag (off by a lot — we've
+ *    seen songs marked as 1 minute that actually run 3+).
+ *
+ * Take the larger of the two so a wrong-low value from either source
+ * can't shorten the bar / fire the crossfade early. If both are below
+ * the current playback position, the file is actually longer than
+ * either source claims — fall through to currentTime + 1 so the bar
+ * keeps progressing instead of pinning at 100%.
  */
 function canonicalDuration(audio: HTMLAudioElement): number {
   const src = audio.currentSrc || audio.src
   const match = src.match(/\/api\/stream\/([^/?#]+)/)
+  let metaDuration = 0
   if (match) {
     const id = decodeURIComponent(match[1]!)
-    const meta = peekTrackMetadata(id)
-    if (meta?.duration && meta.duration > 0) return meta.duration
+    metaDuration = peekTrackMetadata(id)?.duration ?? 0
   }
-  return audio.duration
+  const audioDuration = Number.isFinite(audio.duration) ? audio.duration : 0
+  const best = Math.max(metaDuration, audioDuration)
+  if (best > 0 && best > audio.currentTime) return best
+  if (audio.currentTime > 0) return audio.currentTime + 1
+  return best
 }
 
 /**
@@ -427,14 +438,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         if (idleHasSong) {
           activeDeckRef.current = idleId
           idle.currentTime = 0
-          audioEngine.setVolume(idle, userTargetVolume())
+          // Quick gain crossfade (~200 ms) instead of a hard cut so
+          // the audio output to the system transitions smoothly. iOS
+          // lock-screen seems to blank during abrupt source swaps
+          // even when the AudioContext stays alive — a brief ramp
+          // looks like continuous playback to the OS audio session.
+          audioEngine.setVolume(idle, 0)
           idle
             .play()
             .then(() => console.info("[player] idle.play resolved"))
             .catch((err) =>
               console.warn("[player] idle.play rejected", err)
             )
-          active.pause()
+          const target = userTargetVolume()
+          audioEngine.fadeVolume(idle, target, 200)
+          audioEngine.fadeVolume(active, 0, 200)
+          setTimeout(() => {
+            if (!active.paused) active.pause()
+          }, 260)
           prefetchedIdRef.current = null
           dispatch({ type: "SET_INDEX", index })
           dispatch({ type: "TIME", position: 0 })
