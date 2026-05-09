@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Music2, RefreshCw, X } from "lucide-react"
+import { ExternalLink, Music2, RefreshCw, X } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
@@ -7,7 +7,11 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useLyrics } from "@/hooks/useLyrics"
 import { usePlayer } from "@/hooks/usePlayer"
 import { useTrackMetadata } from "@/hooks/useTrackMetadata"
-import { lyricsLastUpdatedAt, refreshLyrics } from "@/lib/lyrics"
+import {
+  getLyricsLinkFor,
+  lyricsLastUpdatedAt,
+  refreshLyrics,
+} from "@/lib/lyrics"
 import { displayTitle } from "@/lib/song-display"
 
 interface LyricsPanelProps {
@@ -74,6 +78,25 @@ export function LyricsPanel({ onClose, className }: LyricsPanelProps) {
           ) : null}
         </div>
         <div className="flex items-center gap-1">
+          {title && lyrics ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              asChild
+              className="text-muted-foreground hover:text-foreground gap-1.5"
+              title="Abrir o Cancioneiro nesta música (com acordes)"
+            >
+              <a
+                href={getLyricsLinkFor(title)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <ExternalLink className="size-3.5" />
+                Ver acordes
+              </a>
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="ghost"

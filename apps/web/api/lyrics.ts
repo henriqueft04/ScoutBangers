@@ -27,6 +27,14 @@ interface LyricsPayload {
   modifiedTime: string | null
   /** Map of normalized song title → lyrics body. */
   songs: Record<string, string>
+  /**
+   * Map of normalized song title → in-doc anchor id (e.g. "663gxdn1gsfp")
+   * extracted from the heading's <a id="_…"> element. Lets the client
+   * deep-link into the Doc at this song's heading.
+   */
+  anchors: Record<string, string>
+  /** Direct URL of the Cancioneiro Doc (without an anchor). */
+  docUrl: string
   /** Original (display) titles, for debugging / future fuzzy match. */
   titles: string[]
 }
@@ -225,6 +233,11 @@ function bodyToText(html: string): string {
 interface HeadingMatch {
   level: number
   title: string
+  /**
+   * Anchor id (without the leading underscore) extracted from the
+   * heading's <a id="_…"> element. Lets us deep-link into the Doc.
+   */
+  anchor: string | null
   start: number
   end: number
 }
@@ -234,9 +247,12 @@ function findHeadings(html: string): HeadingMatch[] {
   const re = /<(h[1-3])[^>]*>([\s\S]*?)<\/\1>/gi
   let m: RegExpExecArray | null
   while ((m = re.exec(html)) !== null) {
+    const inner = m[2] ?? ""
+    const anchorMatch = /<a\s+[^>]*id\s*=\s*"_([^"]+)"/i.exec(inner)
     out.push({
       level: parseInt(m[1]!.slice(1), 10),
-      title: htmlBlockToText(m[2] ?? ""),
+      title: htmlBlockToText(inner),
+      anchor: anchorMatch ? anchorMatch[1]! : null,
       start: m.index,
       end: m.index + m[0].length,
     })
@@ -260,8 +276,11 @@ function findHeadings(html: string): HeadingMatch[] {
  * heading at level <= songLevel for that section (next song, next
  * sub-group, or next H1).
  */
-function parseHtml(html: string): Pick<LyricsPayload, "songs" | "titles"> {
+function parseHtml(
+  html: string
+): Pick<LyricsPayload, "songs" | "anchors" | "titles"> {
   const songs: Record<string, string> = {}
+  const anchors: Record<string, string> = {}
   const titles: string[] = []
   const headings = findHeadings(html)
 
@@ -314,10 +333,11 @@ function parseHtml(html: string): Pick<LyricsPayload, "songs" | "titles"> {
       const key = normalizeTitle(h.title)
       if (!key || songs[key]) continue
       songs[key] = body
+      if (h.anchor) anchors[key] = h.anchor
       titles.push(h.title)
     }
   }
-  return { songs, titles }
+  return { songs, anchors, titles }
 }
 
 export default async function handler(
@@ -385,6 +405,7 @@ export default async function handler(
 
   const payload: LyricsPayload = {
     modifiedTime,
+    docUrl: `https://docs.google.com/document/d/${encodeURIComponent(fileId)}/edit`,
     ...parseHtml(html),
   }
 

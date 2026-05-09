@@ -14,19 +14,24 @@
  * background.
  */
 
-// Bump the version when the parser changes shape (chord stripping,
-// paragraph spacing, entity decoding, etc.) so existing clients
-// abandon their old cached payload and refetch fresh.
-const STORAGE_KEY = "scoutbangers:lyrics-cache-v3"
+// Bump the version when the payload shape changes (chord stripping,
+// paragraph spacing, entity decoding, anchors, etc.) so existing
+// clients abandon their old cached payload and refetch fresh.
+const STORAGE_KEY = "scoutbangers:lyrics-cache-v4"
 const LEGACY_STORAGE_KEYS = [
   "scoutbangers:lyrics-cache-v1",
   "scoutbangers:lyrics-cache-v2",
+  "scoutbangers:lyrics-cache-v3",
 ]
 const REFRESH_AFTER_MS = 24 * 60 * 60 * 1000
 
 interface LyricsPayload {
   modifiedTime: string | null
   songs: Record<string, string>
+  /** Map of normalized title → in-doc anchor id for deep-linking. */
+  anchors: Record<string, string>
+  /** Direct URL of the Cancioneiro Doc, without an anchor. */
+  docUrl: string
   titles: string[]
 }
 
@@ -89,29 +94,28 @@ function isSubset(needle: Set<string>, hay: Set<string>): boolean {
 
 /**
  * Best-effort fuzzy lookup of a song title against the cached map.
- * Tries, in order: exact normalized match → suffix-stripped match →
- * cache key is a substring/prefix of the query → query is a
- * substring of the cache key → all tokens of one fully contained
- * in the other. Returns undefined if nothing scores above the
+ * Returns the matched cache key (the normalized title used as the
+ * lookup index), so callers can use it to fetch related data
+ * (anchors, etc.) — or `undefined` if nothing scores above the
  * threshold.
  */
-function fuzzyMatch(
+function fuzzyMatchKey(
   query: string,
   songs: Record<string, string>
 ): string | undefined {
   const normalized = normalizeTitle(query)
-  if (songs[normalized]) return songs[normalized]
+  if (songs[normalized]) return normalized
   const stripped = strippedNormalized(query)
-  if (stripped && songs[stripped]) return songs[stripped]
+  if (stripped && songs[stripped]) return stripped
   if (!normalized && !stripped) return undefined
 
   const candidates = [normalized, stripped].filter(Boolean) as string[]
   const queryTokens = candidates.map(tokenSet)
 
   let bestScore = 0
-  let bestBody: string | undefined
+  let bestKey: string | undefined
 
-  for (const [key, body] of Object.entries(songs)) {
+  for (const key of Object.keys(songs)) {
     const keyTokens = tokenSet(key)
     let score = 0
     for (const cand of candidates) {
@@ -119,7 +123,6 @@ function fuzzyMatch(
         score = Math.max(score, 100)
         continue
       }
-      // Cache key is a prefix of the query: "caminho" vs "caminho live"
       if (cand.startsWith(key + " ") || cand.startsWith(key)) {
         score = Math.max(score, 90)
       } else if (cand.endsWith(" " + key)) {
@@ -127,8 +130,11 @@ function fuzzyMatch(
       } else if (cand.includes(" " + key + " ")) {
         score = Math.max(score, 75)
       }
-      // Query is a prefix/contained-in the key (rarer): "caminho" vs "o caminho da paz"
-      if (key.includes(" " + cand + " ") || key.startsWith(cand + " ") || key.endsWith(" " + cand)) {
+      if (
+        key.includes(" " + cand + " ") ||
+        key.startsWith(cand + " ") ||
+        key.endsWith(" " + cand)
+      ) {
         score = Math.max(score, 70)
       }
     }
@@ -141,11 +147,11 @@ function fuzzyMatch(
     }
     if (score > bestScore) {
       bestScore = score
-      bestBody = body
+      bestKey = key
     }
   }
 
-  return bestScore >= 60 ? bestBody : undefined
+  return bestScore >= 60 ? bestKey : undefined
 }
 
 function readCache(): CachedPayload | null {
@@ -217,7 +223,8 @@ async function fetchFresh(): Promise<CachedPayload | null> {
 export function getLyricsFor(title: string): string | undefined {
   if (!title) return undefined
   const cache = readCache()
-  const hit = cache ? fuzzyMatch(title, cache.songs) : undefined
+  const matchedKey = cache ? fuzzyMatchKey(title, cache.songs) : undefined
+  const hit = matchedKey && cache ? cache.songs[matchedKey] : undefined
 
   // Trigger a background fetch if we have nothing, the cache is
   // stale, or this lookup missed (might be a song added after the
@@ -227,11 +234,28 @@ export function getLyricsFor(title: string): string | undefined {
   if (stale) {
     void fetchFresh().then((next) => {
       if (!next) return
-      const nextHit = fuzzyMatch(title, next.songs)
+      const nextKey = fuzzyMatchKey(title, next.songs)
+      const nextHit = nextKey ? next.songs[nextKey] : undefined
       if (nextHit !== hit) notify()
     })
   }
   return hit
+}
+
+/**
+ * Returns the deep-link URL of the Cancioneiro Doc, scrolled to
+ * the heading of the song that matches `title`. Falls back to the
+ * Doc's root URL when we have a Doc URL but no matching anchor.
+ * Returns undefined if we have no cached payload at all.
+ */
+export function getLyricsLinkFor(title: string): string | undefined {
+  if (!title) return undefined
+  const cache = readCache()
+  if (!cache?.docUrl) return undefined
+  const key = fuzzyMatchKey(title, cache.songs)
+  const anchor = key ? cache.anchors[key] : undefined
+  if (anchor) return `${cache.docUrl}#heading=h.${anchor}`
+  return cache.docUrl
 }
 
 /** Force a refresh now; resolves with the latest cache snapshot. */
