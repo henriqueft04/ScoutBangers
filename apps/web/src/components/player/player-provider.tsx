@@ -7,6 +7,7 @@ import { shufflePreservingCurrent } from "@/lib/shuffle"
 import { getCached, setCached } from "@/lib/storage"
 import {
   ensureTrackMetadata,
+  getPictureDataUrl,
   peekTrackMetadata,
   prefetchAllMetadata,
 } from "@/lib/track-metadata"
@@ -608,6 +609,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                 idle.src = streamUrl(nextSong.id)
                 prefetchedIdRef.current = nextSong.id
               }
+              // Pre-resolve the picture data URL too, so the
+              // MediaSession metadata update is synchronous when the
+              // user actually advances. Without this, the lock-screen
+              // briefly blanks while we convert blob → data URL.
+              void ensureTrackMetadata(
+                nextSong.id,
+                nextSong.modifiedTime
+              ).then(() => getPictureDataUrl(nextSong.id))
             }
           }
           warmHttpCacheForUpcoming(stateRef.current, 5)

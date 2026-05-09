@@ -110,11 +110,17 @@ export function useMediaSession(): void {
   React.useEffect(() => {
     if (!supported) return
     if (!song) {
+      // Don't null the metadata on song-change cleanup — only when we
+      // truly have no current song. iOS lock-screen blanks the player
+      // for an instant when metadata is set to null and then re-set,
+      // which is exactly the blink we're trying to avoid.
       navigator.mediaSession.metadata = null
       return
     }
 
-    const setMetadata = (dataUrl: string | undefined) => {
+    let cancelled = false
+    const apply = (dataUrl: string | undefined) => {
+      if (cancelled) return
       const artwork: MediaImage[] = dataUrl
         ? [
             {
@@ -133,17 +139,21 @@ export function useMediaSession(): void {
       })
     }
 
-    // Synchronous best-effort first so OS controls update fast.
-    setMetadata(meta?.pictureDataUrl)
-    // Then lazily upgrade with the data URL if we only have a blob.
-    if (!meta?.pictureDataUrl && meta?.pictureBlob) {
-      let cancelled = false
-      void getPictureDataUrl(song.id).then((dataUrl) => {
-        if (!cancelled && dataUrl) setMetadata(dataUrl)
-      })
-      return () => {
-        cancelled = true
-      }
+    // Set metadata exactly once per song change. If the data URL is
+    // already cached (typical for songs played before), apply
+    // immediately. Otherwise wait for it to resolve so iOS sees a
+    // single metadata update rather than fallback-then-real, which it
+    // renders as a brief lock-screen blink.
+    if (meta?.pictureDataUrl) {
+      apply(meta.pictureDataUrl)
+    } else if (meta?.pictureBlob) {
+      void getPictureDataUrl(song.id).then(apply)
+    } else {
+      apply(undefined)
+    }
+
+    return () => {
+      cancelled = true
     }
   }, [supported, song, meta])
 
