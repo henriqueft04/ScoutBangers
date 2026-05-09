@@ -1,8 +1,8 @@
 import * as React from "react"
 
 import { useSongs } from "@/hooks/useSongs"
+import { audioEngine, type FadeHandle } from "@/lib/audio-engine"
 import { streamUrl } from "@/lib/audio-url"
-import { fadeVolume, type FadeHandle } from "@/lib/fade"
 import { shufflePreservingCurrent } from "@/lib/shuffle"
 import { getCached, setCached } from "@/lib/storage"
 import {
@@ -180,12 +180,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   // ---- Persistence -----------------------------------------------------
 
   React.useEffect(() => {
+    // Wrap both decks in the Web Audio engine on mount so their output
+    // is routed through the shared AudioContext / per-deck GainNode.
+    // The context itself is created lazily on the first user gesture
+    // (see `start()`), but attach is safe to call before that.
+    for (const ref of [deckARef, deckBRef]) {
+      const audio = ref.current
+      if (audio) audioEngine.attach(audio)
+    }
     const stored = getCached<PersistedVolume>(VOLUME_KEY)
     if (!stored) return
     for (const ref of [deckARef, deckBRef]) {
       const audio = ref.current
       if (audio) {
-        audio.volume = stored.volume
+        audioEngine.setVolume(audio, stored.muted ? 0 : stored.volume)
         audio.muted = stored.muted
       }
     }
@@ -390,7 +398,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (sameSong) {
         cancelFades()
         active.currentTime = 0
-        active.volume = userTargetVolume()
+        audioEngine.setVolume(active, userTargetVolume())
         void active.play().catch(() => {})
         dispatch({ type: "TIME", position: 0 })
         dispatch({ type: "PLAYBACK_ERROR", message: null })
@@ -418,7 +426,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         if (idleHasSong) {
           activeDeckRef.current = idleId
           idle.currentTime = 0
-          idle.volume = userTargetVolume()
+          audioEngine.setVolume(idle, userTargetVolume())
           idle
             .play()
             .then(() => console.info("[player] idle.play resolved"))
@@ -454,7 +462,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         } else {
           active.currentTime = 0
         }
-        active.volume = userTargetVolume()
+        audioEngine.setVolume(active, userTargetVolume())
         const playPromise = active.play().catch(() => {})
         void Promise.resolve(playPromise).finally(() => {
           switchingSrcRef.current = false
@@ -477,11 +485,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       activeDeckRef.current = idleId
 
       // Always start the new deck at full target volume — no fade-in.
-      // A faded ramp-in only works in the foreground (rAF), and on a
-      // hidden tab a stalled fade leaves the new song silently
-      // advancing while the OS suspends our audio session entirely.
+      // Web Audio gain ramps could give us a smooth ramp-in, but with
+      // the engine driving a continuous AudioContext we don't actually
+      // need to mask anything — a hard start is fine and keeps the
+      // logic simple.
       const target = userTargetVolume()
-      idle.volume = target
+      audioEngine.setVolume(idle, target)
       void idle.play().catch(() => {})
 
       const isHidden =
@@ -495,8 +504,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         // continuously alive across the swap.
         active.pause()
       } else {
-        // Visible: smooth fade-out for the old deck via rAF.
-        setFade(activeId, fadeVolume(active, 0, CROSSFADE_MS))
+        // Visible: smooth fade-out for the old deck. Driven by Web
+        // Audio's audio thread so it survives backgrounded throttling
+        // (rAF used to stall when the page was hidden — not anymore).
+        setFade(activeId, audioEngine.fadeVolume(active, 0, CROSSFADE_MS))
         void fadesRef.current[activeId]?.promise.then(() => {
           active.pause()
         })
@@ -624,17 +635,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           })
         }
       }
-      const handleVolume = () => {
-        if (isActive() && fadesRef.current[deckId] === null) {
-          // Only mirror volume when not mid-fade — otherwise the rAF ticks
-          // would clobber the user's actual volume.
-          dispatch({
-            type: "VOLUME",
-            volume: audio.volume,
-            muted: audio.muted,
-          })
-        }
-      }
+      // No volumechange handler: we own volume state ourselves now
+      // that audio output flows through Web Audio gain nodes.
+      // audio.volume is no longer the source of truth.
       const handleEndedEvt = () => {
         if (!isActive()) return
         handleEnded()
@@ -680,7 +683,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       audio.addEventListener("timeupdate", handleTime)
       audio.addEventListener("loadedmetadata", handleDuration)
       audio.addEventListener("durationchange", handleDuration)
-      audio.addEventListener("volumechange", handleVolume)
       audio.addEventListener("ended", handleEndedEvt)
       audio.addEventListener("error", handleError)
 
@@ -690,7 +692,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         audio.removeEventListener("timeupdate", handleTime)
         audio.removeEventListener("loadedmetadata", handleDuration)
         audio.removeEventListener("durationchange", handleDuration)
-        audio.removeEventListener("volumechange", handleVolume)
         audio.removeEventListener("ended", handleEndedEvt)
         audio.removeEventListener("error", handleError)
       })
@@ -715,7 +716,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       cancelFades()
       const s = stateRef.current
       const target = s.muted ? 0 : s.volume
-      active.volume = target
+      audioEngine.setVolume(active, target)
       if (idle && !idle.paused) idle.pause()
     }
     document.addEventListener("visibilitychange", onVisibility)
@@ -778,6 +779,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const play = React.useCallback(
     (index: number, contextSongIds?: string[]) => {
+      // First user-gesture entry point: bring up the AudioContext so
+      // the audio session is owned by Web Audio (single context held
+      // across all song changes) instead of by individual <audio>
+      // elements. Cheap no-op once started.
+      audioEngine.start()
       const s = stateRef.current
       const song = s.songs[index]
       if (!song) return
@@ -816,6 +822,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, [songs, loading, play])
 
   const toggle = React.useCallback(() => {
+    audioEngine.start()
     const active = getDeck(activeDeckRef.current)
     const idle = getDeck(otherDeck(activeDeckRef.current))
     const s = stateRef.current
@@ -826,7 +833,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
     if (active.paused) {
       cancelFades()
-      active.volume = userTargetVolume()
+      audioEngine.setVolume(active, userTargetVolume())
       void active.play().catch(() => {})
     } else {
       cancelFades()
@@ -870,10 +877,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       const idle = getDeck(otherDeck(activeDeckRef.current))
       if (!active) return
       cancelFades()
-      active.volume = v
-      if (idle && !idle.paused) idle.volume = v
-      if (active.muted && v > 0) active.muted = false
-      dispatch({ type: "VOLUME", volume: v, muted: active.muted })
+      // Bumping the slider above 0 should also unmute.
+      const wasMuted = stateRef.current.muted
+      const muted = wasMuted && v === 0
+      audioEngine.setVolume(active, muted ? 0 : v)
+      if (idle && !idle.paused) audioEngine.setVolume(idle, muted ? 0 : v)
+      dispatch({ type: "VOLUME", volume: v, muted })
     },
     [getDeck, cancelFades]
   )
@@ -882,10 +891,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const active = getDeck(activeDeckRef.current)
     const idle = getDeck(otherDeck(activeDeckRef.current))
     if (!active) return
-    const muted = !active.muted
-    active.muted = muted
-    if (idle) idle.muted = muted
-    dispatch({ type: "VOLUME", volume: active.volume, muted })
+    const s = stateRef.current
+    const muted = !s.muted
+    const target = muted ? 0 : s.volume
+    audioEngine.setVolume(active, target)
+    if (idle && !idle.paused) audioEngine.setVolume(idle, target)
+    dispatch({ type: "VOLUME", volume: s.volume, muted })
   }, [getDeck])
 
   const toggleShuffle = React.useCallback(() => {
