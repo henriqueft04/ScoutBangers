@@ -1,19 +1,25 @@
 /*
- * Minimal service worker. Its only job is to satisfy Chrome's PWA
- * installability criteria (a registered SW that responds to fetches).
+ * Service worker for ScoutBangers.
  *
- * We deliberately do NOT cache audio: songs stream from /api/stream/* with
- * Range requests, and a naive cache breaks seeking + wastes phone storage.
- * We do cache the static app shell so the UI loads instantly on warm visits
- * and works briefly offline (audio still requires network).
+ *  - Caches the static app shell so the UI loads instantly on warm visits.
+ *  - Intercepts `/api/stream/<id>` requests:
+ *      * If the song has been explicitly downloaded into `AUDIO_CACHE`,
+ *        serve it from disk — including byte-range responses synthesised
+ *        from the cached blob — so playback is instant and works offline.
+ *      * Otherwise, pass through to the network so the Drive proxy
+ *        handles the request normally.
+ *  - The audio cache is populated only by `audio-cache.ts`'s download
+ *    manager. We never auto-cache streamed bytes (that would silently
+ *    fill storage with partial blobs).
  */
 
-const CACHE_NAME = "scoutbangers-shell-v1"
+const SHELL_CACHE = "scoutbangers-shell-v1"
+const AUDIO_CACHE = "scoutbangers-audio-v1"
 const PRECACHE = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg"]
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE))
+    caches.open(SHELL_CACHE).then((cache) => cache.addAll(PRECACHE))
   )
   self.skipWaiting()
 })
@@ -24,7 +30,9 @@ self.addEventListener("activate", (event) => {
       .keys()
       .then((keys) =>
         Promise.all(
-          keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
+          keys
+            .filter((k) => k !== SHELL_CACHE && k !== AUDIO_CACHE)
+            .map((k) => caches.delete(k))
         )
       )
       .then(() => self.clients.claim())
@@ -37,8 +45,13 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url)
 
-  // Never intercept API or audio streams — let the network handle them so
-  // Range requests and freshness work correctly.
+  // Audio: cache-first via the explicit-download cache, network fallback.
+  if (url.pathname.startsWith("/api/stream/")) {
+    event.respondWith(handleAudioRequest(request))
+    return
+  }
+
+  // Other API calls always go to network so Range / freshness work.
   if (url.pathname.startsWith("/api/")) return
 
   // Network-first for navigations so deploys propagate immediately.
@@ -59,10 +72,61 @@ self.addEventListener("fetch", (event) => {
           cached ??
           fetch(request).then((response) => {
             const copy = response.clone()
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy))
+            caches.open(SHELL_CACHE).then((cache) => cache.put(request, copy))
             return response
           })
       )
     )
   }
 })
+
+async function handleAudioRequest(request) {
+  // Cache lookup uses URL only (Range header would defeat the match).
+  const cacheKey = new Request(request.url, { method: "GET" })
+  const cache = await caches.open(AUDIO_CACHE)
+  const cached = await cache.match(cacheKey, { ignoreVary: true })
+
+  if (!cached) {
+    // Not downloaded — pass through.
+    return fetch(request)
+  }
+
+  const range = request.headers.get("Range")
+  if (!range) {
+    // Full-file request: clone-and-return the cached response so the
+    // caller can read its body without consuming our cache entry.
+    return cached.clone()
+  }
+
+  // Parse "bytes=START-END". Either bound may be omitted (open ranges).
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range)
+  if (!match) return cached.clone()
+
+  const blob = await cached.blob()
+  const total = blob.size
+  const start = match[1] ? parseInt(match[1], 10) : 0
+  const end = match[2] ? parseInt(match[2], 10) : total - 1
+  if (
+    Number.isNaN(start) ||
+    Number.isNaN(end) ||
+    start >= total ||
+    start > end
+  ) {
+    return new Response(null, {
+      status: 416,
+      headers: { "Content-Range": `bytes */${total}` },
+    })
+  }
+  const slice = blob.slice(start, end + 1)
+  return new Response(slice, {
+    status: 206,
+    headers: {
+      "Content-Type":
+        cached.headers.get("Content-Type") || "audio/mpeg",
+      "Content-Length": String(slice.size),
+      "Content-Range": `bytes ${start}-${end}/${total}`,
+      "Accept-Ranges": "bytes",
+      "X-Modified-Time": cached.headers.get("X-Modified-Time") || "",
+    },
+  })
+}

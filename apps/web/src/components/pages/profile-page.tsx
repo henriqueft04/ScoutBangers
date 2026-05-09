@@ -7,6 +7,7 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { SignInDialog } from "@/components/auth/sign-in-dialog"
 import { EmptyState } from "@/components/library/empty-state"
+import { StorageSection } from "@/components/profile/storage-section"
 import { useAuth } from "@/hooks/useAuth"
 import { usePlayer } from "@/hooks/usePlayer"
 import { artistHref } from "@/lib/artists"
@@ -131,6 +132,7 @@ export function ProfilePage() {
             Sign in
           </Button>
         ) : null}
+        <StorageSection />
         <SignInDialog open={signInOpen} onClose={() => setSignInOpen(false)} />
       </div>
     )
@@ -215,6 +217,8 @@ export function ProfilePage() {
           </span>
         </button>
       </section>
+
+      <StorageSection />
 
       <section className="flex flex-col gap-2">
         <h3 className="text-muted-foreground text-xs uppercase tracking-wider">
