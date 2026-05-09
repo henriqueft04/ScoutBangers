@@ -1,9 +1,16 @@
 import * as React from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Check, ChevronDown, Download, Share2 } from "lucide-react"
+import {
+  Check,
+  ChevronDown,
+  Download,
+  FileText,
+  Share2,
+} from "lucide-react"
 import { useNavigate } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
+import { cn } from "@workspace/ui/lib/utils"
 
 import { FavoriteButton } from "@/components/library/favorite-button"
 import { MarqueeText } from "@/components/library/marquee-text"
@@ -13,6 +20,7 @@ import { usePlayer } from "@/hooks/usePlayer"
 import { artistHref } from "@/lib/artists"
 import { displayArtist, displayTitle } from "@/lib/song-display"
 
+import { LyricsPanel } from "./lyrics-panel"
 import { MainControls } from "./main-controls"
 import { PlaybackErrorBanner } from "./playback-error-banner"
 import { ProgressBar } from "./progress-bar"
@@ -38,6 +46,7 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
   const meta = useTrackMetadata(song?.id, Boolean(song), song?.modifiedTime)
   const [copied, setCopied] = React.useState(false)
   const [queueOpenRaw, setQueueOpenRaw] = React.useState(false)
+  const [lyricsOpenRaw, setLyricsOpenRaw] = React.useState(false)
 
   /**
    * Navigate from inside the fullscreen sheet to a route. Pops our
@@ -88,11 +97,31 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
     [navigate, onClose]
   )
 
-  // Derive queueOpen from `open` so it's automatically false whenever
-  // the fullscreen sheet is closed — no effect needed, no stale state
-  // on re-open.
+  // Derive queueOpen / lyricsOpen from `open` so they auto-reset
+  // whenever the fullscreen sheet itself is closed — no effect
+  // needed, no stale state on re-open.
   const queueOpen = open && queueOpenRaw
-  const setQueueOpen = setQueueOpenRaw
+  const lyricsOpen = open && lyricsOpenRaw
+  const setQueueOpen = React.useCallback(
+    (next: React.SetStateAction<boolean>) => {
+      setQueueOpenRaw((prev) => {
+        const value = typeof next === "function" ? next(prev) : next
+        if (value) setLyricsOpenRaw(false)
+        return value
+      })
+    },
+    []
+  )
+  const setLyricsOpen = React.useCallback(
+    (next: React.SetStateAction<boolean>) => {
+      setLyricsOpenRaw((prev) => {
+        const value = typeof next === "function" ? next(prev) : next
+        if (value) setQueueOpenRaw(false)
+        return value
+      })
+    },
+    []
+  )
 
   // OS back button while the queue panel is open should close just the
   // queue, not the fullscreen sheet. Push a marker on open and listen
@@ -121,6 +150,29 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
       }
     }
   }, [open, queueOpen, setQueueOpen])
+
+  // Same back-button bookkeeping for the lyrics panel.
+  React.useEffect(() => {
+    if (!open || !lyricsOpen) return
+    const marker = { fullscreen: true, lyrics: true }
+    window.history.pushState(marker, "")
+    const onPop = (event: PopStateEvent) => {
+      const state = event.state as { lyrics?: boolean } | null
+      if (state?.lyrics) return
+      setLyricsOpen(false)
+    }
+    window.addEventListener("popstate", onPop)
+    return () => {
+      window.removeEventListener("popstate", onPop)
+      if (
+        typeof window.history.state === "object" &&
+        window.history.state !== null &&
+        (window.history.state as { lyrics?: boolean }).lyrics
+      ) {
+        window.history.back()
+      }
+    }
+  }, [open, lyricsOpen, setLyricsOpen])
 
   const handleShare = React.useCallback(async () => {
     if (!song) return
@@ -309,15 +361,40 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
                 size="md"
                 stopPropagation={false}
               />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={lyricsOpen ? "Fechar letra" : "Abrir letra"}
+                aria-pressed={lyricsOpen}
+                onClick={() => setLyricsOpen((v) => !v)}
+                className={cn(
+                  "touch-manipulation",
+                  lyricsOpen && "text-primary"
+                )}
+              >
+                <FileText className="size-5" />
+              </Button>
               <QueueToggleButton
                 open={queueOpen}
                 onClick={() => setQueueOpen((v) => !v)}
               />
             </div>
           ) : null}
-          {/* Desktop: queue button left of the volume slider */}
+          {/* Desktop: lyrics + queue buttons left of the volume slider */}
           {song ? (
             <div className="mt-2 hidden items-center gap-3 md:flex">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={lyricsOpen ? "Fechar letra" : "Abrir letra"}
+                aria-pressed={lyricsOpen}
+                onClick={() => setLyricsOpen((v) => !v)}
+                className={cn("size-10", lyricsOpen && "text-primary")}
+              >
+                <FileText className="size-5" />
+              </Button>
               <QueueToggleButton
                 open={queueOpen}
                 onClick={() => setQueueOpen((v) => !v)}
@@ -366,6 +443,40 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
                 />
               </div>
               <QueuePanel onClose={() => setQueueOpen(false)} />
+            </motion.div>
+          </motion.div>
+        ) : null}
+        {lyricsOpen ? (
+          <motion.div
+            key="lyrics-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="absolute inset-0 z-10 flex items-end justify-center md:items-center md:p-6"
+            onClick={() => setLyricsOpen(false)}
+          >
+            <div className="bg-background/60 absolute inset-0 backdrop-blur-sm" />
+            <motion.div
+              key="lyrics-sheet"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Letra"
+              onClick={(event) => event.stopPropagation()}
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", stiffness: 380, damping: 35 }}
+              className="bg-card text-card-foreground border-border relative flex h-[78%] w-full max-w-md flex-col overflow-hidden rounded-t-2xl border shadow-2xl md:h-[80vh] md:rounded-2xl"
+              style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+            >
+              <div className="flex justify-center pt-2 md:hidden">
+                <span
+                  aria-hidden
+                  className="bg-muted-foreground/30 h-1 w-10 rounded-full"
+                />
+              </div>
+              <LyricsPanel onClose={() => setLyricsOpen(false)} />
             </motion.div>
           </motion.div>
         ) : null}

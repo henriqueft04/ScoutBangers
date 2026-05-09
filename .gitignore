@@ -63,3 +63,7 @@ Desktop.ini
 .history/
 .tmp/
 *.local
+
+# Lyrics source — local copy of the Cancioneiro for testing the parser.
+# In production, /api/lyrics fetches the live Doc from Drive.
+*.docx
