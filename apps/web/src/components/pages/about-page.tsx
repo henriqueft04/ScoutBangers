@@ -43,9 +43,11 @@ export function AboutPage() {
           O <strong className="text-foreground">ScoutBangers</strong> é um player de música 
           criado para facilitar a vida de toda a gente que quer ouvir música escutista.  
           Ouvir diretamente da drive é muito chato, e o problema em ouvir no spotify com
-          as músicas descarregadas é que se a drive for atualizada, o spotify não atualiza automaticamente. 
+          as músicas descarregadas é que se a drive for atualizada,
+          o spotify não atualiza automaticamente.
           O scoutbangers resolve ambos os problemas, e é ainda uma boa maneira de 
-          conheceres músicas novas :D. Sempre que novas músicas são adicionadas à drive, 
+          conheceres músicas novas, e ainda tem a letra da maior parte das músicas
+          disponível para ver enquanto ela reproduz :D. Sempre que novas músicas são adicionadas à drive, 
           elas aparecem automaticamente na app, prontas para serem ouvidas. Tem todas as funcionalidades
           básicas de um player como o spotify, mas é 100% escutista :)
 
@@ -84,7 +86,17 @@ export function AboutPage() {
               </li>
               <li>
                 <strong className="text-foreground">Playlists:</strong> cria as
-                tuas próprias playlists e organiza-as como quiseres.
+                tuas próprias playlists, partilha-as por link e guarda as dos
+                outros — aparecem na tua página de Playlists em "Guardadas",
+                prontas a ouvir.
+              </li>
+              <li>
+                <strong className="text-foreground">Letras:</strong> abre uma
+                música no leitor inteiro e toca em "Letra" para veres a letra
+                vinda diretamente do Cancioneiro. As letras atualizam-se
+                sozinhas quando o documento é editado. Se precisares dos
+                acordes, há um botão "Ver acordes" que abre o Cancioneiro na
+                música certa.
               </li>
               <li>
                 <strong className="text-foreground">Estatísticas pessoais:</strong>{" "}
