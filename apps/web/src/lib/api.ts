@@ -27,7 +27,7 @@ export async function fetchSongs(
     }
     throw new Error(
       detail ??
-        `Failed to load songs (${response.status} ${response.statusText})`
+        `Falha ao carregar as músicas (${response.status} ${response.statusText})`
     )
   }
 

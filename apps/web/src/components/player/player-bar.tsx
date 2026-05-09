@@ -55,7 +55,7 @@ export function PlayerBar({ className, onExpand }: PlayerBarProps) {
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Open fullscreen player"
+            aria-label="Abrir leitor em ecrã inteiro"
             onClick={onExpand}
             className="touch-manipulation"
           >

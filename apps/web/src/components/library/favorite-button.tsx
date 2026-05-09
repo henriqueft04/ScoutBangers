@@ -42,7 +42,7 @@ export function FavoriteButton({
       <button
         type="button"
         aria-label={
-          fav ? "Manage in playlists" : "Add to favorites"
+          fav ? "Gerir nas playlists" : "Adicionar aos favoritos"
         }
         aria-pressed={fav}
         onClick={(event) => {

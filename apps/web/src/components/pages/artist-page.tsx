@@ -55,11 +55,11 @@ export function ArtistPage() {
           variant="ghost"
           size="icon-sm"
           onClick={goBack}
-          aria-label="Go back"
+          aria-label="Voltar"
         >
           <ArrowLeft />
         </Button>
-        <p className="text-muted-foreground text-xs">Artist</p>
+        <p className="text-muted-foreground text-xs">Artista</p>
       </div>
 
       <div>
@@ -67,14 +67,14 @@ export function ArtistPage() {
           {decoded}
         </h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          {matched.length} {matched.length === 1 ? "song" : "songs"}
+          {matched.length} {matched.length === 1 ? "música" : "músicas"}
         </p>
       </div>
 
       {matched.length === 0 ? (
         <EmptyState
           variant="empty"
-          message={`No songs found for "${decoded}".`}
+          message={`Nenhuma música encontrada para "${decoded}".`}
         />
       ) : (
         <SongList

@@ -4,6 +4,7 @@ import type { ReactNode } from "react"
 import { BottomNav } from "./bottom-nav"
 import { Header } from "./header"
 import { NewSongsBanner } from "@/components/library/new-songs-banner"
+import { InstallPrompt } from "@/components/onboarding/install-prompt"
 import { FullscreenPlayer } from "@/components/player/fullscreen-player"
 import { PlayerBar } from "@/components/player/player-bar"
 import { useMediaSession } from "@/hooks/useMediaSession"
@@ -41,6 +42,7 @@ export function AppShell({ children }: AppShellProps) {
         <BottomNav />
       </div>
       <FullscreenPlayer open={fullscreen} onClose={close} />
+      <InstallPrompt />
     </div>
   )
 }

@@ -93,7 +93,7 @@ export function NewSongsBanner() {
     >
       <Download className="text-primary size-4 shrink-0" />
       <div className="text-foreground min-w-0 flex-1 truncate">
-        {count} new {count === 1 ? "song" : "songs"} available ·{" "}
+        {count} {count === 1 ? "nova música disponível" : "novas músicas disponíveis"} ·{" "}
         <span className="text-muted-foreground tabular-nums">
           {formatBytes(bytes)}
         </span>
@@ -107,13 +107,13 @@ export function NewSongsBanner() {
           navigate("/profile")
         }}
       >
-        Download
+        Transferir
       </Button>
       <Button
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Dismiss"
+        aria-label="Dispensar"
         onClick={dismiss}
         className="text-muted-foreground hover:text-foreground shrink-0"
       >

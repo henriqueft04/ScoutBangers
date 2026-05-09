@@ -1,7 +1,7 @@
 {
   "name": "ScoutBangers",
   "short_name": "ScoutBangers",
-  "description": "Minimalist music player streaming from a shared Drive folder.",
+  "description": "Leitor de música minimalista a fazer streaming a partir de uma pasta partilhada da Drive.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

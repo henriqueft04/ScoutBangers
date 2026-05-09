@@ -136,14 +136,14 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
 
   if (!open) return null
 
-  const title = song ? displayTitle(song, meta) : "Nothing playing"
+  const title = song ? displayTitle(song, meta) : "Nada a tocar"
   const artist = song ? displayArtist(song, meta) : undefined
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Now playing"
+      aria-label="A reproduzir agora"
       className="bg-background animate-in slide-in-from-bottom fixed inset-0 z-40 flex flex-col duration-300 ease-out"
     >
       <header
@@ -154,14 +154,14 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="Collapse player"
+          aria-label="Recolher leitor"
           onClick={onClose}
           className="touch-manipulation"
         >
           <ChevronDown />
         </Button>
         <p className="text-muted-foreground text-xs uppercase tracking-wider">
-          Now Playing
+          A Reproduzir
         </p>
         {song ? (
           <div className="flex items-center gap-1">
@@ -169,7 +169,7 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Share song"
+              aria-label="Partilhar música"
               onClick={handleShare}
               className="touch-manipulation hidden size-10 md:inline-flex"
             >
@@ -178,7 +178,7 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
             <a
               href={`/api/stream/${song.id}`}
               download={title}
-              aria-label="Download song"
+              aria-label="Transferir música"
               className="text-muted-foreground hover:text-foreground touch-manipulation inline-flex size-10 items-center justify-center rounded-md transition-colors"
             >
               <Download className="size-5" />
@@ -244,7 +244,7 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
                 type="button"
                 variant="ghost"
                 size="icon"
-                aria-label="Share song"
+                aria-label="Partilhar música"
                 onClick={handleShare}
                 className="touch-manipulation size-11"
               >
@@ -300,7 +300,7 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
               key="queue-sheet"
               role="dialog"
               aria-modal="true"
-              aria-label="Queue"
+              aria-label="Fila"
               onClick={(event) => event.stopPropagation()}
               initial={{ y: "100%" }}
               animate={{ y: 0 }}

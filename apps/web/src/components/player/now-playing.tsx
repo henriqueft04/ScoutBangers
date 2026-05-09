@@ -39,7 +39,7 @@ export function NowPlaying({ className, onExpand }: NowPlayingProps) {
         type="button"
         variant="ghost"
         size="icon"
-        aria-label="Open fullscreen player"
+        aria-label="Abrir leitor em ecrã inteiro"
         onClick={onExpand}
         disabled={!song}
         className="size-10 shrink-0 overflow-hidden rounded-md p-0 md:size-12"
@@ -78,10 +78,10 @@ export function NowPlaying({ className, onExpand }: NowPlayingProps) {
         ) : (
           <>
             <p className="text-foreground truncate text-sm font-medium">
-              Nothing playing
+              Nada a tocar
             </p>
             <p className="text-muted-foreground truncate text-xs">
-              Pick a song to start
+              Escolhe uma música para começar
             </p>
           </>
         )}
@@ -95,7 +95,7 @@ export function NowPlaying({ className, onExpand }: NowPlayingProps) {
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Open fullscreen player"
+        aria-label="Abrir leitor em ecrã inteiro"
         onClick={onExpand}
         disabled={!song}
         className="touch-manipulation md:hidden"

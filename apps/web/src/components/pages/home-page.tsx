@@ -96,7 +96,7 @@ export function HomePage() {
           Top 10
         </h2>
         <p className="text-muted-foreground text-xs uppercase tracking-wider">
-          Most played
+          Mais ouvidas
         </p>
       </header>
 
@@ -107,10 +107,10 @@ export function HomePage() {
           variant="empty"
           message={
             rpcError
-              ? `Couldn't load top tracks: ${rpcError}`
+              ? `Não foi possível carregar o top: ${rpcError}`
               : ranked === null && !supabaseConfigured
-              ? "Showing the catalog. Top-10 ranking activates once Supabase is configured."
-              : "No plays recorded yet — start listening to populate the chart."
+              ? "A mostrar o catálogo. O top 10 só fica ativo quando o Supabase estiver configurado."
+              : "Ainda não há reproduções registadas — começa a ouvir para alimentar o top."
           }
         />
       ) : (

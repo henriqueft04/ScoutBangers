@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Loader2, LogOut } from "lucide-react"
+import { Info, Loader2, LogOut } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
@@ -113,14 +113,14 @@ export function ProfilePage() {
     return (
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-3 pt-6 md:px-6">
         <h2 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">
-          Profile
+          Perfil
         </h2>
         <EmptyState
           variant="empty"
           message={
             supabaseConfigured
-              ? "Sign in to see your stats and favorites."
-              : "Authentication isn't set up yet."
+              ? "Inicia sessão para veres as tuas estatísticas e favoritos."
+              : "A autenticação ainda não está configurada."
           }
         />
         {supabaseConfigured ? (
@@ -129,10 +129,17 @@ export function ProfilePage() {
             className="self-start"
             onClick={() => setSignInOpen(true)}
           >
-            Sign in
+            Iniciar sessão
           </Button>
         ) : null}
         <StorageSection />
+        <Link
+          to="/sobre"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-2 self-start text-sm"
+        >
+          <Info className="size-4" />
+          Sobre o ScoutBangers
+        </Link>
         <SignInDialog open={signInOpen} onClose={() => setSignInOpen(false)} />
       </div>
     )
@@ -142,7 +149,7 @@ export function ProfilePage() {
     profile?.display_name ??
     user.user_metadata?.name ??
     user.email?.split("@")[0] ??
-    "Listener"
+    "Ouvinte"
   const avatarUrl = profile?.avatar_url ?? user.user_metadata?.avatar_url ?? null
   const joined = formatDate(user.created_at)
 
@@ -165,7 +172,7 @@ export function ProfilePage() {
           <h2 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">
             {displayName}
           </h2>
-          <p className="text-muted-foreground text-xs">Joined {joined}</p>
+          <p className="text-muted-foreground text-xs">Inscreveu-se a {joined}</p>
           <Button
             type="button"
             variant="ghost"
@@ -174,14 +181,14 @@ export function ProfilePage() {
             className="text-muted-foreground hover:text-foreground self-start px-0"
           >
             <LogOut className="size-3.5" />
-            Sign out
+            Terminar sessão
           </Button>
         </div>
       </section>
 
       <section className="border-border bg-card rounded-md border p-4">
         <h3 className="text-muted-foreground mb-2 text-xs uppercase tracking-wider">
-          Privacy
+          Privacidade
         </h3>
         <button
           type="button"
@@ -192,12 +199,12 @@ export function ProfilePage() {
         >
           <span className="flex flex-col">
             <span className="text-foreground text-sm font-medium">
-              Share my activity
+              Partilhar a minha atividade
             </span>
             <span className="text-muted-foreground text-xs">
               {shareActivity
-                ? "Friends can see what you're listening to."
-                : "Hidden — your plays still count, but no one sees them."}
+                ? "Os amigos conseguem ver o que estás a ouvir."
+                : "Oculto — as tuas reproduções continuam a contar, mas ninguém as vê."}
             </span>
           </span>
           <span
@@ -222,13 +229,13 @@ export function ProfilePage() {
 
       <section className="flex flex-col gap-2">
         <h3 className="text-muted-foreground text-xs uppercase tracking-wider">
-          Top 5 songs
+          Top 5 músicas
         </h3>
         {topSongs === null ? (
           <Loader2 className="text-muted-foreground size-4 animate-spin" />
         ) : topSongs.length === 0 ? (
           <p className="text-muted-foreground text-sm">
-            Nothing yet — listen to some songs to see your top tracks.
+            Ainda nada — ouve umas músicas para veres o teu top.
           </p>
         ) : (
           <ol className="flex flex-col gap-1">
@@ -254,13 +261,13 @@ export function ProfilePage() {
 
       <section className="flex flex-col gap-2">
         <h3 className="text-muted-foreground text-xs uppercase tracking-wider">
-          Top 5 artists
+          Top 5 artistas
         </h3>
         {topArtists === null ? (
           <Loader2 className="text-muted-foreground size-4 animate-spin" />
         ) : topArtists.length === 0 ? (
           <p className="text-muted-foreground text-sm">
-            No artist plays recorded yet.
+            Ainda não há reproduções de artistas registadas.
           </p>
         ) : (
           <ol className="flex flex-col gap-1">
@@ -286,6 +293,14 @@ export function ProfilePage() {
           </ol>
         )}
       </section>
+
+      <Link
+        to="/sobre"
+        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-2 self-start text-sm"
+      >
+        <Info className="size-4" />
+        Sobre o ScoutBangers
+      </Link>
     </div>
   )
 }

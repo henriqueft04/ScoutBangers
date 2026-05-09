@@ -154,7 +154,7 @@ export function StorageSection() {
         })
       } catch (err) {
         setError(
-          `Failed on "${song.title}": ${err instanceof Error ? err.message : String(err)}`
+          `Falhou em "${song.title}": ${err instanceof Error ? err.message : String(err)}`
         )
         cancelledRef.current = true
         break
@@ -204,31 +204,31 @@ export function StorageSection() {
       <header className="flex items-center gap-2">
         <HardDrive className="text-muted-foreground size-4" />
         <h3 className="text-foreground text-sm font-semibold tracking-tight">
-          Offline downloads
+          Transferências para offline
         </h3>
       </header>
 
       <div className="text-muted-foreground text-xs leading-relaxed">
-        Download every song so the app plays them instantly from your
-        device — no streaming, works offline.
+        Transfere todas as músicas para a app as reproduzir instantaneamente
+        a partir do teu dispositivo — sem streaming, funciona offline.
       </div>
 
       <div className="text-foreground flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
         <span>
           <span className="font-semibold tabular-nums">{cachedCount}</span>
-          <span className="text-muted-foreground"> / {totalCount} songs</span>
+          <span className="text-muted-foreground"> / {totalCount} músicas</span>
         </span>
         <span className="text-muted-foreground tabular-nums">
-          {formatBytes(cachedBytes)} used
+          {formatBytes(cachedBytes)} usados
         </span>
         {usage && usage.quota > 0 ? (
           <span className="text-muted-foreground text-xs tabular-nums">
-            ({formatBytes(usage.usage)} of {formatBytes(usage.quota)} available)
+            ({formatBytes(usage.usage)} de {formatBytes(usage.quota)} disponíveis)
           </span>
         ) : null}
         {staleIds.size > 0 ? (
           <span className="text-primary text-xs">
-            {staleIds.size} need refresh
+            {staleIds.size} {staleIds.size === 1 ? "precisa de atualização" : "precisam de atualização"}
           </span>
         ) : null}
       </div>
@@ -268,7 +268,7 @@ export function StorageSection() {
             onClick={cancel}
             className="text-muted-foreground hover:text-foreground self-start px-0"
           >
-            Cancel
+            Cancelar
           </Button>
         </div>
       ) : null}
@@ -290,9 +290,9 @@ export function StorageSection() {
             <Download className="size-4" />
           )}
           {allCached
-            ? "All downloaded"
-            : `Download ${targets.length} ${
-                targets.length === 1 ? "song" : "songs"
+            ? "Tudo transferido"
+            : `Transferir ${targets.length} ${
+                targets.length === 1 ? "música" : "músicas"
               } (${formatBytes(targetBytes)})`}
         </Button>
         <Button
@@ -300,10 +300,10 @@ export function StorageSection() {
           variant="ghost"
           onClick={() => setViewOpen(true)}
           className="text-muted-foreground hover:text-foreground gap-2"
-          aria-label="View downloaded songs"
+          aria-label="Ver músicas transferidas"
         >
           <FolderOpen className="size-4" />
-          View ({cachedCount})
+          Ver ({cachedCount})
         </Button>
         {cachedCount > 0 ? (
           <Button
@@ -318,7 +318,7 @@ export function StorageSection() {
             ) : (
               <Trash2 className="size-4" />
             )}
-            Remove all
+            Remover tudo
           </Button>
         ) : null}
       </div>
@@ -331,16 +331,16 @@ export function StorageSection() {
       />
       <ConfirmDialog
         open={confirmCellular}
-        title="You appear to be on cellular data"
+        title="Pareces estar a usar dados móveis"
         description={
           <>
-            This will download <span className="tabular-nums">{formatBytes(targetBytes)}</span> over
-            your current connection. Switch to Wi-Fi if you want to avoid mobile-data
-            charges.
+            Isto vai transferir <span className="tabular-nums">{formatBytes(targetBytes)}</span> pela
+            tua ligação atual. Liga-te ao Wi-Fi se quiseres evitar gastos
+            do plano de dados.
           </>
         }
-        confirmLabel="Download anyway"
-        cancelLabel="Wait for Wi-Fi"
+        confirmLabel="Transferir mesmo assim"
+        cancelLabel="Esperar pelo Wi-Fi"
         onConfirm={() => {
           setConfirmCellular(false)
           void runDownload()

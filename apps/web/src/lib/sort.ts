@@ -4,9 +4,9 @@ import type { Song } from "./types"
 export type SortMode = "default" | "title" | "artist"
 
 export const SORT_LABEL: Record<SortMode, string> = {
-  default: "Default",
-  title: "Title A–Z",
-  artist: "Artist A–Z",
+  default: "Predefinido",
+  title: "Título A–Z",
+  artist: "Artista A–Z",
 }
 
 /**

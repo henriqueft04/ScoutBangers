@@ -179,7 +179,7 @@ export function AddToPlaylistDialog({
       .select("id, name")
       .single()
     if (createErr || !created) {
-      setError(createErr?.message ?? "Couldn't create playlist")
+      setError(createErr?.message ?? "Não foi possível criar a playlist")
       setCreatingBusy(false)
       return
     }
@@ -210,7 +210,7 @@ export function AddToPlaylistDialog({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Add to playlist"
+      aria-label="Adicionar à playlist"
       className="bg-background/80 fixed inset-0 z-50 flex items-end justify-center p-0 backdrop-blur-sm md:items-center md:p-4"
       onClick={onClose}
     >
@@ -221,13 +221,13 @@ export function AddToPlaylistDialog({
       >
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-semibold tracking-tight">
-            Add to playlist
+            Adicionar à playlist
           </h2>
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Close"
+            aria-label="Fechar"
             onClick={onClose}
           >
             <X />
@@ -246,7 +246,7 @@ export function AddToPlaylistDialog({
             <input
               autoFocus
               type="text"
-              placeholder="Playlist name"
+              placeholder="Nome da playlist"
               value={newName}
               onChange={(event) => setNewName(event.target.value)}
               disabled={creatingBusy}
@@ -260,7 +260,7 @@ export function AddToPlaylistDialog({
               {creatingBusy ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
-                "Create"
+                "Criar"
               )}
             </Button>
             <Button
@@ -273,7 +273,7 @@ export function AddToPlaylistDialog({
               }}
               disabled={creatingBusy}
             >
-              Cancel
+              Cancelar
             </Button>
           </form>
         ) : (
@@ -284,7 +284,7 @@ export function AddToPlaylistDialog({
           >
             <Plus className="text-muted-foreground size-4" />
             <span className="text-foreground text-sm font-medium">
-              New playlist
+              Nova playlist
             </span>
           </button>
         )}
@@ -294,7 +294,7 @@ export function AddToPlaylistDialog({
             <Loader2 className="text-muted-foreground mx-auto my-4 size-5 animate-spin" />
           ) : playlists.length === 0 ? (
             <p className="text-muted-foreground py-4 text-center text-sm">
-              No other playlists yet. Create one from the Playlists tab.
+              Ainda não tens outras playlists. Cria uma a partir do separador Playlists.
             </p>
           ) : (
             <ul className="flex flex-col gap-1">
@@ -331,7 +331,7 @@ export function AddToPlaylistDialog({
                     ) : playlist.alreadyContains ? (
                       <span className="text-primary inline-flex items-center gap-1 text-xs">
                         <Check className="size-3.5" />
-                        Added
+                        Adicionada
                       </span>
                     ) : (
                       <Plus className="text-muted-foreground size-4" />

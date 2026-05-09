@@ -31,7 +31,7 @@ export function VolumeControl({ className }: VolumeControlProps) {
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label={muted ? "Unmute" : "Mute"}
+        aria-label={muted ? "Ativar som" : "Silenciar"}
         aria-pressed={muted}
         onClick={toggleMute}
         className="touch-manipulation"

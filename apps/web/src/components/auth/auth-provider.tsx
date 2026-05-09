@@ -68,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [loadProfile])
 
   const signInWithGoogle = React.useCallback(async () => {
-    if (!supabase) throw new Error("Supabase not configured")
+    if (!supabase) throw new Error("Supabase não está configurado")
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: window.location.origin },
@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithEmail = React.useCallback(
     async (email: string, password: string) => {
-      if (!supabase) return { error: "Supabase not configured" }
+      if (!supabase) return { error: "Supabase não está configurado" }
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       return { error: error?.message ?? null }
     },
@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUpWithEmail = React.useCallback(
     async (email: string, password: string, displayName?: string) => {
-      if (!supabase) return { error: "Supabase not configured" }
+      if (!supabase) return { error: "Supabase não está configurado" }
       const { error } = await supabase.auth.signUp({
         email,
         password,

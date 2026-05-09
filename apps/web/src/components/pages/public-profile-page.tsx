@@ -76,7 +76,7 @@ export function PublicProfilePage() {
         return
       }
       if (!profileRes.data) {
-        setError("This profile doesn't exist.")
+        setError("Este perfil não existe.")
         setLoading(false)
         return
       }
@@ -164,7 +164,7 @@ export function PublicProfilePage() {
       <div className="mx-auto w-full max-w-3xl px-3 pt-6 md:px-6">
         <EmptyState
           variant="empty"
-          message="Profiles are unavailable — Supabase is not configured."
+          message="Os perfis estão indisponíveis — o Supabase não está configurado."
         />
       </div>
     )
@@ -181,12 +181,12 @@ export function PublicProfilePage() {
   if (error || !profile) {
     return (
       <div className="mx-auto w-full max-w-3xl px-3 pt-6 md:px-6">
-        <EmptyState variant="error" message={error ?? "Profile not found."} />
+        <EmptyState variant="error" message={error ?? "Perfil não encontrado."} />
       </div>
     )
   }
 
-  const displayName = profile.display_name ?? "Listener"
+  const displayName = profile.display_name ?? "Ouvinte"
   const isSelf = user?.id === profile.id
 
   return (
@@ -209,14 +209,14 @@ export function PublicProfilePage() {
             {displayName}
           </h2>
           <p className="text-muted-foreground text-xs">
-            Joined {formatDate(profile.created_at)}
+            Inscreveu-se a {formatDate(profile.created_at)}
           </p>
           {isSelf ? (
             <Link
               to="/profile"
               className="text-muted-foreground hover:text-foreground self-start text-xs underline"
             >
-              Edit profile
+              Editar perfil
             </Link>
           ) : null}
         </div>
@@ -224,12 +224,12 @@ export function PublicProfilePage() {
 
       <section className="flex flex-col gap-2">
         <h3 className="text-muted-foreground text-xs uppercase tracking-wider">
-          Top 5 songs
+          Top 5 músicas
         </h3>
         {topSongs === null ? (
           <Loader2 className="text-muted-foreground size-4 animate-spin" />
         ) : topSongs.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No plays yet.</p>
+          <p className="text-muted-foreground text-sm">Ainda não há reproduções.</p>
         ) : (
           <ol className="flex flex-col gap-1">
             {topSongs.map((song, index) => (
@@ -254,13 +254,13 @@ export function PublicProfilePage() {
 
       <section className="flex flex-col gap-2">
         <h3 className="text-muted-foreground text-xs uppercase tracking-wider">
-          Top 5 artists
+          Top 5 artistas
         </h3>
         {topArtists === null ? (
           <Loader2 className="text-muted-foreground size-4 animate-spin" />
         ) : topArtists.length === 0 ? (
           <p className="text-muted-foreground text-sm">
-            No artist plays yet.
+            Ainda não há reproduções de artistas.
           </p>
         ) : (
           <ol className="flex flex-col gap-1">
@@ -289,13 +289,13 @@ export function PublicProfilePage() {
 
       <section className="flex flex-col gap-2">
         <h3 className="text-muted-foreground text-xs uppercase tracking-wider">
-          Public playlists
+          Playlists públicas
         </h3>
         {playlists === null ? (
           <Loader2 className="text-muted-foreground size-4 animate-spin" />
         ) : playlists.length === 0 ? (
           <p className="text-muted-foreground text-sm">
-            No public playlists yet.
+            Ainda não há playlists públicas.
           </p>
         ) : (
           <ul role="list" className="flex flex-col gap-1">
@@ -311,7 +311,7 @@ export function PublicProfilePage() {
                   </span>
                   <span className="text-muted-foreground text-xs">
                     {playlist.song_count}{" "}
-                    {playlist.song_count === 1 ? "song" : "songs"}
+                    {playlist.song_count === 1 ? "música" : "músicas"}
                   </span>
                 </Link>
               </li>

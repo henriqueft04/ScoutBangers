@@ -644,19 +644,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         if (!isActive()) return
         const err = audio.error
         if (!err) {
-          dispatch({ type: "PLAYBACK_ERROR", message: "Unknown playback error" })
+          dispatch({ type: "PLAYBACK_ERROR", message: "Erro de reprodução desconhecido" })
           return
         }
         const codeName =
           err.code === MediaError.MEDIA_ERR_ABORTED
-            ? "aborted"
+            ? "interrompido"
             : err.code === MediaError.MEDIA_ERR_NETWORK
-              ? "network error"
+              ? "erro de rede"
               : err.code === MediaError.MEDIA_ERR_DECODE
-                ? "decode error"
+                ? "erro de descodificação"
                 : err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
-                  ? "format not supported"
-                  : `code ${err.code}`
+                  ? "formato não suportado"
+                  : `código ${err.code}`
         const detail = err.message ? `${codeName} — ${err.message}` : codeName
         const s = stateRef.current
         const songName =
@@ -671,8 +671,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         dispatch({
           type: "PLAYBACK_ERROR",
           message: songName
-            ? `Couldn't play "${songName}": ${detail}`
-            : `Playback failed: ${detail}`,
+            ? `Não foi possível reproduzir "${songName}": ${detail}`
+            : `Reprodução falhou: ${detail}`,
         })
       }
 

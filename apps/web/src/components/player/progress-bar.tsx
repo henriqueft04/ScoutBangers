@@ -33,7 +33,7 @@ export function ProgressBar({ className, compact = false }: ProgressBarProps) {
         </span>
       )}
       <Slider
-        aria-label="Seek"
+        aria-label="Avançar"
         value={[value]}
         max={max || 1}
         step={0.1}

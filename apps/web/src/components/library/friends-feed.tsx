@@ -49,7 +49,7 @@ export function FriendsFeed() {
         (data ?? []).map((row) => ({
           songId: row.song_id,
           userId: row.user_id,
-          displayName: row.display_name ?? "Someone",
+          displayName: row.display_name ?? "Alguém",
           avatarUrl: row.avatar_url,
           playedAt: row.played_at,
         }))
@@ -85,10 +85,10 @@ export function FriendsFeed() {
     <section className="flex flex-col gap-2">
       <header className="flex items-baseline justify-between">
         <h3 className="text-foreground text-lg font-semibold tracking-tight">
-          Friends
+          Amigos
         </h3>
         <p className="text-muted-foreground text-xs uppercase tracking-wider">
-          Recently played
+          Reproduções recentes
         </p>
       </header>
 
@@ -100,7 +100,7 @@ export function FriendsFeed() {
         <p className="text-destructive text-xs">{error}</p>
       ) : !entries || entries.length === 0 ? (
         <p className="text-muted-foreground text-sm">
-          No friend activity yet — invite some friends to listen.
+          Ainda não há atividade dos amigos — convida uns para ouvirem.
         </p>
       ) : (
         <div
@@ -133,7 +133,7 @@ function FeedRow({ entry, song, onPlay }: FeedRowProps) {
     Boolean(song),
     song?.modifiedTime
   )
-  const title = song ? displayTitle(song, meta) : "Unavailable"
+  const title = song ? displayTitle(song, meta) : "Indisponível"
   const playable = Boolean(song)
   const initials = entry.displayName.charAt(0).toUpperCase()
 
@@ -153,7 +153,7 @@ function FeedRow({ entry, song, onPlay }: FeedRowProps) {
             }
           : undefined
       }
-      aria-label={playable ? `Play ${title}` : undefined}
+      aria-label={playable ? `Reproduzir ${title}` : undefined}
       className={cn(
         "group/feed border-primary/30 flex snap-start items-center gap-3 rounded-md border px-2 py-2 transition-colors",
         playable
@@ -164,7 +164,7 @@ function FeedRow({ entry, song, onPlay }: FeedRowProps) {
       <Link
         to={`/u/${entry.userId}`}
         onClick={(event) => event.stopPropagation()}
-        aria-label={`Open ${entry.displayName}'s profile`}
+        aria-label={`Abrir o perfil de ${entry.displayName}`}
         className="bg-primary text-primary-foreground inline-flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-semibold"
       >
         {entry.avatarUrl ? (

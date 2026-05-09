@@ -141,12 +141,12 @@ export function PlaylistDetailPage() {
               type="button"
               variant="ghost"
               size="sm"
-              aria-label="Add playlist to queue"
+              aria-label="Adicionar playlist à fila"
               onClick={() => queueAddMany(playlist.song_ids)}
               className="text-muted-foreground hover:text-foreground"
             >
               <ListPlus className="size-4" />
-              Queue
+              Fila
             </Button>
           ) : null}
           {playlist?.is_owner ? (
@@ -155,8 +155,8 @@ export function PlaylistDetailPage() {
               onClick={togglePublic}
               aria-label={
                 playlist.is_public
-                  ? "Make playlist private"
-                  : "Make playlist public"
+                  ? "Tornar playlist privada"
+                  : "Tornar playlist pública"
               }
               aria-pressed={playlist.is_public}
               className={cn(
@@ -171,7 +171,7 @@ export function PlaylistDetailPage() {
               ) : (
                 <Lock className="size-3.5" />
               )}
-              {playlist.is_public ? "Public" : "Private"}
+              {playlist.is_public ? "Pública" : "Privada"}
             </button>
           ) : null}
         </div>
@@ -184,7 +184,7 @@ export function PlaylistDetailPage() {
       ) : playlistSongs.length === 0 ? (
         <EmptyState
           variant="empty"
-          message="This playlist is empty. Add songs from the library or top-10."
+          message="Esta playlist está vazia. Adiciona músicas da biblioteca ou do top 10."
         />
       ) : (
         <div className="flex flex-col gap-1">
@@ -214,7 +214,7 @@ export function PlaylistDetailPage() {
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  aria-label={`Remove ${song.title}`}
+                  aria-label={`Remover ${song.title}`}
                   onClick={() => handleRemove(song.id)}
                 >
                   <Trash2 className="size-3" />

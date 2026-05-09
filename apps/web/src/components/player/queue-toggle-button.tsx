@@ -35,7 +35,7 @@ export function QueueToggleButton({
       type="button"
       variant="ghost"
       size="icon"
-      aria-label={open ? "Close queue" : "Open queue"}
+      aria-label={open ? "Fechar fila" : "Abrir fila"}
       aria-pressed={open}
       onClick={onClick}
       className={cn(

@@ -87,7 +87,7 @@ export function PlaylistsPage() {
     event.preventDefault()
     event.stopPropagation()
     if (!supabase || !user) return
-    if (!window.confirm(`Delete playlist "${name}"? This can't be undone.`)) {
+    if (!window.confirm(`Apagar a playlist "${name}"? Isto não se pode desfazer.`)) {
       return
     }
     const { error } = await supabase.from("playlists").delete().eq("id", id)
@@ -129,14 +129,14 @@ export function PlaylistsPage() {
         </h2>
         <EmptyState
           variant="empty"
-          message="Sign in to create and save playlists."
+          message="Inicia sessão para criar e guardar playlists."
         />
         <Button
           type="button"
           className="self-start"
           onClick={() => setSignInOpen(true)}
         >
-          Sign in
+          Iniciar sessão
         </Button>
         <SignInDialog open={signInOpen} onClose={() => setSignInOpen(false)} />
       </div>
@@ -147,7 +147,7 @@ export function PlaylistsPage() {
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-3 pt-3 pb-4 md:px-6 md:pt-4">
       <header className="flex items-center justify-between">
         <h2 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">
-          Your playlists
+          As tuas playlists
         </h2>
         <Button
           type="button"
@@ -155,7 +155,7 @@ export function PlaylistsPage() {
           onClick={() => setCreating((open) => !open)}
         >
           <Plus className="size-4" />
-          New
+          Nova
         </Button>
       </header>
 
@@ -167,13 +167,13 @@ export function PlaylistsPage() {
           <input
             autoFocus
             type="text"
-            placeholder="Playlist name"
+            placeholder="Nome da playlist"
             value={newName}
             onChange={(event) => setNewName(event.target.value)}
             className="border-input bg-background focus-visible:ring-ring/40 flex-1 rounded-md border px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2"
           />
           <Button type="submit" size="sm" disabled={!newName.trim()}>
-            Create
+            Criar
           </Button>
           <Button
             type="button"
@@ -184,7 +184,7 @@ export function PlaylistsPage() {
               setNewName("")
             }}
           >
-            Cancel
+            Cancelar
           </Button>
         </form>
       ) : null}
@@ -198,7 +198,7 @@ export function PlaylistsPage() {
       ) : !playlists || playlists.length === 0 ? (
         <EmptyState
           variant="empty"
-          message="No playlists yet. Tap New to make your first one."
+          message="Ainda não tens playlists. Toca em Nova para criar a primeira."
         />
       ) : (
         <ul role="list" className="flex flex-col gap-1">
@@ -213,26 +213,26 @@ export function PlaylistsPage() {
                     {playlist.is_public ? (
                       <Globe
                         className="text-muted-foreground size-3.5 shrink-0"
-                        aria-label="Public"
+                        aria-label="Pública"
                       />
                     ) : (
                       <Lock
                         className="text-muted-foreground size-3.5 shrink-0"
-                        aria-label="Private"
+                        aria-label="Privada"
                       />
                     )}
                     <span className="truncate">{playlist.name}</span>
                   </span>
                   <span className="text-muted-foreground shrink-0 text-xs">
                     {playlist.song_count}{" "}
-                    {playlist.song_count === 1 ? "song" : "songs"}
+                    {playlist.song_count === 1 ? "música" : "músicas"}
                   </span>
                 </Link>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  aria-label={`Delete ${playlist.name}`}
+                  aria-label={`Apagar ${playlist.name}`}
                   onClick={(event) =>
                     handleDelete(event, playlist.id, playlist.name)
                   }

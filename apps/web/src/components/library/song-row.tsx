@@ -149,7 +149,7 @@ export function SongRow({
       >
         <ListPlus className="size-5" />
         <span className="ml-2 text-xs font-medium uppercase tracking-wider">
-          {enqueueFlash ? "Added" : "Queue"}
+          {enqueueFlash ? "Adicionada" : "Fila"}
         </span>
       </div>
       <div
@@ -170,7 +170,7 @@ export function SongRow({
         onPointerCancel={onPointerEnd}
         data-current={isCurrent || undefined}
         aria-label={
-          isCurrent && isPlaying ? `Pause ${title}` : `Play ${title}`
+          isCurrent && isPlaying ? `Pausar ${title}` : `Reproduzir ${title}`
         }
         style={{
           transform: offset > 0 ? `translateX(${offset}px)` : undefined,
@@ -222,7 +222,7 @@ export function SongRow({
           {playCount !== undefined ? (
             <p className="text-muted-foreground text-xs tabular-nums">
               {playCount.toLocaleString()}{" "}
-              {playCount === 1 ? "play" : "plays"}
+              {playCount === 1 ? "reprodução" : "reproduções"}
             </p>
           ) : artist ? (
             <Link
@@ -238,7 +238,7 @@ export function SongRow({
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="Add to queue"
+          aria-label="Adicionar à fila"
           onClick={(event) => {
             event.stopPropagation()
             queueAdd(song.id)

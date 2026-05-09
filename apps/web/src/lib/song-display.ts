@@ -15,7 +15,7 @@ export function displayTitle(
   meta?: TrackMetadata | null
 ): string {
   void meta
-  return song.title || "Untitled"
+  return song.title || "Sem título"
 }
 
 /**

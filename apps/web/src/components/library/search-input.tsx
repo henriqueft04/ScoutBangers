@@ -32,8 +32,8 @@ export function SearchInput({ value, onChange, className }: SearchInputProps) {
         autoCorrect="off"
         autoCapitalize="none"
         spellCheck={false}
-        aria-label="Search songs"
-        placeholder="Search title or artist…"
+        aria-label="Pesquisar músicas"
+        placeholder="Pesquisa por título ou artista…"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="h-10 px-9 text-sm md:h-9"
@@ -43,7 +43,7 @@ export function SearchInput({ value, onChange, className }: SearchInputProps) {
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="Clear search"
+          aria-label="Limpar pesquisa"
           onClick={handleClear}
           className="absolute top-1/2 right-1 -translate-y-1/2 touch-manipulation"
         >

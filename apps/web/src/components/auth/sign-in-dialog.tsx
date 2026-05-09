@@ -48,7 +48,7 @@ export function SignInDialog({ open, onClose }: SignInDialogProps) {
     try {
       await signInWithGoogle()
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Google sign-in failed")
+      setError(e instanceof Error ? e.message : "Falha ao iniciar sessão com a Google")
       setBusy(false)
     }
   }
@@ -76,7 +76,7 @@ export function SignInDialog({ open, onClose }: SignInDialogProps) {
         setError(error)
         setBusy(false)
       } else {
-        setInfo("Check your email for a confirmation link.")
+        setInfo("Verifica o teu email para confirmares a conta.")
         setBusy(false)
       }
     }
@@ -86,7 +86,7 @@ export function SignInDialog({ open, onClose }: SignInDialogProps) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={mode === "signin" ? "Sign in" : "Create account"}
+      aria-label={mode === "signin" ? "Iniciar sessão" : "Criar conta"}
       className="bg-background/80 fixed inset-0 z-50 flex items-end justify-center p-0 backdrop-blur-sm md:items-center md:p-4"
       onClick={onClose}
     >
@@ -97,13 +97,13 @@ export function SignInDialog({ open, onClose }: SignInDialogProps) {
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold tracking-tight">
-            {mode === "signin" ? "Welcome back" : "Create account"}
+            {mode === "signin" ? "Bem-vindo de volta" : "Criar conta"}
           </h2>
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Close"
+            aria-label="Fechar"
             onClick={onClose}
           >
             <X />
@@ -112,8 +112,8 @@ export function SignInDialog({ open, onClose }: SignInDialogProps) {
 
         {!supabaseConfigured ? (
           <p className="text-muted-foreground text-sm">
-            Authentication isn't configured yet. The site owner needs to set
-            VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.
+            A autenticação ainda não está configurada. O dono do site precisa
+            de definir VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.
           </p>
         ) : (
           <>
@@ -146,13 +146,13 @@ export function SignInDialog({ open, onClose }: SignInDialogProps) {
                   d="M12 5.38c1.62 0 3.07.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.06l3.65 2.85C6.7 7.32 9.13 5.38 12 5.38Z"
                 />
               </svg>
-              Continue with Google
+              Continuar com a Google
             </Button>
 
             <div className="my-4 flex items-center gap-2">
               <div className="bg-border h-px flex-1" />
               <span className="text-muted-foreground text-xs uppercase tracking-wider">
-                or
+                ou
               </span>
               <div className="bg-border h-px flex-1" />
             </div>
@@ -160,7 +160,7 @@ export function SignInDialog({ open, onClose }: SignInDialogProps) {
             <form className="flex flex-col gap-3" onSubmit={handleEmail}>
               {mode === "signup" ? (
                 <label className="flex flex-col gap-1 text-sm">
-                  <span className="text-muted-foreground">Display name</span>
+                  <span className="text-muted-foreground">Nome a apresentar</span>
                   <input
                     type="text"
                     value={displayName}
@@ -182,7 +182,7 @@ export function SignInDialog({ open, onClose }: SignInDialogProps) {
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm">
-                <span className="text-muted-foreground">Password</span>
+                <span className="text-muted-foreground">Palavra-passe</span>
                 <input
                   type="password"
                   required
@@ -205,7 +205,7 @@ export function SignInDialog({ open, onClose }: SignInDialogProps) {
 
               <Button type="submit" className="w-full" disabled={busy}>
                 {busy ? <Loader2 className="size-4 animate-spin" /> : null}
-                {mode === "signin" ? "Sign in" : "Create account"}
+                {mode === "signin" ? "Iniciar sessão" : "Criar conta"}
               </Button>
             </form>
 
@@ -216,7 +216,7 @@ export function SignInDialog({ open, onClose }: SignInDialogProps) {
                   className="text-muted-foreground hover:text-foreground"
                   onClick={() => setMode("signup")}
                 >
-                  No account yet? <span className="underline">Create one</span>
+                  Ainda não tens conta? <span className="underline">Cria uma</span>
                 </button>
               ) : (
                 <button
@@ -224,8 +224,8 @@ export function SignInDialog({ open, onClose }: SignInDialogProps) {
                   className="text-muted-foreground hover:text-foreground"
                   onClick={() => setMode("signin")}
                 >
-                  Already have an account?{" "}
-                  <span className="underline">Sign in</span>
+                  Já tens conta?{" "}
+                  <span className="underline">Inicia sessão</span>
                 </button>
               )}
             </div>

@@ -52,7 +52,7 @@ export function Header({ className }: HeaderProps) {
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label="Sign in"
+              aria-label="Iniciar sessão"
               onClick={() => setSignInOpen(true)}
               className="touch-manipulation"
             >
@@ -62,7 +62,7 @@ export function Header({ className }: HeaderProps) {
           {user ? (
             <Link
               to="/profile"
-              aria-label="Open profile"
+              aria-label="Abrir perfil"
               className="bg-primary text-primary-foreground inline-flex size-7 items-center justify-center overflow-hidden rounded-full text-xs font-semibold"
             >
               {profile?.avatar_url || user.user_metadata?.avatar_url ? (
@@ -81,7 +81,7 @@ export function Header({ className }: HeaderProps) {
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={theme === "dark" ? "Mudar para modo claro" : "Mudar para modo escuro"}
             onClick={toggle}
             className="touch-manipulation"
           >
@@ -91,7 +91,7 @@ export function Header({ className }: HeaderProps) {
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Refresh songs"
+            aria-label="Atualizar músicas"
             onClick={reload}
             disabled={loading}
             className="touch-manipulation"

@@ -105,7 +105,7 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
     >
       <header className="border-border flex items-center justify-between border-b px-4 py-3">
         <h2 className="text-foreground text-base font-semibold tracking-tight">
-          Up Next
+          A seguir
         </h2>
         <div className="flex items-center gap-1">
           {userQueue.length > 0 ? (
@@ -116,7 +116,7 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
               onClick={queueClear}
               className="text-muted-foreground hover:text-foreground"
             >
-              Clear
+              Limpar
             </Button>
           ) : null}
           {onClose ? (
@@ -124,7 +124,7 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label="Close queue"
+              aria-label="Fechar fila"
               onClick={onClose}
             >
               <X />
@@ -136,15 +136,15 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
       <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2">
         {userQueue.length === 0 && upcomingItems.length === 0 ? (
           <div className="text-muted-foreground flex h-full items-center justify-center px-6 py-10 text-center text-sm">
-            Nothing in the queue. Swipe a song right or tap the queue button on
-            a song row to add it.
+            Nada na fila. Desliza uma música para a direita ou toca no botão da
+            fila numa linha para a adicionares.
           </div>
         ) : (
           <>
             {userQueue.length > 0 ? (
               <section>
                 <h3 className="text-muted-foreground px-2 pb-1 pt-2 text-xs uppercase tracking-wider">
-                  Next in queue
+                  A seguir na fila
                 </h3>
                 <Reorder.Group
                   axis="y"
@@ -167,7 +167,7 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
             {upcomingItems.length > 0 ? (
               <section>
                 <h3 className="text-muted-foreground px-2 pb-1 pt-2 text-xs uppercase tracking-wider">
-                  Up next
+                  A seguir
                 </h3>
                 <Reorder.Group
                   axis="y"
@@ -220,7 +220,7 @@ function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProp
     true,
     song?.modifiedTime
   )
-  const title = song ? displayTitle(song, meta) : "Unavailable"
+  const title = song ? displayTitle(song, meta) : "Indisponível"
   const artist = song ? displayArtist(song, meta) : undefined
 
   // Two coexisting gestures:
@@ -263,7 +263,7 @@ function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProp
       >
         <Trash2 className="size-5" />
         <span className="ml-2 text-xs font-medium uppercase tracking-wider">
-          Remove
+          Remover
         </span>
       </div>
 
@@ -282,7 +282,7 @@ function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProp
       >
         {/* Drag handle — only this element initiates Y reorder. */}
         <span
-          aria-label="Drag to reorder"
+          aria-label="Arrastar para reordenar"
           onPointerDown={(event) => {
             event.stopPropagation()
             dragControls.start(event)
@@ -316,7 +316,7 @@ function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProp
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="Remove from queue"
+          aria-label="Remover da fila"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation()

@@ -43,8 +43,8 @@ export function Library() {
           variant="empty"
           message={
             search
-              ? `No songs match "${search}".`
-              : "Drop some MP3s into the Drive folder and refresh."
+              ? `Nenhuma música corresponde a "${search}".`
+              : "Mete uns MP3 na pasta da Drive e atualiza."
           }
         />
       ) : (

@@ -13,18 +13,18 @@ const COPY: Record<
   { title: string; subtitle: string; Icon: typeof Music }
 > = {
   loading: {
-    title: "Loading songs",
-    subtitle: "Pulling the freshest tracks from the drive…",
+    title: "A carregar músicas",
+    subtitle: "A buscar as faixas mais recentes da drive…",
     Icon: Loader2,
   },
   empty: {
-    title: "No songs yet",
-    subtitle: "Drop some MP3s into the Drive folder and refresh.",
+    title: "Ainda não há músicas",
+    subtitle: "Mete uns MP3 na pasta da Drive e atualiza.",
     Icon: Music,
   },
   error: {
-    title: "Could not load songs",
-    subtitle: "Check your connection and try refreshing.",
+    title: "Não foi possível carregar as músicas",
+    subtitle: "Verifica a tua ligação e tenta atualizar.",
     Icon: CircleAlert,
   },
 }

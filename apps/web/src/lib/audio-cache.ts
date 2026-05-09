@@ -71,7 +71,7 @@ export async function downloadSong(
   onProgress?: (progress: DownloadProgress) => void
 ): Promise<void> {
   const cache = await openAudioCache()
-  if (!cache) throw new Error("Cache API unavailable")
+  if (!cache) throw new Error("API de cache indisponível")
 
   // Skip if already cached with the same modifiedTime.
   const existing = await cache.match(streamPath(songId), {
@@ -85,7 +85,7 @@ export async function downloadSong(
   const response = await fetch(streamPath(songId))
   if (!response.ok || !response.body) {
     throw new Error(
-      `Download failed (${response.status} ${response.statusText})`
+      `Transferência falhou (${response.status} ${response.statusText})`
     )
   }
 

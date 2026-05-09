@@ -52,7 +52,7 @@ export function DownloadedSongsModal({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Downloaded songs"
+      aria-label="Músicas transferidas"
       className="bg-background/80 fixed inset-0 z-50 flex items-end justify-center p-0 backdrop-blur-sm md:items-center md:p-4"
       onClick={onClose}
     >
@@ -64,10 +64,10 @@ export function DownloadedSongsModal({
         <header className="border-border flex shrink-0 items-center justify-between border-b px-5 py-4">
           <div className="flex flex-col">
             <h2 className="text-foreground text-base font-semibold tracking-tight">
-              Downloaded songs
+              Músicas transferidas
             </h2>
             <p className="text-muted-foreground text-xs">
-              {cached.length} {cached.length === 1 ? "song" : "songs"} · {formatBytes(totalBytes)}
+              {cached.length} {cached.length === 1 ? "música" : "músicas"} · {formatBytes(totalBytes)}
             </p>
           </div>
           <Button
@@ -75,7 +75,7 @@ export function DownloadedSongsModal({
             variant="ghost"
             size="icon-sm"
             onClick={onClose}
-            aria-label="Close"
+            aria-label="Fechar"
           >
             <X />
           </Button>
@@ -84,8 +84,8 @@ export function DownloadedSongsModal({
         <div className="flex-1 overflow-y-auto">
           {cached.length === 0 ? (
             <div className="text-muted-foreground px-6 py-10 text-center text-sm">
-              Nothing downloaded yet. Use the Download button to cache songs
-              for offline playback.
+              Ainda não há nada transferido. Usa o botão Transferir para
+              guardar as músicas para reprodução offline.
             </div>
           ) : (
             <ol className="flex flex-col">
@@ -116,9 +116,9 @@ export function DownloadedSongsModal({
         <footer className="border-border bg-muted/30 text-muted-foreground flex shrink-0 items-start gap-2 border-t px-5 py-3 text-xs">
           <HardDrive className="mt-0.5 size-3.5 shrink-0" />
           <p className="leading-relaxed">
-            Stored in this browser's offline cache on this device. Not in a
-            regular folder you can browse — clearing browser data or
-            uninstalling the app removes the downloads.
+            Guardado na cache offline deste navegador, neste dispositivo. Não
+            está numa pasta normal que possas abrir — limpar os dados do
+            navegador ou desinstalar a app remove as transferências.
           </p>
         </footer>
       </div>

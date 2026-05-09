@@ -55,7 +55,7 @@ export function useSongs(): UseSongsResult {
         setState((prev) => ({
           songs: prev.songs,
           loading: false,
-          error: error instanceof Error ? error.message : "Unknown error",
+          error: error instanceof Error ? error.message : "Erro desconhecido",
         }))
       })
     return () => {

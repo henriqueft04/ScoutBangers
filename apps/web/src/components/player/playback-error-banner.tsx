@@ -33,7 +33,7 @@ export function PlaybackErrorBanner() {
         type="button"
         variant="ghost"
         size="icon-xs"
-        aria-label="Dismiss error"
+        aria-label="Dispensar erro"
         onClick={dismiss}
         className="text-primary-foreground hover:bg-primary-foreground/15 touch-manipulation"
       >
