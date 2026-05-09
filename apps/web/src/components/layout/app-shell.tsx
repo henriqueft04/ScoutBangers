@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 
 import { BottomNav } from "./bottom-nav"
 import { Header } from "./header"
+import { NewSongsBanner } from "@/components/library/new-songs-banner"
 import { FullscreenPlayer } from "@/components/player/fullscreen-player"
 import { PlayerBar } from "@/components/player/player-bar"
 import { useMediaSession } from "@/hooks/useMediaSession"
@@ -33,6 +34,7 @@ export function AppShell({ children }: AppShellProps) {
   return (
     <div className="bg-background text-foreground flex min-h-svh flex-col">
       <Header />
+      <NewSongsBanner />
       <main className="flex-1 pb-2">{children}</main>
       <div className="sticky inset-x-0 bottom-0 z-20">
         <PlayerBar onExpand={open} />

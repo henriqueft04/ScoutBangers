@@ -207,3 +207,56 @@ export async function originUsage(): Promise<{
     return null
   }
 }
+
+const HAS_DOWNLOADED_KEY = "scoutbangers:offline:opted-in"
+
+/**
+ * Mark the user as having opted into offline downloads. Called once a
+ * download succeeds; consumers (the new-songs banner) read it to
+ * decide whether to bother nagging the user about uncached tracks.
+ */
+export function markOptedIntoOffline(): void {
+  if (typeof localStorage === "undefined") return
+  try {
+    localStorage.setItem(HAS_DOWNLOADED_KEY, "1")
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
+export function hasOptedIntoOffline(): boolean {
+  if (typeof localStorage === "undefined") return false
+  try {
+    return localStorage.getItem(HAS_DOWNLOADED_KEY) === "1"
+  } catch {
+    return false
+  }
+}
+
+interface NetworkConnection {
+  type?: string
+  effectiveType?: string
+  saveData?: boolean
+}
+
+/**
+ * Best-effort detection of whether the user is on cellular / metered
+ * data. The Network Information API isn't supported in Safari, so we
+ * fall back to a heuristic on `effectiveType` (slow types are usually
+ * cellular). Used to gate large bulk downloads behind explicit
+ * confirmation so we don't burn through someone's mobile data plan.
+ */
+export function isLikelyCellular(): boolean {
+  if (typeof navigator === "undefined") return false
+  const conn = (navigator as { connection?: NetworkConnection }).connection
+  if (!conn) return false
+  if (conn.type === "cellular") return true
+  if (conn.saveData === true) return true
+  if (
+    conn.effectiveType &&
+    ["slow-2g", "2g", "3g"].includes(conn.effectiveType)
+  ) {
+    return true
+  }
+  return false
+}

@@ -1,5 +1,11 @@
 import * as React from "react"
-import { Download, HardDrive, Loader2, Trash2 } from "lucide-react"
+import {
+  Download,
+  FolderOpen,
+  HardDrive,
+  Loader2,
+  Trash2,
+} from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 
@@ -8,15 +14,23 @@ import {
   downloadSong,
   evictAll,
   inspectCache,
+  isLikelyCellular,
+  markOptedIntoOffline,
   requestPersistence,
   originUsage,
 } from "@/lib/audio-cache"
+import type { Song } from "@/lib/types"
+
+import { ConfirmDialog } from "./confirm-dialog"
+import { DownloadedSongsModal } from "./downloaded-songs-modal"
 
 interface DownloadState {
   /** Index in `targets` we're currently downloading (0-based). */
   index: number
   /** Total songs to download in this run. */
   total: number
+  /** Current song being downloaded. */
+  song: Song
   /** Bytes received for the current song. */
   receivedBytes: number
   /** Bytes total for the current song. */
@@ -38,6 +52,10 @@ function formatBytes(bytes: number): string {
  * offline) without round-tripping the Drive proxy. Per-song downloads
  * are intentionally out of scope — single bulk action keeps the UX
  * simple.
+ *
+ * Also exposes a "View downloaded" modal that lists every cached song
+ * (so the user can see what they actually have offline) and a
+ * cellular warning before kicking off a multi-hundred-MB transfer.
  */
 export function StorageSection() {
   const { songs } = usePlayer()
@@ -51,15 +69,9 @@ export function StorageSection() {
   )
   const [error, setError] = React.useState<string | null>(null)
   const [evicting, setEvicting] = React.useState(false)
+  const [viewOpen, setViewOpen] = React.useState(false)
+  const [confirmCellular, setConfirmCellular] = React.useState(false)
   const cancelledRef = React.useRef(false)
-
-  const refresh = React.useCallback(async () => {
-    const manifest = new Map(songs.map((s) => [s.id, s.modifiedTime]))
-    const [stats, est] = await Promise.all([inspectCache(manifest), originUsage()])
-    setCachedIds(stats.cachedIds)
-    setStaleIds(stats.staleIds)
-    setUsage(est)
-  }, [songs])
 
   React.useEffect(() => {
     let cancelled = false
@@ -95,20 +107,21 @@ export function StorageSection() {
     return bytes
   }, [songs, cachedIds])
 
-  const startDownload = async () => {
-    if (downloading) return
-    if (targets.length === 0) return
+  const runDownload = async () => {
     setError(null)
     cancelledRef.current = false
     await requestPersistence()
 
     const total = targets.length
     let cumulativeBytes = 0
+    const first = targets[0]
+    if (!first) return
     setDownloading({
       index: 0,
       total,
+      song: first,
       receivedBytes: 0,
-      totalBytes: targets[0]?.size ?? 0,
+      totalBytes: first.size ?? 0,
       cumulativeBytes,
     })
 
@@ -120,12 +133,14 @@ export function StorageSection() {
           setDownloading({
             index: i,
             total,
+            song,
             receivedBytes: p.received,
             totalBytes: p.total || song.size || 0,
             cumulativeBytes,
           })
         })
         cumulativeBytes += song.size || 0
+        markOptedIntoOffline()
         setCachedIds((prev) => {
           const next = new Set(prev)
           next.add(song.id)
@@ -147,7 +162,22 @@ export function StorageSection() {
     }
 
     setDownloading(null)
-    void refresh()
+    // Refresh totals (origin usage may have changed).
+    const manifest = new Map(songs.map((s) => [s.id, s.modifiedTime]))
+    const [stats, est] = await Promise.all([inspectCache(manifest), originUsage()])
+    setCachedIds(stats.cachedIds)
+    setStaleIds(stats.staleIds)
+    setUsage(est)
+  }
+
+  const startDownload = () => {
+    if (downloading) return
+    if (targets.length === 0) return
+    if (isLikelyCellular()) {
+      setConfirmCellular(true)
+      return
+    }
+    void runDownload()
   }
 
   const cancel = () => {
@@ -158,8 +188,11 @@ export function StorageSection() {
     if (downloading) return
     setEvicting(true)
     await evictAll()
+    setCachedIds(new Set())
+    setStaleIds(new Map())
+    const est = await originUsage()
+    setUsage(est)
     setEvicting(false)
-    void refresh()
   }
 
   const cachedCount = cachedIds.size
@@ -202,12 +235,18 @@ export function StorageSection() {
 
       {downloading ? (
         <div className="flex flex-col gap-2">
-          <div className="text-foreground text-xs">
-            Downloading {downloading.index + 1} of {downloading.total} ·{" "}
-            <span className="tabular-nums">
-              {formatBytes(downloading.cumulativeBytes + downloading.receivedBytes)} /{" "}
-              {formatBytes(targetBytes)}
+          <div className="text-foreground flex items-center gap-2 text-xs">
+            <Loader2 className="text-muted-foreground size-3.5 animate-spin shrink-0" />
+            <span className="min-w-0 truncate">
+              <span className="text-muted-foreground">
+                {downloading.index + 1} / {downloading.total} ·{" "}
+              </span>
+              {downloading.song.title}
             </span>
+          </div>
+          <div className="text-muted-foreground tabular-nums text-xs">
+            {formatBytes(downloading.cumulativeBytes + downloading.receivedBytes)} /{" "}
+            {formatBytes(targetBytes)}
           </div>
           <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
             <div
@@ -256,6 +295,16 @@ export function StorageSection() {
                 targets.length === 1 ? "song" : "songs"
               } (${formatBytes(targetBytes)})`}
         </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => setViewOpen(true)}
+          className="text-muted-foreground hover:text-foreground gap-2"
+          aria-label="View downloaded songs"
+        >
+          <FolderOpen className="size-4" />
+          View ({cachedCount})
+        </Button>
         {cachedCount > 0 ? (
           <Button
             type="button"
@@ -273,6 +322,31 @@ export function StorageSection() {
           </Button>
         ) : null}
       </div>
+
+      <DownloadedSongsModal
+        open={viewOpen}
+        onClose={() => setViewOpen(false)}
+        cachedIds={cachedIds}
+        songs={songs}
+      />
+      <ConfirmDialog
+        open={confirmCellular}
+        title="You appear to be on cellular data"
+        description={
+          <>
+            This will download <span className="tabular-nums">{formatBytes(targetBytes)}</span> over
+            your current connection. Switch to Wi-Fi if you want to avoid mobile-data
+            charges.
+          </>
+        }
+        confirmLabel="Download anyway"
+        cancelLabel="Wait for Wi-Fi"
+        onConfirm={() => {
+          setConfirmCellular(false)
+          void runDownload()
+        }}
+        onCancel={() => setConfirmCellular(false)}
+      />
     </section>
   )
 }
