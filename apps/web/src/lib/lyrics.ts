@@ -15,10 +15,13 @@
  */
 
 // Bump the version when the parser changes shape (chord stripping,
-// paragraph spacing, etc.) so existing clients abandon their old
-// cached payload and refetch fresh.
-const STORAGE_KEY = "scoutbangers:lyrics-cache-v2"
-const LEGACY_STORAGE_KEYS = ["scoutbangers:lyrics-cache-v1"]
+// paragraph spacing, entity decoding, etc.) so existing clients
+// abandon their old cached payload and refetch fresh.
+const STORAGE_KEY = "scoutbangers:lyrics-cache-v3"
+const LEGACY_STORAGE_KEYS = [
+  "scoutbangers:lyrics-cache-v1",
+  "scoutbangers:lyrics-cache-v2",
+]
 const REFRESH_AFTER_MS = 24 * 60 * 60 * 1000
 
 interface LyricsPayload {

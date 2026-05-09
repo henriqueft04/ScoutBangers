@@ -41,18 +41,73 @@ function normalizeTitle(raw: string): string {
     .trim()
 }
 
+// Named HTML entities relevant to Portuguese text + the common
+// punctuation entities Google Docs emits. Numeric entities are
+// handled by a regex below and don't need a table entry.
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  // Portuguese vowels + diacritics
+  aacute: "á", Aacute: "Á",
+  agrave: "à", Agrave: "À",
+  acirc: "â", Acirc: "Â",
+  atilde: "ã", Atilde: "Ã",
+  auml: "ä", Auml: "Ä",
+  eacute: "é", Eacute: "É",
+  egrave: "è", Egrave: "È",
+  ecirc: "ê", Ecirc: "Ê",
+  euml: "ë", Euml: "Ë",
+  iacute: "í", Iacute: "Í",
+  igrave: "ì", Igrave: "Ì",
+  icirc: "î", Icirc: "Î",
+  iuml: "ï", Iuml: "Ï",
+  oacute: "ó", Oacute: "Ó",
+  ograve: "ò", Ograve: "Ò",
+  ocirc: "ô", Ocirc: "Ô",
+  otilde: "õ", Otilde: "Õ",
+  ouml: "ö", Ouml: "Ö",
+  uacute: "ú", Uacute: "Ú",
+  ugrave: "ù", Ugrave: "Ù",
+  ucirc: "û", Ucirc: "Û",
+  uuml: "ü", Uuml: "Ü",
+  ccedil: "ç", Ccedil: "Ç",
+  ntilde: "ñ", Ntilde: "Ñ",
+  // Punctuation / symbols
+  ndash: "–",
+  mdash: "—",
+  hellip: "…",
+  lsquo: "‘",
+  rsquo: "’",
+  ldquo: "“",
+  rdquo: "”",
+  laquo: "«",
+  raquo: "»",
+  bull: "•",
+  middot: "·",
+  copy: "©",
+  reg: "®",
+  trade: "™",
+  deg: "°",
+  ordf: "ª",
+  ordm: "º",
+  iexcl: "¡",
+  iquest: "¿",
+}
+
 function decodeHtmlEntities(s: string): string {
   return s
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
     .replace(/&#x([0-9a-f]+);/gi, (_, n) =>
       String.fromCharCode(parseInt(n, 16))
+    )
+    .replace(/&([a-zA-Z]+);/g, (match, name) =>
+      Object.prototype.hasOwnProperty.call(NAMED_ENTITIES, name)
+        ? NAMED_ENTITIES[name]!
+        : match
     )
 }
 
