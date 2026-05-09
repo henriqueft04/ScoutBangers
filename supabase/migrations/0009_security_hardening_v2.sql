@@ -96,33 +96,40 @@ grant execute on function public.top_songs_for_user(uuid, int) to anon, authenti
 grant execute on function public.top_artists_for_user(uuid, int) to anon, authenticated;
 
 -- ===== M5: lock down playlist_saves SELECT ===========================
+--
+-- Wrapped in a DO block so this migration is safe to run BEFORE
+-- 0008_playlist_saves.sql (which creates the table). When the table
+-- doesn't exist yet we no-op; the saves migration itself sets up the
+-- correct policy from scratch and refers to is_playlist_saved_by
+-- separately.
 
-drop policy if exists "playlist_saves readable by anyone" on public.playlist_saves;
-create policy "playlist_saves visible only to the saver"
-  on public.playlist_saves
-  for select
-  using (auth.uid() = user_id);
+do $$
+begin
+  if to_regclass('public.playlist_saves') is not null then
+    execute 'drop policy if exists "playlist_saves readable by anyone" on public.playlist_saves';
+    execute 'drop policy if exists "playlist_saves visible only to the saver" on public.playlist_saves';
+    execute $POLICY$
+      create policy "playlist_saves visible only to the saver"
+        on public.playlist_saves
+        for select
+        using (auth.uid() = user_id)
+    $POLICY$;
 
--- The previous SELECT policy was the path the client used for the
--- "is this playlist saved by me" check (lib/playlist-saves.ts).
--- That call still works under the new policy because it filters
--- on auth.uid() = user_id. Public counts continue to come from the
--- existing `playlist_save_count` SECURITY DEFINER RPC.
+    execute $FN$
+      create or replace function public.is_playlist_saved_by(uid uuid, pid uuid)
+      returns boolean
+      language sql
+      stable
+      security definer
+      set search_path = public
+      as $body$
+        select exists (
+          select 1 from public.playlist_saves
+          where user_id = uid and playlist_id = pid
+        );
+      $body$
+    $FN$;
 
--- New RPC for the same check, but typed and SECURITY DEFINER so it
--- doesn't depend on the SELECT policy at all. The client can switch
--- to this in a follow-up if desired.
-create or replace function public.is_playlist_saved_by(uid uuid, pid uuid)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select exists (
-    select 1 from public.playlist_saves
-    where user_id = uid and playlist_id = pid
-  );
-$$;
-
-grant execute on function public.is_playlist_saved_by(uuid, uuid) to anon, authenticated;
+    execute 'grant execute on function public.is_playlist_saved_by(uuid, uuid) to anon, authenticated';
+  end if;
+end $$;
