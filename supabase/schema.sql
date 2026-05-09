@@ -130,7 +130,9 @@ create policy "playlists_insert_own" on public.playlists
 
 drop policy if exists "playlists_update_own" on public.playlists;
 create policy "playlists_update_own" on public.playlists
-  for update using (auth.uid() = user_id);
+  for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
 drop policy if exists "playlists_delete_own" on public.playlists;
 create policy "playlists_delete_own" on public.playlists
@@ -165,7 +167,14 @@ create policy "playlist_songs_insert_own" on public.playlist_songs
 
 drop policy if exists "playlist_songs_update_own" on public.playlist_songs;
 create policy "playlist_songs_update_own" on public.playlist_songs
-  for update using (
+  for update
+  using (
+    exists (
+      select 1 from public.playlists
+      where id = playlist_id and user_id = auth.uid()
+    )
+  )
+  with check (
     exists (
       select 1 from public.playlists
       where id = playlist_id and user_id = auth.uid()
@@ -221,15 +230,26 @@ as $$
   limit lim;
 $$;
 
+-- Per-user listening stats. Honors the `share_activity` opt-out:
+-- if the target user has `share_activity = false`, returns nothing
+-- to anyone but the user themselves.
 create or replace function public.top_songs_for_user(uid uuid, lim int default 5)
 returns table(song_id text, play_count bigint)
 language sql
+stable
 security definer
 set search_path = public
 as $$
   select song_id, count(*)::bigint as play_count
   from public.plays
   where user_id = uid
+    and (
+      auth.uid() = uid
+      or exists (
+        select 1 from public.profiles pr
+        where pr.id = uid and pr.share_activity = true
+      )
+    )
   group by song_id
   order by play_count desc
   limit lim;
@@ -238,12 +258,21 @@ $$;
 create or replace function public.top_artists_for_user(uid uuid, lim int default 5)
 returns table(artist text, play_count bigint)
 language sql
+stable
 security definer
 set search_path = public
 as $$
   select artist, count(*)::bigint as play_count
   from public.plays
-  where user_id = uid and artist is not null
+  where user_id = uid
+    and artist is not null
+    and (
+      auth.uid() = uid
+      or exists (
+        select 1 from public.profiles pr
+        where pr.id = uid and pr.share_activity = true
+      )
+    )
   group by artist
   order by play_count desc
   limit lim;
@@ -306,10 +335,11 @@ create index if not exists playlist_saves_user_id_saved_at_idx
 alter table public.playlist_saves enable row level security;
 
 drop policy if exists "playlist_saves readable by anyone" on public.playlist_saves;
-create policy "playlist_saves readable by anyone"
+drop policy if exists "playlist_saves visible only to the saver" on public.playlist_saves;
+create policy "playlist_saves visible only to the saver"
   on public.playlist_saves
   for select
-  using (true);
+  using (auth.uid() = user_id);
 
 drop policy if exists "users save public playlists" on public.playlist_saves;
 create policy "users save public playlists"

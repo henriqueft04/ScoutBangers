@@ -2,6 +2,7 @@ import { Slider } from "@workspace/ui/components/slider"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { usePlayer } from "@/hooks/usePlayer"
+import { usePlayerProgress } from "@/hooks/usePlayerProgress"
 import { formatTime } from "@/lib/format"
 
 interface ProgressBarProps {
@@ -15,7 +16,8 @@ interface ProgressBarProps {
  * already handles touch + keyboard, so this is a thin presentational wrapper.
  */
 export function ProgressBar({ className, compact = false }: ProgressBarProps) {
-  const { position, duration, seek, currentIndex } = usePlayer()
+  const { seek, currentIndex } = usePlayer()
+  const { position, duration } = usePlayerProgress()
   const max = duration > 0 ? duration : 0
   const value = max > 0 ? Math.min(position, max) : 0
 

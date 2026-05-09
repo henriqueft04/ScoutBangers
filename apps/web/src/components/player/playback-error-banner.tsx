@@ -10,17 +10,9 @@ import { usePlayer } from "@/hooks/usePlayer"
  * Auto-dismisses when the next song starts; dismissable via the close button.
  */
 export function PlaybackErrorBanner() {
-  const { playbackError, play, currentIndex } = usePlayer()
+  const { playbackError, clearPlaybackError } = usePlayer()
 
   if (!playbackError) return null
-
-  const dismiss = () => {
-    // Cheapest way to clear: re-play the same song (which clears the error)
-    // or just hide. We don't expose a dedicated clear action — re-tapping a
-    // song will clear it naturally. So this button just hides the banner by
-    // forcing a no-op state update through play() if a song is loaded.
-    if (currentIndex !== null) play(currentIndex)
-  }
 
   return (
     <div
@@ -34,7 +26,7 @@ export function PlaybackErrorBanner() {
         variant="ghost"
         size="icon-xs"
         aria-label="Dispensar erro"
-        onClick={dismiss}
+        onClick={clearPlaybackError}
         className="text-primary-foreground hover:bg-primary-foreground/15 touch-manipulation"
       >
         <X />

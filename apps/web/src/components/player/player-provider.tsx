@@ -11,11 +11,14 @@ import {
   ensureTrackMetadata,
   getPictureDataUrl,
   peekTrackMetadata,
-  prefetchAllMetadata,
 } from "@/lib/track-metadata"
 import type { PlayerContextValue, SortMode } from "@/lib/types"
 
-import { PlayerContext } from "./player-context"
+import {
+  PlayerContext,
+  PlayerProgressContext,
+  type PlayerProgress,
+} from "./player-context"
 import {
   initialPlayerState,
   playerReducer,
@@ -26,6 +29,20 @@ const VOLUME_KEY = "scoutbangers:volume"
 const SORT_KEY = "scoutbangers:sort"
 const PLAYBACK_KEY = "scoutbangers:playback"
 const PREFS_TTL_MS = 365 * 24 * 60 * 60 * 1000
+
+/**
+ * Player diagnostics — kept for chasing backgrounded-playback bugs
+ * but only emitted in development. The deploy doesn't need to spam
+ * the console (and the in-page Eruda console gets noisy fast).
+ */
+const debugLog: typeof console.info =
+  import.meta.env.DEV
+    ? (...args) => console.info(...args)
+    : () => undefined
+const debugWarn: typeof console.warn =
+  import.meta.env.DEV
+    ? (...args) => console.warn(...args)
+    : () => undefined
 
 interface PersistedPlayback {
   songId: string
@@ -125,7 +142,13 @@ function canonicalDuration(audio: HTMLAudioElement): number {
   const audioDuration = Number.isFinite(audio.duration) ? audio.duration : 0
   const best = Math.max(metaDuration, audioDuration)
   if (best > 0 && best > audio.currentTime) return best
-  if (audio.currentTime > 0) return audio.currentTime + 1
+  // Both sources under-report the file's real length AND playback has
+  // already advanced past either guess. Returning `currentTime + 1`
+  // here would make `duration - currentTime <= CROSSFADE_LEAD_SECONDS`
+  // immediately true and trigger an unwanted skip — return Infinity
+  // instead so the duration-math gate fails. The audio.ended branch
+  // in the interval timer still catches the genuine end-of-file.
+  if (audio.currentTime > 0) return Number.POSITIVE_INFINITY
   return best
 }
 
@@ -170,11 +193,30 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     playerReducer,
     initialPlayerState,
     (init) => {
-      const stored = getCached<SortMode>(SORT_KEY)
-      if (stored && VALID_SORTS.includes(stored)) {
-        return { ...init, sort: stored }
+      let next = init
+      const storedSort = getCached<SortMode>(SORT_KEY)
+      if (storedSort && VALID_SORTS.includes(storedSort)) {
+        next = { ...next, sort: storedSort }
       }
-      return init
+      // Restore the user's volume / mute preference into the reducer
+      // state itself — without this the slider always reads the
+      // default (1.0, unmuted), and the persistence effect below then
+      // immediately overwrites the cached value. The audio elements
+      // are still synchronised in a separate useEffect after mount.
+      const storedVolume = getCached<PersistedVolume>(VOLUME_KEY)
+      if (
+        storedVolume &&
+        typeof storedVolume.volume === "number" &&
+        storedVolume.volume >= 0 &&
+        storedVolume.volume <= 1
+      ) {
+        next = {
+          ...next,
+          volume: storedVolume.volume,
+          muted: Boolean(storedVolume.muted),
+        }
+      }
+      return next
     }
   )
 
@@ -265,18 +307,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: "TIME", position: stored.position })
   }, [songs, loading])
 
-  // Background prefetch: kick off after a short idle delay so the initial
-  // render isn't competing with metadata reads. All requests go through the
-  // global 2-req/s queue in `lib/track-metadata.ts`, and a persistent
-  // localStorage cache means subsequent visits skip the slow first pass.
-  React.useEffect(() => {
-    if (loading || songs.length === 0) return
-    const ids = songs.map((song) => song.id)
-    const handle = setTimeout(() => {
-      void prefetchAllMetadata(ids)
-    }, 1500)
-    return () => clearTimeout(handle)
-  }, [songs, loading])
+  // Eager prefetch was hammering the proxy on cold load and competing
+  // with the active stream's range requests on the same origin pool —
+  // each visible row already lazy-loads its own metadata via the
+  // IntersectionObserver in `useTrackVisuals`. That's enough for the
+  // visible-rows-only working set and avoids the cold-start storm.
 
   // ---- Deck helpers ----------------------------------------------------
 
@@ -430,7 +465,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         const idleHasSong =
           idle.src.endsWith(newSrc) ||
           (idle.currentSrc && idle.currentSrc.endsWith(newSrc))
-        console.info("[player] playIndex non-crossfade", {
+        debugLog("[player] playIndex non-crossfade", {
           newSrc,
           idleSrc: idle.src,
           idleCurrentSrc: idle.currentSrc,
@@ -448,9 +483,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           audioEngine.setVolume(idle, 0)
           idle
             .play()
-            .then(() => console.info("[player] idle.play resolved"))
+            .then(() => debugLog("[player] idle.play resolved"))
             .catch((err) =>
-              console.warn("[player] idle.play rejected", err)
+              debugWarn("[player] idle.play rejected", err)
             )
           const target = userTargetVolume()
           audioEngine.fadeVolume(idle, target, 200)
@@ -553,7 +588,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   )
 
   const handleEnded = React.useCallback(() => {
-    console.info("[player] handleEnded fired", {
+    debugLog("[player] handleEnded fired", {
       crossfadeArmed: crossfadeArmedRef.current,
       hidden: typeof document !== "undefined" ? document.hidden : null,
     })
@@ -791,7 +826,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       ) {
         const advance = computeAdvance(1, true)
         if (advance) {
-          console.info("[player] interval-crossfade fire", {
+          debugLog("[player] interval-crossfade fire", {
             remaining:
               Number.isFinite(duration) && duration > 0
                 ? duration - active.currentTime
@@ -1057,6 +1092,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     })
   }, [])
 
+  const clearPlaybackError = React.useCallback(() => {
+    dispatch({ type: "PLAYBACK_ERROR", message: null })
+  }, [])
+
   const removeFromUpcoming = React.useCallback((songId: string) => {
     const s = stateRef.current
     const currentSongId =
@@ -1080,13 +1119,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   // ---- Public context value --------------------------------------------
 
+  // Main player context — everything EXCEPT high-frequency progress.
+  // Excluding state.position / state.duration from this memo (and its
+  // deps) means the value bag is stable across `timeupdate` ticks, so
+  // every consumer of `usePlayer()` doesn't re-render 4x per second
+  // during playback. Progress is exposed via a separate, narrower
+  // context below — components that need it opt into
+  // `usePlayerProgress()`.
   const value = React.useMemo<PlayerContextValue>(
     () => ({
       songs: state.songs,
       currentIndex: state.currentIndex,
       isPlaying: state.isPlaying,
-      position: state.position,
-      duration: state.duration,
       volume: state.volume,
       muted: state.muted,
       shuffle: state.shuffle,
@@ -1118,13 +1162,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       queueClear,
       reorderUpcoming,
       removeFromUpcoming,
+      clearPlaybackError,
     }),
     [
       state.songs,
       state.currentIndex,
       state.isPlaying,
-      state.position,
-      state.duration,
       state.volume,
       state.muted,
       state.shuffle,
@@ -1156,14 +1199,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       queueClear,
       reorderUpcoming,
       removeFromUpcoming,
+      clearPlaybackError,
     ]
+  )
+
+  const progress = React.useMemo<PlayerProgress>(
+    () => ({ position: state.position, duration: state.duration }),
+    [state.position, state.duration]
   )
 
   return (
     <PlayerContext.Provider value={value}>
-      <audio ref={deckARef} preload="auto" />
-      <audio ref={deckBRef} preload="auto" />
-      {children}
+      <PlayerProgressContext.Provider value={progress}>
+        <audio ref={deckARef} preload="auto" />
+        <audio ref={deckBRef} preload="auto" />
+        {children}
+      </PlayerProgressContext.Provider>
     </PlayerContext.Provider>
   )
 }

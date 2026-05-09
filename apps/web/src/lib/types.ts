@@ -17,13 +17,18 @@ export type RepeatMode = "off" | "all" | "one"
 
 export type { SortMode } from "./sort"
 
-/** Snapshot of player state, exposed to consumers via {@link usePlayer}. */
+/**
+ * Snapshot of player state, exposed to consumers via {@link usePlayer}.
+ *
+ * NOTE: high-frequency progress fields (`position`, `duration`) are
+ * NOT here — they live on a separate context to avoid re-rendering
+ * every consumer of `usePlayer()` on every `timeupdate`. Read them via
+ * the `usePlayerProgress()` hook.
+ */
 export interface PlayerState {
   songs: Song[]
   currentIndex: number | null
   isPlaying: boolean
-  position: number
-  duration: number
   volume: number
   muted: boolean
   shuffle: boolean
@@ -98,6 +103,8 @@ export interface PlayerActions {
    * if the song isn't there or is the currently playing one.
    */
   removeFromUpcoming: (songId: string) => void
+  /** Hide the playback-error banner without restarting the song. */
+  clearPlaybackError: () => void
 }
 
 export type PlayerContextValue = PlayerState & PlayerActions

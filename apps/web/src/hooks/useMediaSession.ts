@@ -3,8 +3,9 @@ import * as React from "react"
 import { displayArtist, displayTitle } from "@/lib/song-display"
 import { getPictureDataUrl } from "@/lib/track-metadata"
 
-import { useTrackMetadata } from "./useTrackMetadata"
 import { usePlayer } from "./usePlayer"
+import { usePlayerProgress } from "./usePlayerProgress"
+import { useTrackMetadata } from "./useTrackMetadata"
 
 const FALLBACK_ARTWORK: MediaImage[] = [
   { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
@@ -29,12 +30,11 @@ const SEEK_OFFSET_SECONDS = 10
  */
 export function useMediaSession(): void {
   const player = usePlayer()
+  const { position, duration } = usePlayerProgress()
   const {
     songs,
     currentIndex,
     isPlaying,
-    position,
-    duration,
     toggle,
     next,
     prev,
@@ -163,12 +163,22 @@ export function useMediaSession(): void {
     navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused"
   }, [supported, isPlaying])
 
-  // Position state lets the lock-screen scrubber show real progress and
-  // accept seek-to actions.
+  // Position state lets the lock-screen scrubber show real progress
+  // and accept seek-to actions. timeupdate fires ~4 Hz which is
+  // wasteful — every call is a cross-process IPC to the OS media
+  // session. Throttle to ~1 Hz: skip the write unless at least 1 s
+  // has passed OR duration / playing-state changed.
+  const lastWriteRef = React.useRef(0)
+  const lastDurationRef = React.useRef(0)
   React.useEffect(() => {
     if (!supported) return
     if (!("setPositionState" in navigator.mediaSession)) return
     if (!Number.isFinite(duration) || duration <= 0) return
+    const now = Date.now()
+    const durationChanged = duration !== lastDurationRef.current
+    if (!durationChanged && now - lastWriteRef.current < 950) return
+    lastWriteRef.current = now
+    lastDurationRef.current = duration
     try {
       navigator.mediaSession.setPositionState({
         duration,

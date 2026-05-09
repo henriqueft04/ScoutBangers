@@ -1,6 +1,6 @@
 import * as React from "react"
-import { Loader2, ListMusic } from "lucide-react"
-import { Link, useParams } from "react-router-dom"
+import { ArrowLeft, Loader2, ListMusic } from "lucide-react"
+import { Link, useNavigate, useParams } from "react-router-dom"
 
 import { EmptyState } from "@/components/library/empty-state"
 import { useAuth } from "@/hooks/useAuth"
@@ -50,7 +50,15 @@ function formatDate(iso: string): string {
  */
 export function PublicProfilePage() {
   const { userId } = useParams<{ userId: string }>()
+  const navigate = useNavigate()
   const { user } = useAuth()
+  const handleBack = React.useCallback(() => {
+    // Prefer browser-back so users land on whatever they came from
+    // (a friends-feed click, a search result, etc). Fall back to the
+    // home page when there's no history entry to pop.
+    if (window.history.length > 1) navigate(-1)
+    else navigate("/")
+  }, [navigate])
   const { songs } = usePlayer()
   const [profile, setProfile] = React.useState<PublicProfile | null>(null)
   const [topSongs, setTopSongs] = React.useState<TopSong[] | null>(null)
@@ -191,6 +199,15 @@ export function PublicProfilePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-3 pt-3 pb-4 md:px-6 md:pt-4">
+      <button
+        type="button"
+        onClick={handleBack}
+        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 self-start text-sm"
+        aria-label="Voltar"
+      >
+        <ArrowLeft className="size-4" />
+        Voltar
+      </button>
       <section className="flex items-center gap-4">
         <div className="bg-primary text-primary-foreground flex size-20 items-center justify-center overflow-hidden rounded-full text-2xl font-semibold md:size-24">
           {profile.avatar_url ? (

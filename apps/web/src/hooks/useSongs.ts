@@ -44,6 +44,12 @@ export function useSongs(): UseSongsResult {
 
   React.useEffect(() => {
     let cancelled = false
+    // Mark as loading at the start of every fetch (including
+    // user-initiated reloads) so the header reload icon spins. The
+    // initial mount also benefits — same setter, cached state is
+    // preserved.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setState((prev) => ({ ...prev, loading: true, error: null }))
     fetchSongs({ bust: bustToken > 0 })
       .then((fresh) => {
         if (cancelled) return

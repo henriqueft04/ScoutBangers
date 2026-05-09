@@ -102,9 +102,11 @@ export function PlaylistsPage() {
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!supabase || !user || !newName.trim()) return
+    // New playlists default to private. Owner can flip to public
+    // from the detail page if they want it shared.
     const { error } = await supabase
       .from("playlists")
-      .insert({ user_id: user.id, name: newName.trim() })
+      .insert({ user_id: user.id, name: newName.trim(), is_public: false })
     if (error) {
       setError(error.message)
       return

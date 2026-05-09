@@ -16,6 +16,17 @@ import type {
  */
 export interface InternalPlayerState extends PlayerState {
   /**
+   * Current playback position in seconds. Kept in the reducer so the
+   * persistence effect that resumes-on-reload can read it, but NOT
+   * surfaced via the main PlayerContextValue — high-frequency
+   * updates would re-render every consumer of `usePlayer()`.
+   * Components that need it read from `usePlayerProgress()` instead,
+   * which is fed from the parallel PlayerProgressContext.
+   */
+  position: number
+  /** Total duration of the current song in seconds. */
+  duration: number
+  /**
    * Current ordered list of song IDs being played through. When a user
    * clicks a song from a list (library, top-10, playlist), that list's
    * IDs become the playbackList. When shuffle toggles, this list is
@@ -185,7 +196,11 @@ export function playerReducer(
     case "SET_SORT":
       return applySort(state, state.songs, action.sort)
     case "PLAYBACK_ERROR":
-      return { ...state, playbackError: action.message, isPlaying: false }
+      // Setting an error implicitly pauses; clearing it (message=null)
+      // doesn't touch playback — used by the dismiss button.
+      return action.message
+        ? { ...state, playbackError: action.message, isPlaying: false }
+        : { ...state, playbackError: null }
     case "QUEUE_SET":
       return { ...state, userQueue: action.queue }
   }

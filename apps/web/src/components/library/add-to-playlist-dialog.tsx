@@ -172,10 +172,11 @@ export function AddToPlaylistDialog({
     setError(null)
 
     const name = newName.trim()
-    // 1. Create the playlist
+    // 1. Create the playlist (private by default — owner can flip
+    // to public from the detail page).
     const { data: created, error: createErr } = await supabase
       .from("playlists")
-      .insert({ user_id: user.id, name })
+      .insert({ user_id: user.id, name, is_public: false })
       .select("id, name")
       .single()
     if (createErr || !created) {

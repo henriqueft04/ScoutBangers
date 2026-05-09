@@ -1,5 +1,5 @@
 import * as React from "react"
-import { AnimatePresence, motion } from "framer-motion"
+import { AnimatePresence } from "framer-motion"
 import {
   Check,
   ChevronDown,
@@ -21,6 +21,7 @@ import { artistHref } from "@/lib/artists"
 import { shareUrl } from "@/lib/share"
 import { displayArtist, displayTitle } from "@/lib/song-display"
 
+import { BottomSheet } from "./bottom-sheet"
 import { LyricsPanel } from "./lyrics-panel"
 import { MainControls } from "./main-controls"
 import { PlaybackErrorBanner } from "./playback-error-banner"
@@ -408,72 +409,24 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
 
       <AnimatePresence>
         {queueOpen ? (
-          <motion.div
-            key="queue-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="absolute inset-0 z-10 flex items-end justify-center md:items-center md:p-6"
-            onClick={() => setQueueOpen(false)}
+          <BottomSheet
+            key="queue"
+            open={queueOpen}
+            onClose={() => setQueueOpen(false)}
+            ariaLabel="Fila"
           >
-            <div className="bg-background/60 absolute inset-0 backdrop-blur-sm" />
-            <motion.div
-              key="queue-sheet"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Fila"
-              onClick={(event) => event.stopPropagation()}
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", stiffness: 380, damping: 35 }}
-              className="bg-card text-card-foreground border-border relative flex h-[78%] w-full max-w-md flex-col overflow-hidden rounded-t-2xl border shadow-2xl md:h-[80vh] md:rounded-2xl"
-              style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-            >
-              <div className="flex justify-center pt-2 md:hidden">
-                <span
-                  aria-hidden
-                  className="bg-muted-foreground/30 h-1 w-10 rounded-full"
-                />
-              </div>
-              <QueuePanel onClose={() => setQueueOpen(false)} />
-            </motion.div>
-          </motion.div>
+            <QueuePanel onClose={() => setQueueOpen(false)} />
+          </BottomSheet>
         ) : null}
         {lyricsOpen ? (
-          <motion.div
-            key="lyrics-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="absolute inset-0 z-10 flex items-end justify-center md:items-center md:p-6"
-            onClick={() => setLyricsOpen(false)}
+          <BottomSheet
+            key="lyrics"
+            open={lyricsOpen}
+            onClose={() => setLyricsOpen(false)}
+            ariaLabel="Letra"
           >
-            <div className="bg-background/60 absolute inset-0 backdrop-blur-sm" />
-            <motion.div
-              key="lyrics-sheet"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Letra"
-              onClick={(event) => event.stopPropagation()}
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", stiffness: 380, damping: 35 }}
-              className="bg-card text-card-foreground border-border relative flex h-[78%] w-full max-w-md flex-col overflow-hidden rounded-t-2xl border shadow-2xl md:h-[80vh] md:rounded-2xl"
-              style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-            >
-              <div className="flex justify-center pt-2 md:hidden">
-                <span
-                  aria-hidden
-                  className="bg-muted-foreground/30 h-1 w-10 rounded-full"
-                />
-              </div>
-              <LyricsPanel onClose={() => setLyricsOpen(false)} />
-            </motion.div>
-          </motion.div>
+            <LyricsPanel onClose={() => setLyricsOpen(false)} />
+          </BottomSheet>
         ) : null}
       </AnimatePresence>
     </div>
