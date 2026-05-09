@@ -287,6 +287,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   // Restore previous song + position once songs have loaded. Doesn't
   // auto-play (browser autoplay policy needs a fresh user gesture);
   // user clicks play and resumes from where they left off.
+  //
+  // Setting `audio.currentTime` immediately after assigning a new
+  // `audio.src` is unreliable — the audio element hasn't loaded any
+  // metadata yet, so most browsers silently drop the seek. The fix is
+  // to wait for `loadedmetadata` and seek then. We also set a `seeked`
+  // listener as a final guard against the very rare case where the
+  // first seek attempt is rejected by the buffer (we re-issue once).
   const playbackRestoredRef = React.useRef(false)
   React.useEffect(() => {
     if (playbackRestoredRef.current) return
@@ -300,11 +307,30 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
     const audio = deckARef.current
     if (!audio) return
+    const target = Math.max(0, stored.position)
+
+    const onLoaded = () => {
+      audio.removeEventListener("loadedmetadata", onLoaded)
+      // Seek now that the audio knows its duration. Clamp to a
+      // hair below duration so we don't accidentally land on `ended`.
+      const safe = Number.isFinite(audio.duration)
+        ? Math.min(target, audio.duration - 0.1)
+        : target
+      try {
+        audio.currentTime = safe
+      } catch {
+        /* some browsers throw on seek before play(); ignore */
+      }
+      dispatch({ type: "TIME", position: safe })
+    }
+    audio.addEventListener("loadedmetadata", onLoaded)
     audio.src = streamUrl(stored.songId)
-    audio.currentTime = stored.position
+    audio.load()
     activeDeckRef.current = 0
     dispatch({ type: "SET_INDEX", index })
-    dispatch({ type: "TIME", position: stored.position })
+    // Show the saved position in the UI immediately — the actual
+    // audio seek lands when loadedmetadata fires above.
+    dispatch({ type: "TIME", position: target })
   }, [songs, loading])
 
   // Eager prefetch was hammering the proxy on cold load and competing
@@ -446,10 +472,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
       if (sameSong) {
         cancelFades()
-        active.currentTime = 0
+        // Don't reset currentTime if this is a "resume" — i.e. the
+        // song is paused and at a non-zero position (typical after a
+        // refresh that restored the previous session). Re-clicking a
+        // song that's already playing keeps the old "click again to
+        // restart" behaviour.
+        const isResume = active.paused && active.currentTime > 0.5
+        if (!isResume) {
+          active.currentTime = 0
+          dispatch({ type: "TIME", position: 0 })
+        }
         audioEngine.setVolume(active, userTargetVolume())
         void active.play().catch(() => {})
-        dispatch({ type: "TIME", position: 0 })
         dispatch({ type: "PLAYBACK_ERROR", message: null })
         return
       }
