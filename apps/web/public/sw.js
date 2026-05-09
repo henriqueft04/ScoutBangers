@@ -15,11 +15,30 @@
 
 const SHELL_CACHE = "scoutbangers-shell-v1"
 const AUDIO_CACHE = "scoutbangers-audio-v1"
-const PRECACHE = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg"]
+const PRECACHE = [
+  "/",
+  "/index.html",
+  "/manifest.webmanifest",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/icon-maskable-512.png",
+  "/apple-touch-icon.png",
+]
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(SHELL_CACHE).then((cache) => cache.addAll(PRECACHE))
+    caches.open(SHELL_CACHE).then(async (cache) => {
+      // cache.addAll is atomic — one 404 fails the whole batch and
+      // leaves /index.html uncached, which is what you saw as the
+      // 'Está offline' native page. Add each entry individually and
+      // swallow per-URL failures so a stale/missing asset can't take
+      // down the offline shell.
+      await Promise.all(
+        PRECACHE.map((url) =>
+          cache.add(url).catch(() => undefined)
+        )
+      )
+    })
   )
   self.skipWaiting()
 })
@@ -36,8 +55,52 @@ self.addEventListener("activate", (event) => {
         )
       )
       .then(() => self.clients.claim())
+      // Pre-warm hashed JS/CSS bundles referenced by the live
+      // index.html. Without this, the first offline visit after a
+      // deploy returns the cached index.html but its <script> /
+      // <link> tags point at asset URLs the cache has never seen,
+      // and the page can't boot. Best-effort — the rest of activate
+      // shouldn't block on this.
+      .then(() => prewarmAssets())
+      .catch(() => undefined)
   )
 })
+
+async function prewarmAssets() {
+  try {
+    const cache = await caches.open(SHELL_CACHE)
+    const indexResponse = await fetch("/index.html", { cache: "no-cache" })
+    if (!indexResponse.ok) return
+    await cache.put("/index.html", indexResponse.clone())
+    const html = await indexResponse.text()
+    const urls = new Set()
+    // Extract every absolute / root-relative URL from <script src> and
+    // <link href>. Crude but sufficient for Vite's output where every
+    // asset reference is a root-relative /assets/... path.
+    const regex = /(?:src|href)=["']([^"']+)["']/g
+    let match
+    while ((match = regex.exec(html)) !== null) {
+      const url = match[1]
+      if (!url) continue
+      if (
+        url.startsWith("/") &&
+        !url.startsWith("//") &&
+        !url.startsWith("/api/")
+      ) {
+        urls.add(url)
+      }
+    }
+    await Promise.all(
+      Array.from(urls).map((url) =>
+        cache
+          .add(url)
+          .catch(() => undefined)
+      )
+    )
+  } catch {
+    /* best-effort */
+  }
+}
 
 self.addEventListener("fetch", (event) => {
   const { request } = event
