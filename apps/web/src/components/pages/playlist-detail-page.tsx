@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Globe, ListPlus, Loader2, Lock, Trash2 } from "lucide-react"
+import { Globe, Link2, ListPlus, Loader2, Lock, Trash2 } from "lucide-react"
 import { Link, useParams } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
@@ -7,9 +7,11 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { EmptyState } from "@/components/library/empty-state"
 import { SongList } from "@/components/library/song-list"
+import { PlaylistSaveButton } from "@/components/playlists/playlist-save-button"
 import { useAuth } from "@/hooks/useAuth"
 import { usePlayFromList } from "@/hooks/usePlayFromList"
 import { usePlayer } from "@/hooks/usePlayer"
+import { shareUrl } from "@/lib/share"
 import { supabase } from "@/lib/supabase"
 
 interface PlaylistDetail {
@@ -17,6 +19,7 @@ interface PlaylistDetail {
   name: string
   is_public: boolean
   is_owner: boolean
+  owner_id: string
   song_ids: string[]
 }
 
@@ -28,6 +31,7 @@ export function PlaylistDetailPage() {
   const [playlist, setPlaylist] = React.useState<PlaylistDetail | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [linkCopied, setLinkCopied] = React.useState(false)
 
   React.useEffect(() => {
     if (!supabase || !id) return
@@ -64,6 +68,7 @@ export function PlaylistDetailPage() {
         name: meta.name,
         is_public: meta.is_public,
         is_owner: meta.user_id === user?.id,
+        owner_id: meta.user_id,
         song_ids: (items ?? []).map((row) => row.song_id),
       })
       setLoading(false)
@@ -72,6 +77,16 @@ export function PlaylistDetailPage() {
       cancelled = true
     }
   }, [user, id])
+
+  const handleCopyLink = async () => {
+    if (!playlist) return
+    const url = `${window.location.origin}/playlists/${playlist.id}`
+    const outcome = await shareUrl(playlist.name, url)
+    if (outcome === "copied") {
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 2000)
+    }
+  }
 
   // Allow owner to flip is_public.
   const togglePublic = async () => {
@@ -148,6 +163,26 @@ export function PlaylistDetailPage() {
               <ListPlus className="size-4" />
               Fila
             </Button>
+          ) : null}
+          {playlist?.is_public ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label={linkCopied ? "Link copiado" : "Copiar link"}
+              onClick={handleCopyLink}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Link2 className="size-4" />
+              {linkCopied ? "Copiado" : "Partilhar"}
+            </Button>
+          ) : null}
+          {playlist ? (
+            <PlaylistSaveButton
+              playlistId={playlist.id}
+              ownerId={playlist.owner_id}
+              isPublic={playlist.is_public}
+            />
           ) : null}
           {playlist?.is_owner ? (
             <button

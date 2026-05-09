@@ -18,6 +18,7 @@ import { SongArtwork } from "@/components/library/song-artwork"
 import { useTrackMetadata } from "@/hooks/useTrackMetadata"
 import { usePlayer } from "@/hooks/usePlayer"
 import { artistHref } from "@/lib/artists"
+import { shareUrl } from "@/lib/share"
 import { displayArtist, displayTitle } from "@/lib/song-display"
 
 import { LyricsPanel } from "./lyrics-panel"
@@ -177,17 +178,11 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
   const handleShare = React.useCallback(async () => {
     if (!song) return
     const url = `${window.location.origin}/?song=${song.id}`
-    if (typeof navigator.share === "function") {
-      try {
-        await navigator.share({ title: displayTitle(song, null), url })
-        return
-      } catch {
-        // user cancelled or API unavailable — fall through to clipboard
-      }
+    const outcome = await shareUrl(displayTitle(song, null), url)
+    if (outcome === "copied") {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
     }
-    await navigator.clipboard.writeText(url)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
   }, [song])
 
   // Escape key closes (desktop).

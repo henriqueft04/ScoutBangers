@@ -6,6 +6,7 @@ import { Button } from "@workspace/ui/components/button"
 
 import { SignInDialog } from "@/components/auth/sign-in-dialog"
 import { EmptyState } from "@/components/library/empty-state"
+import { SavedPlaylistsSection } from "@/components/playlists/saved-playlists-section"
 import { useAuth } from "@/hooks/useAuth"
 import { supabase } from "@/lib/supabase"
 
@@ -245,6 +246,8 @@ export function PlaylistsPage() {
           ))}
         </ul>
       )}
+
+      <SavedPlaylistsSection userId={user.id} />
     </div>
   )
 }

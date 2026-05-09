@@ -118,6 +118,24 @@ export interface Database {
         }
         Relationships: []
       }
+      playlist_saves: {
+        Row: {
+          user_id: string
+          playlist_id: string
+          saved_at: string
+        }
+        Insert: {
+          user_id: string
+          playlist_id: string
+          saved_at?: string
+        }
+        Update: {
+          user_id?: string
+          playlist_id?: string
+          saved_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: {
@@ -141,6 +159,21 @@ export interface Database {
           display_name: string | null
           avatar_url: string | null
           played_at: string
+        }[]
+      }
+      playlist_save_count: {
+        Args: { pid: string }
+        Returns: number
+      }
+      saved_playlists_for_user: {
+        Args: { uid: string }
+        Returns: {
+          id: string
+          name: string
+          owner_id: string
+          owner_display_name: string
+          song_count: number
+          saved_at: string
         }[]
       }
     }
