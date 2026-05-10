@@ -49,7 +49,7 @@ interface DeckState {
  * entirely on iOS and let the native <audio> path handle playback (it stays
  * alive on lock-screen and during app-switching).
  */
-function isIOS(): boolean {
+export function isIOS(): boolean {
   if (typeof navigator === "undefined") return false
   const ua = navigator.userAgent || ""
   if (/iPad|iPhone|iPod/.test(ua)) return true

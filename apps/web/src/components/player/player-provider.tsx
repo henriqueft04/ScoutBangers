@@ -1,7 +1,7 @@
 import * as React from "react"
 
 import { useSongs } from "@/hooks/useSongs"
-import { audioEngine, type FadeHandle } from "@/lib/audio-engine"
+import { audioEngine, isIOS, type FadeHandle } from "@/lib/audio-engine"
 import { streamUrl } from "@/lib/audio-url"
 import { rememberSearch } from "@/lib/search-history"
 import { shufflePreservingCurrent } from "@/lib/shuffle"
@@ -68,6 +68,17 @@ const CROSSFADE_LEAD_SECONDS = 2
  *  trigger fires too late if the song is short). 0.25 gives plenty
  *  of lead time and the network cost is the same. */
 const PREFETCH_PROGRESS = 0.25
+
+/**
+ * iOS-specific: skip the early "crossfade lead" auto-advance trigger and
+ * rely on the native `ended` event instead. With the Web Audio engine
+ * disabled on iOS, the lead path falls back to a hard volume cut + a
+ * programmatic idle.play(), which iOS may reject when the page is
+ * backgrounded — leaving silence and a poisoned crossfadeArmed flag that
+ * also blocks the next ended event from advancing. Calls to play() made
+ * synchronously inside the ended handler ARE allowed in background.
+ */
+const IS_IOS = typeof window !== "undefined" && isIOS()
 
 interface PersistedVolume {
   volume: number
@@ -716,6 +727,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
         // Auto-trigger crossfade when within the lead window.
         if (
+          !IS_IOS &&
           !crossfadeArmedRef.current &&
           stateRef.current.repeat !== "one" &&
           duration - audio.currentTime <= CROSSFADE_LEAD_SECONDS
@@ -856,7 +868,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (
         !crossfadeArmedRef.current &&
         stateRef.current.repeat !== "one" &&
-        ((actuallyPlaying && endsSoon) || active.ended)
+        ((!IS_IOS && actuallyPlaying && endsSoon) || active.ended)
       ) {
         const advance = computeAdvance(1, true)
         if (advance) {
