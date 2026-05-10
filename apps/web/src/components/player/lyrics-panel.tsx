@@ -17,6 +17,12 @@ import { displayTitle } from "@/lib/song-display"
 interface LyricsPanelProps {
   onClose?: () => void
   className?: string
+  /**
+   * `sheet` (default): mobile / fullscreen-player layout — small text,
+   * left-aligned. `inline`: desktop center-column overlay — much larger
+   * text, centered horizontally with a comfortable reading column.
+   */
+  variant?: "sheet" | "inline"
 }
 
 function formatRelative(timestamp: number): string {
@@ -45,7 +51,12 @@ function formatRelative(timestamp: number): string {
  * the cache we display an "indisponível" state and trigger a
  * background refetch in case it's a newly added song.
  */
-export function LyricsPanel({ onClose, className }: LyricsPanelProps) {
+export function LyricsPanel({
+  onClose,
+  className,
+  variant = "sheet",
+}: LyricsPanelProps) {
+  const inline = variant === "inline"
   const { songs, currentIndex } = usePlayer()
   const song = currentIndex !== null ? songs[currentIndex] : undefined
   const meta = useTrackMetadata(song?.id, Boolean(song), song?.modifiedTime)
@@ -126,9 +137,21 @@ export function LyricsPanel({ onClose, className }: LyricsPanelProps) {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4">
+      <div
+        className={cn(
+          "flex-1 overflow-y-auto",
+          inline ? "px-6 py-10" : "px-5 py-4"
+        )}
+      >
         {lyrics ? (
-          <pre className="text-foreground whitespace-pre-wrap font-sans text-sm leading-relaxed">
+          <pre
+            className={cn(
+              "text-foreground whitespace-pre-wrap font-sans",
+              inline
+                ? "mx-auto max-w-5xl text-center text-base leading-relaxed lg:columns-2 lg:gap-12 lg:text-lg [&>*]:break-inside-avoid"
+                : "text-sm leading-relaxed"
+            )}
+          >
             {lyrics}
           </pre>
         ) : (

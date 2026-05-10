@@ -19,14 +19,21 @@ interface FeedEntry {
   playedAt: string
 }
 
+interface FriendsFeedProps {
+  /**
+   * `carousel` (default): 2-row horizontal scroller used inline on Home.
+   * `rail`: single-column vertical list for the desktop right sidebar.
+   */
+  variant?: "carousel" | "rail"
+  className?: string
+}
+
 /**
- * Recent plays from everyone, rendered as a 2-row horizontal carousel
- * (swipe / scroll sideways through the cards). Each card keeps the
- * original avatar + name + song layout, just framed by a thin red
- * border. "played" was replaced with the relative time so each row
- * reads "Name · 5 min ago".
+ * Recent plays from everyone. Default is a 2-row horizontal carousel
+ * inline on Home; the `rail` variant stacks cards vertically for the
+ * desktop right sidebar.
  */
-export function FriendsFeed() {
+export function FriendsFeed({ variant = "carousel", className }: FriendsFeedProps = {}) {
   const { songs, play } = usePlayer()
   const [entries, setEntries] = React.useState<FeedEntry[] | null>(null)
   const [loading, setLoading] = React.useState(supabaseConfigured)
@@ -81,14 +88,16 @@ export function FriendsFeed() {
     if (indexInAll !== -1) play(indexInAll)
   }
 
+  const isRail = variant === "rail"
+
   return (
-    <section className="flex flex-col gap-2">
+    <section className={cn("flex flex-col gap-2", className)}>
       <header className="flex items-baseline justify-between">
         <h3 className="text-foreground text-lg font-semibold tracking-tight">
           Amigos
         </h3>
         <p className="text-muted-foreground text-xs uppercase tracking-wider">
-          Reproduções recentes
+          {isRail ? "Recente" : "Reproduções recentes"}
         </p>
       </header>
 
@@ -102,6 +111,17 @@ export function FriendsFeed() {
         <p className="text-muted-foreground text-sm">
           Ainda não há atividade dos amigos — convida uns para ouvirem.
         </p>
+      ) : isRail ? (
+        <div role="list" className="flex flex-col gap-1">
+          {entries.map((entry, index) => (
+            <FeedRow
+              key={`${entry.userId}-${entry.songId}-${entry.playedAt}-${index}`}
+              entry={entry}
+              song={songsById.get(entry.songId)}
+              onPlay={handlePlay}
+            />
+          ))}
+        </div>
       ) : (
         <div
           role="list"

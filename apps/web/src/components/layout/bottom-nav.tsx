@@ -26,7 +26,7 @@ export function BottomNav() {
     <nav
       aria-label="Principal"
       className={cn(
-        "border-border bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky inset-x-0 bottom-0 z-30 border-t backdrop-blur",
+        "border-border bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky inset-x-0 bottom-0 z-30 border-t backdrop-blur lg:hidden",
         "pb-[env(safe-area-inset-bottom)]"
       )}
     >

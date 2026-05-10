@@ -33,6 +33,12 @@ import { VolumeControl } from "./volume-control"
 interface FullscreenPlayerProps {
   open: boolean
   onClose: () => void
+  /**
+   * When the sheet opens, auto-expand one of the inner panels. Used by the
+   * desktop player-bar's queue/lyrics buttons so a single click jumps
+   * straight to that view.
+   */
+  initialPanel?: "queue" | "lyrics" | null
 }
 
 /**
@@ -41,7 +47,7 @@ interface FullscreenPlayerProps {
  * the chevron, the Escape key, or the OS back button (we push a history
  * entry on open so `popstate` collapses the sheet first).
  */
-export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
+export function FullscreenPlayer({ open, onClose, initialPanel = null }: FullscreenPlayerProps) {
   const { songs, currentIndex } = usePlayer()
   const navigate = useNavigate()
   const song = currentIndex !== null ? songs[currentIndex] : undefined
@@ -49,6 +55,18 @@ export function FullscreenPlayer({ open, onClose }: FullscreenPlayerProps) {
   const [copied, setCopied] = React.useState(false)
   const [queueOpenRaw, setQueueOpenRaw] = React.useState(false)
   const [lyricsOpenRaw, setLyricsOpenRaw] = React.useState(false)
+
+  // When the sheet opens with an `initialPanel` request, mirror it onto
+  // the local raw state. Only fires on the open transition so the user
+  // can still close the panel without it snapping back.
+  const wasOpenRef = React.useRef(open)
+  React.useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      setQueueOpenRaw(initialPanel === "queue")
+      setLyricsOpenRaw(initialPanel === "lyrics")
+    }
+    wasOpenRef.current = open
+  }, [open, initialPanel])
 
   /**
    * Navigate from inside the fullscreen sheet to a route. Pops our

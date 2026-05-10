@@ -28,8 +28,8 @@ export function Header({ className }: HeaderProps) {
         className
       )}
     >
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-3 py-2 md:px-6 md:py-3">
-        <h1>
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-3 py-2 md:px-6 md:py-3 lg:justify-end lg:gap-2">
+        <h1 className="lg:hidden">
           <Link
             to="/"
             className="flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"

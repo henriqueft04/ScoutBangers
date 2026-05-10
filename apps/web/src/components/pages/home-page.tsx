@@ -89,7 +89,9 @@ export function HomePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-3 pt-3 pb-4 md:px-6 md:pt-4">
-      <FriendsFeed />
+      <div className="xl:hidden">
+        <FriendsFeed />
+      </div>
 
       <header className="flex items-baseline justify-between">
         <h2 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">

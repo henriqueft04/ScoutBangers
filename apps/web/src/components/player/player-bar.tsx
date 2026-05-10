@@ -1,17 +1,28 @@
-import { ChevronUp } from "lucide-react"
+import { ChevronUp, FileText } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
+
+import { usePlayer } from "@/hooks/usePlayer"
 
 import { MainControls } from "./main-controls"
 import { NowPlaying } from "./now-playing"
 import { PlaybackErrorBanner } from "./playback-error-banner"
 import { ProgressBar } from "./progress-bar"
+import { QueueToggleButton } from "./queue-toggle-button"
 import { VolumeControl } from "./volume-control"
 
 interface PlayerBarProps {
   className?: string
   onExpand: () => void
+  /**
+   * Desktop-only: opens the fullscreen sheet pre-focused on the queue
+   * panel. Wired by AppShell so the sheet's `initialPanel` stays
+   * authoritative.
+   */
+  onOpenQueue: () => void
+  /** Same as onOpenQueue but for the lyrics panel. */
+  onOpenLyrics: () => void
 }
 
 /**
@@ -26,7 +37,14 @@ interface PlayerBarProps {
  * chevron button on the right does the same. The artist name within
  * NowPlaying is a link, so clicks there navigate instead.
  */
-export function PlayerBar({ className, onExpand }: PlayerBarProps) {
+export function PlayerBar({
+  className,
+  onExpand,
+  onOpenQueue,
+  onOpenLyrics,
+}: PlayerBarProps) {
+  const { currentIndex, songs } = usePlayer()
+  const hasSong = currentIndex !== null && Boolean(songs[currentIndex])
   return (
     <div
       className={cn(
@@ -50,6 +68,26 @@ export function PlayerBar({ className, onExpand }: PlayerBarProps) {
         </div>
 
         <div className="hidden items-center gap-2 justify-self-end md:flex">
+          {hasSong ? (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Abrir letra"
+                onClick={onOpenLyrics}
+                className="touch-manipulation"
+              >
+                <FileText />
+              </Button>
+              <QueueToggleButton
+                open={false}
+                onClick={onOpenQueue}
+                sizeClass="size-8"
+                iconClass="size-4"
+              />
+            </>
+          ) : null}
           <VolumeControl />
           <Button
             type="button"
