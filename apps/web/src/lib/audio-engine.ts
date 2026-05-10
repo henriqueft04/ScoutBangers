@@ -40,6 +40,23 @@ interface DeckState {
   fadeUntil: number
 }
 
+/**
+ * iOS Safari (including PWA / standalone) suspends the AudioContext when the
+ * page is backgrounded. Once an <audio> element is wrapped by
+ * createMediaElementSource(), its output is *captured* by the Web Audio graph
+ * — so a suspended context means silence, even though a plain <audio> would
+ * have continued playing in the background. We therefore skip the engine
+ * entirely on iOS and let the native <audio> path handle playback (it stays
+ * alive on lock-screen and during app-switching).
+ */
+function isIOS(): boolean {
+  if (typeof navigator === "undefined") return false
+  const ua = navigator.userAgent || ""
+  if (/iPad|iPhone|iPod/.test(ua)) return true
+  // iPadOS 13+ reports as Mac; disambiguate via touch points.
+  return ua.includes("Mac") && (navigator.maxTouchPoints ?? 0) > 1
+}
+
 class AudioEngine {
   private context: AudioContext | null = null
   private decks = new Map<HTMLAudioElement, DeckState>()
@@ -47,6 +64,8 @@ class AudioEngine {
   private pending = new Set<HTMLAudioElement>()
   /** Silent oscillator that keeps the audio thread continuously active. */
   private keepalive: OscillatorNode | null = null
+  /** When true, all engine ops are no-ops and audio plays natively. */
+  private readonly disabled = isIOS()
 
   /** True when the context exists and is running (audio session held). */
   get isRunning(): boolean {
@@ -61,6 +80,7 @@ class AudioEngine {
    */
   start(): void {
     if (typeof window === "undefined") return
+    if (this.disabled) return
     if (!this.context) {
       const Ctor =
         window.AudioContext ||
@@ -116,6 +136,7 @@ class AudioEngine {
    */
   attach(audio: HTMLAudioElement): void {
     if (!audio) return
+    if (this.disabled) return
     if (this.decks.has(audio)) return
     if (!this.context) {
       this.pending.add(audio)
