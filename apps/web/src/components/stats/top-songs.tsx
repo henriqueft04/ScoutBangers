@@ -1,4 +1,3 @@
-import * as React from "react"
 import { Pause, Play } from "lucide-react"
 
 import { cn } from "@workspace/ui/lib/utils"
