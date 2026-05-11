@@ -1257,8 +1257,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   return (
     <PlayerContext.Provider value={value}>
       <PlayerProgressContext.Provider value={progress}>
-        <audio ref={deckARef} preload="auto" />
-        <audio ref={deckBRef} preload="auto" />
+        <audio ref={deckARef} preload="auto" crossOrigin="anonymous" />
+        <audio ref={deckBRef} preload="auto" crossOrigin="anonymous" />
         {children}
       </PlayerProgressContext.Provider>
     </PlayerContext.Provider>
