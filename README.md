@@ -1,12 +1,13 @@
 # ScoutBangers
 
-A minimalist, mobile-first web music player that streams songs from a public Google Drive folder. Built with React 19, Vite 7, Tailwind v4 and shadcn/ui. Deployable for free on Vercel and installable as a PWA on phones.
+A minimalist, mobile-first web music player. Built with React 19, Vite 7, Tailwind v4 and shadcn/ui. Hosted free on Cloudflare Pages with audio served direct from Cloudflare R2 (zero egress fees). Installable as a PWA on phones.
 
 | | |
 |---|---|
 | **Palette** | Red `#7B2D26` and white `#F0F3F5` |
-| **Source** | Public Google Drive folder, served via two tiny Vercel Edge functions |
-| **Free hosting** | Vercel Hobby tier (1M function calls + 100 GB bandwidth/month) |
+| **Catalog source** | Public Google Drive folder, mirrored hourly into R2 by a Cron Worker |
+| **Audio storage** | Cloudflare R2 (custom domain `audio.scoutbangers.com`) |
+| **Hosting** | Cloudflare Pages (SPA + `/api/songs` + `/api/lyrics`) |
 | **Install** | PWA — add to home screen on iOS/Android |
 
 ## Quick start
@@ -19,13 +20,13 @@ cd ../..
 npm run dev                     # boots Vite dev server
 ```
 
-The dev server only runs the SPA. To exercise `/api/songs` and `/api/stream/[id]` locally you also need the Vercel CLI:
+The dev server only runs the SPA. To exercise `/api/songs` and `/api/lyrics` locally use Wrangler against the Pages Functions:
 
 ```bash
-npm install -g vercel
+npm install -g wrangler
 cd apps/web
-vercel link                     # one-time, attach to a Vercel project
-vercel dev                      # serves SPA + serverless functions on :3000
+npm run build
+npx wrangler pages dev dist     # serves SPA + functions on :8788
 ```
 
 ## Project structure
@@ -33,47 +34,53 @@ vercel dev                      # serves SPA + serverless functions on :3000
 ```
 ScoutBangers/
 ├── apps/
-│   └── web/                       # The Vite SPA + Vercel Edge functions
-│       ├── api/
-│       │   ├── songs.ts           # GET /api/songs       — Drive folder manifest
-│       │   └── stream/[id].ts     # GET /api/stream/:id  — Range-aware audio proxy
+│   └── web/                       # The Vite SPA + Cloudflare Pages Functions
+│       ├── functions/api/
+│       │   ├── songs.ts           # GET /api/songs   — Drive folder manifest
+│       │   ├── lyrics.ts          # GET /api/lyrics  — Cancioneiro doc → JSON
+│       │   └── _lib/drive-auth.ts # Service-account JWT for Drive API
+│       ├── public/
+│       │   ├── _headers           # Cloudflare Pages security headers (CSP etc.)
+│       │   ├── _redirects         # SPA fallback routing
 │       ├── public/
 │       │   ├── SB.png             # Source logo (red, 1402×1122)
 │       │   ├── icon-*.png         # Generated PWA icons (do not edit by hand)
 │       │   ├── manifest.webmanifest
 │       │   └── sw.js              # Minimal service worker (PWA installability)
-│       └── src/
-│           ├── App.tsx            # Wraps PlayerProvider + AppShell
-│           ├── components/
-│           │   ├── layout/        # AppShell, Header
-│           │   ├── library/       # SongList, SongRow, SearchInput, EmptyState …
-│           │   └── player/        # PlayerProvider, PlayerBar, NowPlaying,
-│           │                      # MainControls, ProgressBar, VolumeControl
-│           ├── hooks/             # usePlayer, useSongs, useFilteredSongs, …
-│           └── lib/               # types, api, audio-url, format, shuffle, …
+│       └── src/                   # React app (PlayerProvider, components, hooks, lib)
+├── workers/
+│   └── drive-sync/                # Cron Worker: mirrors Drive folder into R2
+│       ├── src/index.ts           # scheduled() + manual ?token=… trigger
+│       └── wrangler.toml          # cron schedule + R2 binding
 └── packages/
     └── ui/                        # Shared shadcn/ui components
-        └── src/components/        # Button, Slider, Input, ScrollArea, Tooltip, Separator
 ```
 
 ## Architecture
 
 ```
-┌────────── Browser (SPA) ──────────┐         ┌────── Vercel Edge ──────┐
-│  PlayerProvider ── single <audio>  │  fetch │  /api/songs              │
-│      │                              │ ─────► │  /api/stream/[id]        │
-│      ├── Library                   │         │     │                    │
-│      └── PlayerBar (sticky)        │         │     ▼                    │
-└────────────────────────────────────┘         │  Google Drive API v3     │
-                                               │  (DRIVE_API_KEY,         │
-                                               │   DRIVE_FOLDER_ID env)   │
-                                               └─────────────────────────┘
+        Browser (SPA on scoutbangers.com)
+            │
+            │ fetch /api/songs, /api/lyrics      <audio src="audio.scoutbangers.com/<drive-id>">
+            │                                      │
+            ▼                                      ▼
+   ┌─────────────────────┐                   ┌────────────────────────┐
+   │ Cloudflare Pages    │                   │ Cloudflare R2          │
+   │ Functions (Drive)   │                   │ public bucket on       │
+   │                     │                   │ audio.scoutbangers.com │
+   └─────────────────────┘                   └────────────────────────┘
+                                                      ▲
+                                                      │ R2 put (new files)
+                                             ┌────────────────────────┐
+                                             │ Cron Worker (15 min)   │
+                                             │ Drive list → R2 mirror │
+                                             └────────────────────────┘
 ```
 
-- The SPA holds a single `<audio>` element inside `PlayerProvider` and treats audio events (`play`, `pause`, `timeupdate`, `ended`, …) as the source of truth.
-- `/api/songs` is cached on the Vercel edge for 5 minutes (stale-while-revalidate 10 minutes), so weekly Drive uploads propagate within minutes without hammering the Drive API.
-- `/api/stream/[id]` forwards the client's `Range` header to Drive — without this, audio seek doesn't work because Drive blocks Range in CORS responses.
-- The Drive API key never reaches the client; it lives only as a Vercel env var.
+- Audio bytes never touch any compute path: R2 → user direct, $0 egress regardless of volume.
+- `Song.id` = Drive file ID = R2 object key. Historical Supabase data (plays, stats, lyrics) keeps working unchanged.
+- `/api/songs` is cached at the edge for 5 min so Drive isn't hammered.
+- The Drive service-account credentials live only in Pages + Worker env, never in the client bundle.
 
 ## Adding songs (weekly workflow)
 
@@ -83,21 +90,49 @@ ScoutBangers/
 
 Filenames map to titles. `Artist - Title.mp3` is parsed into `{ artist: "Artist", title: "Title" }`. Plain `Title.mp3` is shown without an artist.
 
-## Deploying to Vercel (free)
+## Deploying to Cloudflare (free)
 
-1. Create a Drive folder and set sharing to **Anyone with the link → Viewer**.
-2. In Google Cloud Console: create a project, enable the **Google Drive API**, create an **API key**. Restrict it to the Drive API.
-3. Push this repo to GitHub.
-4. On [vercel.com](https://vercel.com) → **Add New → Project** → import your repo.
-5. **Important**: set **Root Directory** to `apps/web`.
-6. Under **Environment Variables**, add:
-   - `DRIVE_API_KEY` — the key from step 2
-   - `DRIVE_FOLDER_ID` — the segment after `/folders/` in the Drive URL
-7. **Deploy**. Vercel returns a URL like `scoutbangers.vercel.app`. Open it on your phone and **Add to Home Screen** to install as a PWA.
+Three pieces: an R2 bucket, a Pages project, and a Worker. Domain `scoutbangers.com` should already be on Cloudflare.
 
-### If you outgrow Vercel's free bandwidth (100 GB/month)
+### 1. R2 bucket
 
-Migrate the same SPA + functions to **Cloudflare Pages** (unlimited bandwidth on free tier). The only change required is moving `apps/web/api/*.ts` to `apps/web/functions/api/*.ts` and updating the function signatures from Vercel Edge `(request: Request)` to Cloudflare Pages `(context: EventContext)`. Same logic, ~10 line diff.
+In the Cloudflare dashboard → **R2** → *Create bucket*:
+- Name: `scoutbangers-audio`
+- Once created, **Settings → Custom domains → Connect domain** → `audio.scoutbangers.com`. Cloudflare creates the DNS record automatically and serves the bucket publicly with Range support.
+
+### 2. Drive→R2 sync Worker
+
+```bash
+cd workers/drive-sync
+npm install
+npx wrangler login                                   # one-time
+npx wrangler secret put GOOGLE_SERVICE_ACCOUNT_JSON  # paste the full service-account JSON
+npx wrangler secret put SYNC_TOKEN                   # any random string
+# Edit wrangler.toml: set DRIVE_FOLDER_ID under [vars]
+npx wrangler deploy
+# Kick off the initial backfill (cron will handle incremental from here):
+curl "https://scoutbangers-drive-sync.<your-account>.workers.dev/?token=<SYNC_TOKEN>"
+```
+
+The Worker copies up to 20 new files per run; cron fires every 15 min, so an initial folder of ~hundreds of songs may take a few hours to fully mirror, or trigger the manual endpoint repeatedly.
+
+### 3. Pages project
+
+Cloudflare dashboard → **Pages → Create → Connect to Git → ** select repo. Build settings:
+
+- **Framework preset**: None
+- **Build command**: `npm install && npm run build --filter=scoutbangers-web`
+- **Build output directory**: `apps/web/dist`
+- **Root directory** (advanced): leave at `/`
+- **Environment variables** (Production + Preview):
+  - `DRIVE_FOLDER_ID`
+  - `LYRICS_DRIVE_FILE_ID`
+  - `GOOGLE_SERVICE_ACCOUNT_JSON` (paste full JSON; mark as encrypted)
+  - `VITE_AUDIO_BASE_URL=https://audio.scoutbangers.com`
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_ANON_KEY`
+
+After the first deploy, attach the custom domain: Pages project → **Custom domains** → add `scoutbangers.com` and `www.scoutbangers.com`.
 
 ## Customisation
 

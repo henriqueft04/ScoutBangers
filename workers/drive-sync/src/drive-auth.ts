@@ -1,12 +1,14 @@
 const SCOPE = "https://www.googleapis.com/auth/drive.readonly"
 const TOKEN_URL = "https://oauth2.googleapis.com/token"
 
-function getCredentials(): { client_email: string; private_key: string } {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
+interface ServiceAccountCreds {
+  client_email: string
+  private_key: string
+}
+
+function parseServiceAccount(raw: string | undefined): ServiceAccountCreds {
   if (!raw) {
-    throw new Error(
-      "GOOGLE_SERVICE_ACCOUNT_JSON env var is not set."
-    )
+    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON env var is not set.")
   }
   let creds: { client_email?: string; private_key?: string }
   try {
@@ -15,7 +17,9 @@ function getCredentials(): { client_email: string; private_key: string } {
     throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON could not be parsed as JSON.")
   }
   if (!creds.client_email || !creds.private_key) {
-    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON is missing client_email or private_key.")
+    throw new Error(
+      "GOOGLE_SERVICE_ACCOUNT_JSON is missing client_email or private_key."
+    )
   }
   return { client_email: creds.client_email, private_key: creds.private_key }
 }
@@ -50,18 +54,14 @@ function jsonToBase64url(obj: unknown): string {
   return toBase64url(strToBuffer(JSON.stringify(obj)))
 }
 
-/**
- * Fetch a Drive access token using Web Crypto (works in both Edge and Node
- * runtimes). Signs a JWT with the service account's RSA private key and
- * exchanges it at Google's token endpoint via fetch.
- */
-export async function getDriveAccessToken(): Promise<string> {
-  const { client_email, private_key } = getCredentials()
+export async function getDriveAccessToken(
+  rawCreds: string | undefined
+): Promise<string> {
+  const { client_email, private_key } = parseServiceAccount(rawCreds)
 
-  const keyDer = pemToDer(private_key)
   const cryptoKey = await crypto.subtle.importKey(
     "pkcs8",
-    keyDer,
+    pemToDer(private_key),
     { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
     false,
     ["sign"]

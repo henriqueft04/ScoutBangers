@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Loader2, Play } from "lucide-react"
+import { BarChart3, Loader2, Play } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { cn } from "@workspace/ui/lib/utils"
@@ -92,13 +92,23 @@ export function FriendsFeed({ variant = "carousel", className }: FriendsFeedProp
 
   return (
     <section className={cn("flex flex-col gap-2", className)}>
-      <header className="flex items-baseline justify-between">
+      <header className="flex items-baseline justify-between gap-2">
         <h3 className="text-foreground text-lg font-semibold tracking-tight">
           Amigos
         </h3>
-        <p className="text-muted-foreground text-xs uppercase tracking-wider">
-          {isRail ? "Recente" : "Reproduções recentes"}
-        </p>
+        {isRail ? (
+          <p className="text-muted-foreground text-xs uppercase tracking-wider">
+            Recente
+          </p>
+        ) : (
+          <Link
+            to="/estatisticas"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs font-medium transition-colors"
+          >
+            <BarChart3 className="size-3.5" aria-hidden />
+            Ver estatísticas
+          </Link>
+        )}
       </header>
 
       {loading ? (

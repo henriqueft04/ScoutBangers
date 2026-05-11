@@ -20,9 +20,11 @@
     "music-metadata": "^11.12.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-router-dom": "^7.15.0"
+    "react-router-dom": "^7.15.0",
+    "recharts": "^3.8.1"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251101.0",
     "@eslint/js": "^9.39.2",
     "@tailwindcss/vite": "^4.1.18",
     "@types/node": "^25.1.0",

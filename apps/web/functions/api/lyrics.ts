@@ -1,41 +1,18 @@
-import { getDriveAccessToken } from "./_lib/drive-auth.js"
+import { getDriveAccessToken } from "./_lib/drive-auth"
 
-export const config = { runtime: "edge" }
-
-/**
- * GET /api/lyrics — Edge function.
- *
- * Fetches the configured Google Doc lyrics file from Drive as HTML
- * directly (Drive does the conversion server-side, no mammoth
- * needed), splits by headings into a normalized-title → lyrics map,
- * and returns it as JSON.
- *
- * The doc is expected to have one heading per song. Section
- * structure is auto-detected per H1: H3 if the section contains
- * any H3, otherwise H2.
- *
- * Cached aggressively at the edge — the doc rarely changes
- * minute-by-minute, and the browser maintains its own 24 h cache
- * on top of this.
- */
+interface Env {
+  LYRICS_DRIVE_FILE_ID: string
+  GOOGLE_SERVICE_ACCOUNT_JSON: string
+}
 
 const DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files"
 const HTML_MIME = "text/html"
 
 interface LyricsPayload {
-  /** ISO timestamp from Drive's modifiedTime, for staleness detection. */
   modifiedTime: string | null
-  /** Map of normalized song title → lyrics body. */
   songs: Record<string, string>
-  /**
-   * Map of normalized song title → in-doc anchor id (e.g. "663gxdn1gsfp")
-   * extracted from the heading's <a id="_…"> element. Lets the client
-   * deep-link into the Doc at this song's heading.
-   */
   anchors: Record<string, string>
-  /** Direct URL of the Cancioneiro Doc (without an anchor). */
   docUrl: string
-  /** Original (display) titles, for debugging / future fuzzy match. */
   titles: string[]
 }
 
@@ -49,17 +26,8 @@ function normalizeTitle(raw: string): string {
     .trim()
 }
 
-// Named HTML entities relevant to Portuguese text + the common
-// punctuation entities Google Docs emits. Numeric entities are
-// handled by a regex below and don't need a table entry.
 const NAMED_ENTITIES: Record<string, string> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-  nbsp: " ",
-  // Portuguese vowels + diacritics
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
   aacute: "á", Aacute: "Á",
   agrave: "à", Agrave: "À",
   acirc: "â", Acirc: "Â",
@@ -84,26 +52,13 @@ const NAMED_ENTITIES: Record<string, string> = {
   uuml: "ü", Uuml: "Ü",
   ccedil: "ç", Ccedil: "Ç",
   ntilde: "ñ", Ntilde: "Ñ",
-  // Punctuation / symbols
-  ndash: "–",
-  mdash: "—",
-  hellip: "…",
-  lsquo: "‘",
-  rsquo: "’",
-  ldquo: "“",
-  rdquo: "”",
-  laquo: "«",
-  raquo: "»",
-  bull: "•",
-  middot: "·",
-  copy: "©",
-  reg: "®",
-  trade: "™",
-  deg: "°",
-  ordf: "ª",
-  ordm: "º",
-  iexcl: "¡",
-  iquest: "¿",
+  ndash: "–", mdash: "—", hellip: "…",
+  lsquo: "‘", rsquo: "’", ldquo: "“", rdquo: "”",
+  laquo: "«", raquo: "»",
+  bull: "•", middot: "·",
+  copy: "©", reg: "®", trade: "™",
+  deg: "°", ordf: "ª", ordm: "º",
+  iexcl: "¡", iquest: "¿",
 }
 
 function decodeHtmlEntities(s: string): string {
@@ -119,17 +74,7 @@ function decodeHtmlEntities(s: string): string {
     )
 }
 
-/**
- * Strip every span/element whose inline style or class style maps
- * to the chord colour (#0BA6B8). Drive emits Docs-styled spans
- * with `style="color:#0ba6b8"` (or via a `class` referencing a
- * preceding <style>). We only handle the inline-style case here;
- * if Drive uses class-based we fall back to the heuristic chord
- * matcher in isChordOnlyLine below.
- */
 function stripChordSpans(html: string): string {
-  // Drop the entire span/run if its style contains the chord color.
-  // This is done greedily-but-narrowly: <span style="...color:#0ba6b8...">...</span>
   return html.replace(
     /<(span|font)[^>]*\bstyle\s*=\s*"[^"]*color\s*:\s*#0ba6b8[^"]*"[^>]*>([\s\S]*?)<\/\1>/gi,
     ""
@@ -139,14 +84,11 @@ function stripChordSpans(html: string): string {
 function htmlBlockToText(html: string): string {
   return decodeHtmlEntities(
     stripChordSpans(html)
-      // Block-level breaks → newlines.
       .replace(/<\s*br\s*\/?\s*>/gi, "\n")
       .replace(/<\s*\/p\s*>/gi, "\n")
       .replace(/<\s*\/li\s*>/gi, "\n")
       .replace(/<\s*\/div\s*>/gi, "\n")
-      // Strip <style> blocks so their CSS doesn't leak into the body.
       .replace(/<style[\s\S]*?<\/style>/gi, "")
-      // Strip the rest of the tags.
       .replace(/<[^>]+>/g, "")
   )
     .split("\n")
@@ -155,19 +97,6 @@ function htmlBlockToText(html: string): string {
     .trim()
 }
 
-/**
- * Heuristic check: is this line nothing but chord notation? In the
- * Cancioneiro the chord lines look like `Am 	    	 C 	     G 	 D`
- * — short tokens of chord shapes separated by whitespace. We can't
- * use the doc's colour to identify them (mammoth strips colour),
- * so we match by token shape.
- *
- * A chord token: a root note (A–G), optional accidental (#/b),
- * optional quality (m, maj, min, sus, aug, dim), optional digit
- * (7, 9, 11, 13), optional sus2/sus4/add9/etc. tail, and an
- * optional /bass-note slash. Examples that match:
- *   C, Cm, C9, F#7, Bb, Em, Am7, Dsus4, F#7sus4, C/G
- */
 const CHORD_TOKEN_RE =
   /^[A-G][#b]?(?:m|maj|min|sus|aug|dim|MAJ|MIN)?\d{0,2}(?:sus[24]|add\d{1,2})?(?:\/[A-G][#b]?)?$/
 
@@ -185,25 +114,12 @@ interface Paragraph {
   bold: boolean
 }
 
-/**
- * Walk the paragraphs in the song body, strip chord-only lines,
- * and insert a blank line whenever the bold-state changes between
- * successive lyric lines. The Cancioneiro uses bold to mark
- * chorus / refrão sections — without an explicit transition the
- * lyrics would otherwise read as a single wall of text after the
- * chord lines are removed.
- */
 function bodyParagraphs(html: string): Paragraph[] {
   const out: Paragraph[] = []
   const re = /<p[^>]*>([\s\S]*?)<\/p>/gi
   let m: RegExpExecArray | null
   while ((m = re.exec(html)) !== null) {
     const inner = m[1] ?? ""
-    // Drive marks bold via `font-weight:700` inline style on spans.
-    // If most of the runs in this paragraph are bold, treat it as a
-    // chorus / refrão paragraph. We approximate "most" by checking
-    // any presence — chorus sections in this Cancioneiro are
-    // uniformly bolded.
     const bold = /font-weight\s*:\s*(7|800|900|bold)/i.test(inner)
     const text = htmlBlockToText(inner)
     if (text.length === 0) continue
@@ -224,19 +140,12 @@ function bodyToText(html: string): string {
     lines.push(p.text)
     lastBold = p.bold
   }
-  return lines
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim()
 }
 
 interface HeadingMatch {
   level: number
   title: string
-  /**
-   * Anchor id (without the leading underscore) extracted from the
-   * heading's <a id="_…"> element. Lets us deep-link into the Doc.
-   */
   anchor: string | null
   start: number
   end: number
@@ -260,22 +169,6 @@ function findHeadings(html: string): HeadingMatch[] {
   return out
 }
 
-/**
- * The Cancioneiro is organised as H1 sections. Within each section
- * the song level isn't uniform:
- *   - Most sections (e.g. "680-Santão", "Cenáculo", "Músicas
- *     Escutistas", "Músicas Igreja") put songs at H2.
- *   - "Outros Agrupamentos" puts H2 = sub-group / agrupamento
- *     header and H3 = the actual song.
- *
- * Rather than hard-coding which H1 is which, auto-detect per
- * section: if the section contains any H3, songs are at H3 (and
- * H2s are sub-group headers to skip); otherwise songs are at H2.
- *
- * The body of each song = HTML between its heading and the next
- * heading at level <= songLevel for that section (next song, next
- * sub-group, or next H1).
- */
 function parseHtml(
   html: string
 ): Pick<LyricsPayload, "songs" | "anchors" | "titles"> {
@@ -284,14 +177,11 @@ function parseHtml(
   const titles: string[] = []
   const headings = findHeadings(html)
 
-  // Group headings by H1 section so we can pick the right songLevel
-  // for each section based on what's inside it.
   type Section = { songLevel: 2 | 3; headings: HeadingMatch[] }
   const sections: Section[] = []
   let current: Section | null = null
   for (const h of headings) {
     if (h.level === 1) {
-      // Skip the Índice TOC and empty-title page-break artefacts.
       if (!h.title || normalizeTitle(h.title) === "indice") {
         current = null
         continue
@@ -310,9 +200,6 @@ function parseHtml(
       const h = section.headings[i]!
       if (h.level !== section.songLevel) continue
       if (!h.title) continue
-      // Body runs to the next heading inside this section at level
-      // <= songLevel. If we're at the end of the section, use the
-      // start of the next H1 (or end of doc).
       let bodyEnd = html.length
       for (let j = i + 1; j < section.headings.length; j++) {
         if (section.headings[j]!.level <= section.songLevel) {
@@ -320,7 +207,6 @@ function parseHtml(
           break
         }
       }
-      // Also bounded by the next H1 in the global headings list.
       const allIdx = headings.indexOf(h)
       for (let k = allIdx + 1; k < headings.length; k++) {
         if (headings[k]!.level === 1) {
@@ -340,11 +226,8 @@ function parseHtml(
   return { songs, anchors, titles }
 }
 
-export default async function handler(
-  _request: Request
-): Promise<Response> {
-  const fileId = process.env.LYRICS_DRIVE_FILE_ID
-  if (!fileId) {
+export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
+  if (!env.LYRICS_DRIVE_FILE_ID) {
     return new Response(
       "Server misconfigured: LYRICS_DRIVE_FILE_ID is unset.",
       { status: 500 }
@@ -353,7 +236,7 @@ export default async function handler(
 
   let token: string
   try {
-    token = await getDriveAccessToken()
+    token = await getDriveAccessToken(env.GOOGLE_SERVICE_ACCOUNT_JSON)
   } catch (error) {
     return new Response(
       `Drive auth failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -361,10 +244,7 @@ export default async function handler(
     )
   }
 
-  // Fetch modifiedTime in parallel with the export so we can include
-  // it in the response for client-side cache invalidation. Drive
-  // exports the Google Doc directly to HTML server-side — much
-  // faster than downloading a .docx and parsing locally.
+  const fileId = env.LYRICS_DRIVE_FILE_ID
   const metaUrl = `${DRIVE_FILES_URL}/${encodeURIComponent(fileId)}?fields=modifiedTime`
   const exportUrl = `${DRIVE_FILES_URL}/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(HTML_MIME)}`
   const headers = { Authorization: `Bearer ${token}` }
@@ -396,8 +276,8 @@ export default async function handler(
   let modifiedTime: string | null = null
   if (metaResponse.ok) {
     try {
-      const json = (await metaResponse.json()) as { modifiedTime?: string }
-      modifiedTime = json.modifiedTime ?? null
+      const j = (await metaResponse.json()) as { modifiedTime?: string }
+      modifiedTime = j.modifiedTime ?? null
     } catch {
       /* ignore */
     }
@@ -413,9 +293,6 @@ export default async function handler(
     status: 200,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      // Edge cache: 1 h fresh, 23 h stale-while-revalidate. Combined
-      // with the browser's IDB cache we hit Drive at most a few times
-      // a day per region.
       "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=82800",
     },
   })

@@ -176,6 +176,42 @@ export interface Database {
           saved_at: string
         }[]
       }
+      stats_top_songs_weekly: {
+        Args: { weeks_back?: number }
+        Returns: {
+          week_start: string
+          song_id: string
+          rank: number
+          play_count: number
+        }[]
+      }
+      stats_top_listeners: {
+        Args: { period?: "week" | "month" | "all"; lim?: number }
+        Returns: {
+          user_id: string
+          display_name: string | null
+          avatar_url: string | null
+          play_count: number
+        }[]
+      }
+      stats_top_artists: {
+        Args: { days?: number | null; lim?: number }
+        Returns: { artist: string; play_count: number }[]
+      }
+      stats_plays_per_day: {
+        Args: { days?: number }
+        Returns: { day: string; play_count: number }[]
+      }
+      stats_summary: {
+        Args: { period?: "week" | "month" | "all" }
+        Returns: {
+          total_plays: number
+          unique_songs: number
+          unique_artists: number
+          biggest_day: string | null
+          biggest_day_count: number | null
+        }[]
+      }
     }
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>

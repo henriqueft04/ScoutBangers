@@ -45,6 +45,11 @@ const ArtistPage = React.lazy(() =>
     default: m.ArtistPage,
   }))
 )
+const StatsPage = React.lazy(() =>
+  import("@/components/pages/stats-page").then((m) => ({
+    default: m.StatsPage,
+  }))
+)
 
 /**
  * Routes:
@@ -75,6 +80,7 @@ export function App() {
                 <Route path="/sobre" element={<AboutPage />} />
                 <Route path="/u/:userId" element={<PublicProfilePage />} />
                 <Route path="/artist/:name" element={<ArtistPage />} />
+                <Route path="/estatisticas" element={<StatsPage />} />
                 <Route path="*" element={<HomePage />} />
               </Routes>
             </React.Suspense>

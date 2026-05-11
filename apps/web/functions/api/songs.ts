@@ -1,12 +1,9 @@
-import { getDriveAccessToken } from "./_lib/drive-auth.js"
+import { getDriveAccessToken } from "./_lib/drive-auth"
 
-export const config = { runtime: "edge" }
-
-/**
- * GET /api/songs — Edge function
- *
- * Lists every audio file in the Drive folder identified by DRIVE_FOLDER_ID.
- */
+interface Env {
+  DRIVE_FOLDER_ID: string
+  GOOGLE_SERVICE_ACCOUNT_JSON: string
+}
 
 const DRIVE_LIST_URL = "https://www.googleapis.com/drive/v3/files"
 
@@ -43,20 +40,22 @@ function json(body: unknown, status = 200, extra?: HeadersInit): Response {
   })
 }
 
-export default async function handler(request: Request): Promise<Response> {
-  const folderId = process.env.DRIVE_FOLDER_ID
-  if (!folderId) {
+export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
+  if (!env.DRIVE_FOLDER_ID) {
     return json({ error: "Server misconfigured: DRIVE_FOLDER_ID is unset." }, 500)
   }
 
   let token: string
   try {
-    token = await getDriveAccessToken()
+    token = await getDriveAccessToken(env.GOOGLE_SERVICE_ACCOUNT_JSON)
   } catch (error) {
-    return json({
-      error: "Failed to obtain Drive access token",
-      detail: error instanceof Error ? error.message : String(error),
-    }, 500)
+    return json(
+      {
+        error: "Failed to obtain Drive access token",
+        detail: error instanceof Error ? error.message : String(error),
+      },
+      500
+    )
   }
 
   const bust = request.url.includes("bust")
@@ -66,7 +65,7 @@ export default async function handler(request: Request): Promise<Response> {
   try {
     do {
       const params = new URLSearchParams({
-        q: `'${folderId}' in parents and mimeType contains 'audio/' and trashed = false`,
+        q: `'${env.DRIVE_FOLDER_ID}' in parents and mimeType contains 'audio/' and trashed = false`,
         fields: "nextPageToken,files(id,name,mimeType,size,modifiedTime)",
         pageSize: "1000",
       })
@@ -77,17 +76,23 @@ export default async function handler(request: Request): Promise<Response> {
       })
       if (!res.ok) {
         const detail = await res.text()
-        return json({ error: "Drive API request failed", status: res.status, detail }, 502)
+        return json(
+          { error: "Drive API request failed", status: res.status, detail },
+          502
+        )
       }
       const data = (await res.json()) as DriveListResponse
       files.push(...data.files)
       pageToken = data.nextPageToken
     } while (pageToken)
   } catch (error) {
-    return json({
-      error: "Failed to reach Drive API",
-      detail: error instanceof Error ? error.message : String(error),
-    }, 502)
+    return json(
+      {
+        error: "Failed to reach Drive API",
+        detail: error instanceof Error ? error.message : String(error),
+      },
+      502
+    )
   }
 
   const songs: Song[] = files

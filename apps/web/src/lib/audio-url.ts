@@ -1,8 +1,12 @@
+const AUDIO_BASE_URL =
+  (import.meta.env.VITE_AUDIO_BASE_URL as string | undefined) ??
+  "https://audio.scoutbangers.com"
+
 /**
- * Build the URL for streaming a Drive file via our serverless proxy. The proxy
- * (`apps/web/api/stream/[id].ts`) forwards Range headers so HTML5 `<audio>`
- * seeking works, and keeps the Drive API key server-side.
+ * Audio is served directly from a public R2 bucket on a custom domain.
+ * Object key = Drive file ID, mirrored by the Drive→R2 sync Worker.
+ * R2 supports Range natively, so HTML5 seeking works without a proxy.
  */
 export function streamUrl(id: string): string {
-  return `/api/stream/${encodeURIComponent(id)}`
+  return `${AUDIO_BASE_URL}/${encodeURIComponent(id)}`
 }

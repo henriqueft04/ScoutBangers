@@ -1,0 +1,17 @@
+name = "scoutbangers-drive-sync"
+main = "src/index.ts"
+compatibility_date = "2025-11-01"
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+[[r2_buckets]]
+binding = "AUDIO_BUCKET"
+bucket_name = "scoutbangers-audio"
+
+[vars]
+DRIVE_FOLDER_ID = "1WqoT_fT6m3iIfMPbgRSTzgpY6wtukAE3"
+
+# Secrets to set via `wrangler secret put`:
+#   GOOGLE_SERVICE_ACCOUNT_JSON
+#   SYNC_TOKEN
