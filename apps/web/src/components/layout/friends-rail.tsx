@@ -18,7 +18,7 @@ export function FriendsRail() {
     >
       <Link
         to="/estatisticas"
-        className="border-border bg-card text-foreground hover:bg-muted flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors"
+        className="bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 flex items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold shadow-sm transition-colors touch-manipulation"
       >
         <BarChart3 className="size-4" aria-hidden />
         Ver estatísticas

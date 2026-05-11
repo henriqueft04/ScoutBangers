@@ -103,6 +103,7 @@ const CHORD_TOKEN_RE =
 function isChordOnlyLine(line: string): boolean {
   const trimmed = line.trim()
   if (!trimmed) return false
+  // eslint-disable-next-line no-control-regex
   if (/[^\x00-\x7F]/.test(trimmed)) return false
   const tokens = trimmed.split(/\s+/)
   if (tokens.length === 0) return false

@@ -30,6 +30,11 @@ export interface ArtistRow {
   play_count: number
 }
 
+export interface SongCountRow {
+  song_id: string
+  play_count: number
+}
+
 export interface DailyRow {
   day: string
   play_count: number
@@ -64,6 +69,7 @@ function useRpc<T>(
 
   React.useEffect(() => {
     if (!enabled) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ data: null, loading: false, error: null })
       return
     }
@@ -131,6 +137,18 @@ export function usePlaysPerDay(days = 30) {
     const { data, error } = await supabase.rpc("stats_plays_per_day", { days })
     if (error) return { data: null, error }
     return { data: (data ?? []) as DailyRow[], error: null }
+  })
+}
+
+export function useTopSongs(period: StatsPeriod, lim = 10) {
+  return useRpc<SongCountRow[]>(supabaseConfigured, async () => {
+    if (!supabase) return { data: null, error: null }
+    const { data, error } = await supabase.rpc("stats_top_songs", {
+      period,
+      lim,
+    })
+    if (error) return { data: null, error }
+    return { data: (data ?? []) as SongCountRow[], error: null }
   })
 }
 

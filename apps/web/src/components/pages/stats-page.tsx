@@ -10,12 +10,14 @@ import { BumpChart } from "@/components/stats/bump-chart"
 import { SummaryCards } from "@/components/stats/summary-cards"
 import { TopArtists } from "@/components/stats/top-artists"
 import { TopListeners } from "@/components/stats/top-listeners"
+import { TopSongs } from "@/components/stats/top-songs"
 import { usePlayer } from "@/hooks/usePlayer"
 import {
   usePlaysPerDay,
   useStatsSummary,
   useTopArtists,
   useTopListeners,
+  useTopSongs,
   useTopSongsWeekly,
   type StatsPeriod,
 } from "@/hooks/useStats"
@@ -46,11 +48,13 @@ export function StatsPage() {
   )
 
   const [summaryPeriod, setSummaryPeriod] = React.useState<StatsPeriod>("week")
+  const [songsPeriod, setSongsPeriod] = React.useState<StatsPeriod>("week")
   const [listenersPeriod, setListenersPeriod] =
     React.useState<StatsPeriod>("week")
   const [artistRange, setArtistRange] = React.useState<number | null>(30)
 
   const summary = useStatsSummary(summaryPeriod)
+  const topSongs = useTopSongs(songsPeriod, 10)
   const listeners = useTopListeners(listenersPeriod, 10)
   const artists = useTopArtists(artistRange, 10)
   const activity = usePlaysPerDay(30)
@@ -115,12 +119,19 @@ export function StatsPage() {
       </Section>
 
       <Section
-        title="Top 10 ao longo do tempo"
-        subtitle="Posição semanal das músicas mais ouvidas (últimas 8 semanas)."
+        title="Músicas mais ouvidas"
+        toolbar={
+          <SegmentedControl
+            value={songsPeriod}
+            options={SUMMARY_PERIODS}
+            onChange={setSongsPeriod}
+            ariaLabel="Período das músicas"
+          />
+        }
       >
-        <BumpChart
-          rows={weeklySongs.data}
-          loading={weeklySongs.loading}
+        <TopSongs
+          rows={topSongs.data}
+          loading={topSongs.loading}
           songsById={songsById}
         />
       </Section>
@@ -158,6 +169,17 @@ export function StatsPage() {
         subtitle="Reproduções por dia nos últimos 30 dias."
       >
         <ActivityChart rows={activity.data} loading={activity.loading} />
+      </Section>
+
+      <Section
+        title="Top 10 ao longo do tempo"
+        subtitle="Posição semanal das músicas mais ouvidas (últimas 8 semanas)."
+      >
+        <BumpChart
+          rows={weeklySongs.data}
+          loading={weeklySongs.loading}
+          songsById={songsById}
+        />
       </Section>
     </div>
   )

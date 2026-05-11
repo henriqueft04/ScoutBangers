@@ -103,7 +103,7 @@ export function FriendsFeed({ variant = "carousel", className }: FriendsFeedProp
         ) : (
           <Link
             to="/estatisticas"
-            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs font-medium transition-colors"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors touch-manipulation"
           >
             <BarChart3 className="size-3.5" aria-hidden />
             Ver estatísticas

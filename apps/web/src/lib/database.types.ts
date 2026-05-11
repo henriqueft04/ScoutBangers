@@ -185,6 +185,10 @@ export interface Database {
           play_count: number
         }[]
       }
+      stats_top_songs: {
+        Args: { period?: "week" | "month" | "all"; lim?: number }
+        Returns: { song_id: string; play_count: number }[]
+      }
       stats_top_listeners: {
         Args: { period?: "week" | "month" | "all"; lim?: number }
         Returns: {

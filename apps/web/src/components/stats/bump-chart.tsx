@@ -22,21 +22,21 @@ interface BumpChartProps {
 }
 
 /**
- * 10 distinct colors picked for both light (#F0F3F5) and dark (#1A1110)
- * backgrounds. Avoid pure red because the project's primary is already
- * a deep red — songs would visually merge with chrome.
+ * 10 perceptually distinct colors with enough chroma to read on the
+ * dark background (#1A1110) without blending into the red primary.
+ * Roughly the Tableau-10 set with a couple of swaps for contrast.
  */
 const PALETTE = [
-  "#7b2d26",
-  "#d97757",
-  "#c4a01a",
-  "#7ea73d",
-  "#2c8c70",
-  "#3a8fb7",
-  "#7861c2",
-  "#a14fa1",
-  "#c2496e",
-  "#7a6f63",
+  "#ef6f6c", // coral
+  "#f4a261", // orange
+  "#e9c46a", // gold
+  "#a1cf65", // lime
+  "#3fc285", // green
+  "#4cc4d3", // cyan
+  "#6ea8ff", // blue
+  "#b48cff", // violet
+  "#ee82c5", // pink
+  "#c9a78f", // tan
 ] as const
 
 interface PivotedRow {
@@ -136,13 +136,27 @@ export function BumpChart({
     )
   }
 
+  if (data.length < 2) {
+    return (
+      <div
+        className={cn(
+          "border-border bg-card text-muted-foreground flex h-72 items-center justify-center rounded-lg border px-6 text-center text-sm",
+          className
+        )}
+      >
+        Precisamos de pelo menos duas semanas de reproduções para mostrar a
+        evolução do top.
+      </div>
+    )
+  }
+
   return (
     <div className={cn("flex flex-col gap-3", className)}>
       <div className="border-border bg-card rounded-lg border p-3">
         <ResponsiveContainer width="100%" height={320}>
           <LineChart
             data={data}
-            margin={{ top: 12, right: 12, bottom: 4, left: -16 }}
+            margin={{ top: 12, right: 16, bottom: 4, left: 4 }}
           >
             <CartesianGrid
               stroke="var(--border)"
@@ -155,23 +169,19 @@ export function BumpChart({
               tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
               tickLine={false}
               axisLine={{ stroke: "var(--border)" }}
+              interval={0}
+              padding={{ left: 12, right: 12 }}
             />
             <YAxis
               reversed
               domain={[1, 10]}
               ticks={[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]}
+              allowDecimals={false}
               stroke="var(--muted-foreground)"
               tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
               tickLine={false}
               axisLine={{ stroke: "var(--border)" }}
-              width={32}
-              label={{
-                value: "Posição",
-                angle: -90,
-                position: "insideLeft",
-                style: { fill: "var(--muted-foreground)", fontSize: 11 },
-                offset: 16,
-              }}
+              width={28}
             />
             <Tooltip
               content={(props: unknown) => (
@@ -189,9 +199,9 @@ export function BumpChart({
                 dataKey={id}
                 stroke={PALETTE[i % PALETTE.length]}
                 strokeWidth={2}
-                dot={{ r: 4, strokeWidth: 0 }}
+                dot={{ r: 4, strokeWidth: 0, fill: PALETTE[i % PALETTE.length] }}
                 activeDot={{ r: 6, strokeWidth: 2, stroke: "var(--background)" }}
-                connectNulls={false}
+                connectNulls
                 isAnimationActive={false}
               />
             ))}

@@ -4,20 +4,17 @@ import path from "node:path"
 import { loadEnv, type Plugin } from "vite"
 
 /**
- * Dev-time middleware that runs the Vercel Edge functions in `apps/web/api/`
- * inside the Vite dev server. Without this, `npm run dev` returns the raw
- * `.ts` source for `/api/*` requests, breaking the SPA.
+ * Dev-time middleware that runs the Cloudflare Pages Functions in
+ * `apps/web/functions/api/` inside the Vite dev server. Without this,
+ * `npm run dev` returns the raw `.ts` source for `/api/*` requests.
  *
- * Behaviour:
- *   - Loads all variables from `.env.local` / `.env` into `process.env` so the
- *     handlers see DRIVE_API_KEY etc. just like in production.
- *   - Maps `/api/foo` → `api/foo.ts` and `/api/foo/<id>` → `api/foo/[id].ts`.
- *   - Bridges Node's `IncomingMessage` to a Web `Request`, runs the handler,
- *     and writes the resulting `Response` (including streamed bodies and
- *     status codes) back to the Node `ServerResponse`.
+ * Pages Functions export named handlers (`onRequestGet`, `onRequest`, …)
+ * that receive a context object `{ request, env, params }`. Locally we
+ * inject `env` from `process.env` (loaded from `.env.local`) so the same
+ * code works in dev as in prod.
  *
- * Production traffic never touches this plugin — Vercel runs the same files
- * directly as Edge functions.
+ * Production traffic never touches this plugin — Cloudflare runs the
+ * same files directly as Pages Functions.
  */
 export function devApi(): Plugin {
   return {
@@ -32,7 +29,7 @@ export function devApi(): Plugin {
       }
     },
     configureServer(server) {
-      const apiRoot = path.resolve(server.config.root, "api")
+      const apiRoot = path.resolve(server.config.root, "functions/api")
 
       server.middlewares.use(async (req, res, next) => {
         if (!req.url || !req.method) return next()
@@ -44,23 +41,34 @@ export function devApi(): Plugin {
           .split("/")
           .filter(Boolean)
 
-        const filePath = await resolveHandlerPath(apiRoot, segments)
-        if (!filePath) return next()
+        const resolved = await resolveHandlerPath(apiRoot, segments)
+        if (!resolved) return next()
 
         try {
-          const mod = await server.ssrLoadModule(filePath)
-          const handler = mod.default as
-            | ((request: Request) => Promise<Response> | Response)
-            | undefined
+          const mod = await server.ssrLoadModule(resolved.filePath)
+          const methodHandler = `onRequest${capitalize(req.method.toLowerCase())}`
+          const handler =
+            (mod[methodHandler] as PagesHandler | undefined) ??
+            (mod.onRequest as PagesHandler | undefined)
 
           if (typeof handler !== "function") {
             res.statusCode = 500
-            res.end(`Handler at ${filePath} has no default export`)
+            res.end(
+              `Handler at ${resolved.filePath} has no ${methodHandler} or onRequest export`
+            )
             return
           }
 
           const webRequest = toWebRequest(req, requestUrl)
-          const webResponse = await handler(webRequest)
+          const webResponse = await handler({
+            request: webRequest,
+            env: { ...process.env },
+            params: resolved.params,
+            data: {},
+            next: async () => new Response(null, { status: 404 }),
+            waitUntil: () => {},
+            passThroughOnException: () => {},
+          })
           await writeWebResponse(webResponse, res)
         } catch (error) {
           console.error("[dev-api]", error)
@@ -77,24 +85,50 @@ export function devApi(): Plugin {
   }
 }
 
+interface ResolvedHandler {
+  filePath: string
+  params: Record<string, string>
+}
+
+interface PagesContext {
+  request: Request
+  env: Record<string, string | undefined>
+  params: Record<string, string>
+  data: Record<string, unknown>
+  next: () => Promise<Response>
+  waitUntil: (promise: Promise<unknown>) => void
+  passThroughOnException: () => void
+}
+
+type PagesHandler = (
+  context: PagesContext
+) => Promise<Response> | Response
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
 async function resolveHandlerPath(
   apiRoot: string,
   segments: string[]
-): Promise<string | null> {
+): Promise<ResolvedHandler | null> {
   if (segments.length === 0) return null
 
-  // Try exact: api/<a>/<b>.ts
   const direct = path.join(apiRoot, segments.join("/") + ".ts")
-  if (await exists(direct)) return direct
+  if (await exists(direct)) return { filePath: direct, params: {} }
 
-  // Try dynamic: api/<a>/[id].ts where last segment is the id.
   if (segments.length > 1) {
     const dynamic = path.join(
       apiRoot,
       ...segments.slice(0, -1),
       "[id].ts"
     )
-    if (await exists(dynamic)) return dynamic
+    if (await exists(dynamic)) {
+      return {
+        filePath: dynamic,
+        params: { id: segments[segments.length - 1]! },
+      }
+    }
   }
 
   return null
