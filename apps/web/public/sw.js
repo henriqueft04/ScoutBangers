@@ -13,7 +13,7 @@
  *    fill storage with partial blobs).
  */
 
-const SHELL_CACHE = "scoutbangers-shell-v1"
+const SHELL_CACHE = "scoutbangers-shell-v2"
 const AUDIO_CACHE = "scoutbangers-audio-v1"
 const PRECACHE = [
   "/",
@@ -28,42 +28,39 @@ const PRECACHE = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(SHELL_CACHE).then(async (cache) => {
+    (async () => {
+      const cache = await caches.open(SHELL_CACHE)
       // cache.addAll is atomic — one 404 fails the whole batch and
-      // leaves /index.html uncached, which is what you saw as the
-      // 'Está offline' native page. Add each entry individually and
+      // leaves /index.html uncached. Add each entry individually and
       // swallow per-URL failures so a stale/missing asset can't take
       // down the offline shell.
       await Promise.all(
-        PRECACHE.map((url) =>
-          cache.add(url).catch(() => undefined)
-        )
+        PRECACHE.map((url) => cache.add(url).catch(() => undefined))
       )
-    })
+      // Critical: also prewarm the live index.html + its hashed asset
+      // references during install. If we wait for activate, the user
+      // could go offline before activate completes and the cached
+      // index.html points at uncached /assets/* URLs that won't load.
+      await prewarmAssets().catch(() => undefined)
+    })()
   )
   self.skipWaiting()
 })
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(
-          keys
-            .filter((k) => k !== SHELL_CACHE && k !== AUDIO_CACHE)
-            .map((k) => caches.delete(k))
-        )
+    (async () => {
+      const keys = await caches.keys()
+      await Promise.all(
+        keys
+          .filter((k) => k !== SHELL_CACHE && k !== AUDIO_CACHE)
+          .map((k) => caches.delete(k))
       )
-      .then(() => self.clients.claim())
-      // Pre-warm hashed JS/CSS bundles referenced by the live
-      // index.html. Without this, the first offline visit after a
-      // deploy returns the cached index.html but its <script> /
-      // <link> tags point at asset URLs the cache has never seen,
-      // and the page can't boot. Best-effort — the rest of activate
-      // shouldn't block on this.
-      .then(() => prewarmAssets())
-      .catch(() => undefined)
+      await self.clients.claim()
+      // Re-prewarm on activate too, in case install's pass was
+      // skipped (e.g. the SW was installed while offline).
+      await prewarmAssets().catch(() => undefined)
+    })()
   )
 })
 
@@ -119,30 +116,65 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/api/")) return
 
   // Network-first for navigations so deploys propagate immediately.
+  // Offline: fall back to any cached HTML shell we have.
   if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request).catch(() =>
-        caches.match("/index.html").then((res) => res ?? Response.error())
-      )
-    )
+    event.respondWith(handleNavigation(request))
     return
   }
 
-  // Cache-first for same-origin static assets.
+  // Cache-first for same-origin static assets, with offline-safe fallback.
   if (url.origin === self.location.origin) {
-    event.respondWith(
-      caches.match(request).then(
-        (cached) =>
-          cached ??
-          fetch(request).then((response) => {
-            const copy = response.clone()
-            caches.open(SHELL_CACHE).then((cache) => cache.put(request, copy))
-            return response
-          })
-      )
-    )
+    event.respondWith(handleAsset(request))
   }
 })
+
+async function handleNavigation(request) {
+  try {
+    const response = await fetch(request)
+    // Re-cache the live index so the offline shell stays fresh.
+    if (response && response.ok) {
+      const copy = response.clone()
+      caches
+        .open(SHELL_CACHE)
+        .then((cache) => cache.put("/index.html", copy))
+        .catch(() => undefined)
+    }
+    return response
+  } catch {
+    const cache = await caches.open(SHELL_CACHE)
+    const fallback =
+      (await cache.match("/index.html")) ||
+      (await cache.match("/")) ||
+      (await caches.match("/index.html")) ||
+      (await caches.match("/"))
+    if (fallback) return fallback
+    return new Response(
+      "<!doctype html><meta charset=utf-8><title>Offline</title><body style=\"font-family:sans-serif;padding:2rem\"><h1>Offline</h1><p>Não foi possível carregar a aplicação. Liga-te à internet pelo menos uma vez para guardar a app para uso offline.</p></body>",
+      { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
+    )
+  }
+}
+
+async function handleAsset(request) {
+  const cached = await caches.match(request)
+  if (cached) return cached
+  try {
+    const response = await fetch(request)
+    if (response && response.ok) {
+      const copy = response.clone()
+      caches
+        .open(SHELL_CACHE)
+        .then((cache) => cache.put(request, copy))
+        .catch(() => undefined)
+    }
+    return response
+  } catch {
+    // Offline and uncached — let the browser fail naturally rather
+    // than surfacing chrome's full-page "unavailable" error for what
+    // is usually a non-critical asset (font, image, etc.).
+    return Response.error()
+  }
+}
 
 async function handleAudioRequest(request) {
   // Cache lookup uses URL only (Range header would defeat the match).
