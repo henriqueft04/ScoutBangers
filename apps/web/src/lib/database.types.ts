@@ -130,6 +130,33 @@ export interface Database {
         }
         Relationships: []
       }
+      lyrics_submissions: {
+        Row: {
+          id: string
+          user_id: string | null
+          song_id: string
+          title: string
+          lyrics: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          song_id: string
+          title: string
+          lyrics: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          song_id?: string
+          title?: string
+          lyrics?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
       playlist_saves: {
         Row: {
           user_id: string
