@@ -45,6 +45,7 @@ export const REGIOES: Regiao[] = [
   },
   { name: "Évora", nucleos: [] },
   { name: "Guarda", nucleos: [] },
+  { name: "Lamego", nucleos: [] },
   { name: "Leiria-Fátima", nucleos: [] },
   {
     name: "Lisboa",
