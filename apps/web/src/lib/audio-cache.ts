@@ -1,13 +1,15 @@
 /**
  * Audio cache: download songs into the browser's Cache API so the
  * service worker can serve them instantly (and offline) instead of
- * round-tripping to the Drive proxy on every play.
+ * round-tripping to R2 on every play.
  *
  * Storage model:
- *   - Each cached song is stored under `/api/stream/<id>` (same URL the
- *     audio element fetches) so the SW's intercept handler matches it
- *     transparently. The app never has to know whether a song is local
- *     or remote — it just plays.
+ *   - Each cached song is stored under its real playback URL
+ *     (`https://audio.scoutbangers.com/<id>`) — the exact URL the audio
+ *     element fetches. The SW's intercept handler matches by URL, so
+ *     cache key parity is critical: any drift between download key and
+ *     playback URL means the SW silently misses and offline playback
+ *     fails with "formato não suportado".
  *   - The original `modifiedTime` from `/api/songs` is stored as an
  *     `X-Modified-Time` response header on the cached entry. On every
  *     listing pass we compare it to the manifest's current value to
@@ -18,7 +20,13 @@
  * blobs as the user scrubs around).
  */
 
-const AUDIO_CACHE = "scoutbangers-audio-v1"
+import { streamUrl } from "./audio-url"
+
+// v2: previous cache stored entries under same-origin /api/stream/<id>,
+// but the audio element actually plays from audio.scoutbangers.com.
+// Old entries are unreachable for the SW intercept — discard and force
+// a redownload under the correct key.
+const AUDIO_CACHE = "scoutbangers-audio-v2"
 
 export interface DownloadProgress {
   /** Bytes received so far. */
@@ -35,14 +43,16 @@ export interface AudioCacheStats {
 }
 
 function streamPath(songId: string): string {
-  return `/api/stream/${encodeURIComponent(songId)}`
+  return streamUrl(songId)
 }
 
 function songIdFromUrl(url: string): string | null {
   try {
     const u = new URL(url, self.location?.origin ?? "https://x")
-    const match = /^\/api\/stream\/([^/?#]+)$/.exec(u.pathname)
-    return match ? decodeURIComponent(match[1]!) : null
+    // Cache keys are full R2 URLs like https://audio.scoutbangers.com/<id>.
+    // The id is the entire pathname, sans leading slash.
+    const path = u.pathname.replace(/^\//, "")
+    return path ? decodeURIComponent(path) : null
   } catch {
     return null
   }

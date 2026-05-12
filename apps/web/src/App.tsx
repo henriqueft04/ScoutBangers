@@ -51,6 +51,31 @@ const StatsPage = React.lazy(() =>
   }))
 )
 
+// Eagerly fetch every lazy-loaded route chunk after first paint, so
+// each chunk lands in the service worker's asset cache and tab
+// switches work offline. Without this, an offline user who only
+// visited "/" online would get a failed dynamic import when navigating
+// to /music, /playlists, etc.
+if (typeof window !== "undefined") {
+  window.addEventListener("load", () => {
+    const prefetch = () => {
+      void import("@/components/pages/library-page")
+      void import("@/components/pages/playlists-page")
+      void import("@/components/pages/playlist-detail-page")
+      void import("@/components/pages/profile-page")
+      void import("@/components/pages/about-page")
+      void import("@/components/pages/public-profile-page")
+      void import("@/components/pages/artist-page")
+      void import("@/components/pages/stats-page")
+    }
+    if ("requestIdleCallback" in window) {
+      ;(window as Window & typeof globalThis).requestIdleCallback(prefetch)
+    } else {
+      setTimeout(prefetch, 1500)
+    }
+  })
+}
+
 /**
  * Routes:
  *   /                    → home (top 10)

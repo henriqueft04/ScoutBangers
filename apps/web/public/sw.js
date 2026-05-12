@@ -13,8 +13,9 @@
  *    fill storage with partial blobs).
  */
 
-const SHELL_CACHE = "scoutbangers-shell-v2"
-const AUDIO_CACHE = "scoutbangers-audio-v1"
+const SHELL_CACHE = "scoutbangers-shell-v3"
+const AUDIO_CACHE = "scoutbangers-audio-v2"
+const AUDIO_HOST = "audio.scoutbangers.com"
 const PRECACHE = [
   "/",
   "/index.html",
@@ -124,7 +125,10 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url)
 
   // Audio: cache-first via the explicit-download cache, network fallback.
-  if (url.pathname.startsWith("/api/stream/")) {
+  // Songs are served from R2 at audio.scoutbangers.com — cross-origin —
+  // and that's the URL `audio-cache.ts` stores them under, so we match
+  // against the host, not a same-origin path.
+  if (url.host === AUDIO_HOST) {
     event.respondWith(handleAudioRequest(request))
     return
   }
