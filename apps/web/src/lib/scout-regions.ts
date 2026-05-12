@@ -55,6 +55,7 @@ export const REGIOES: Regiao[] = [
       "Oriental de Lisboa",
       "Moinhos de Vento",
       "Solarius",
+      "Serra da Lua",
     ],
   },
   { name: "Madeira", nucleos: [] },
