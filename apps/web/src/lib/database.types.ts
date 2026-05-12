@@ -14,6 +14,10 @@ export interface Database {
           avatar_url: string | null
           share_activity: boolean
           created_at: string
+          regiao: string | null
+          nucleo: string | null
+          agrupamento_numero: number | null
+          agrupamento_nome: string | null
         }
         Insert: {
           id: string
@@ -21,6 +25,10 @@ export interface Database {
           avatar_url?: string | null
           share_activity?: boolean
           created_at?: string
+          regiao?: string | null
+          nucleo?: string | null
+          agrupamento_numero?: number | null
+          agrupamento_nome?: string | null
         }
         Update: {
           id?: string
@@ -28,6 +36,10 @@ export interface Database {
           avatar_url?: string | null
           share_activity?: boolean
           created_at?: string
+          regiao?: string | null
+          nucleo?: string | null
+          agrupamento_numero?: number | null
+          agrupamento_nome?: string | null
         }
         Relationships: []
       }

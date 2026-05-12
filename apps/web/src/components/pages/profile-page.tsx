@@ -7,6 +7,8 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { SignInDialog } from "@/components/auth/sign-in-dialog"
 import { EmptyState } from "@/components/library/empty-state"
+import { ProfileEditSection } from "@/components/profile/profile-edit-section"
+import { ScoutBadge } from "@/components/profile/scout-badge"
 import { StorageSection } from "@/components/profile/storage-section"
 import { useAuth } from "@/hooks/useAuth"
 import { usePlayer } from "@/hooks/usePlayer"
@@ -172,6 +174,12 @@ export function ProfilePage() {
           <h2 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">
             {displayName}
           </h2>
+          <ScoutBadge
+            regiao={profile?.regiao ?? null}
+            nucleo={profile?.nucleo ?? null}
+            agrupamentoNumero={profile?.agrupamento_numero ?? null}
+            agrupamentoNome={profile?.agrupamento_nome ?? null}
+          />
           <p className="text-muted-foreground text-xs">Inscreveu-se a {joined}</p>
           <Button
             type="button"
@@ -185,6 +193,8 @@ export function ProfilePage() {
           </Button>
         </div>
       </section>
+
+      <ProfileEditSection />
 
       <section className="border-border bg-card rounded-md border p-4">
         <h3 className="text-muted-foreground mb-2 text-xs uppercase tracking-wider">

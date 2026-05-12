@@ -3,6 +3,7 @@ import { ArrowLeft, Loader2, ListMusic } from "lucide-react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 
 import { EmptyState } from "@/components/library/empty-state"
+import { ScoutBadge } from "@/components/profile/scout-badge"
 import { useAuth } from "@/hooks/useAuth"
 import { usePlayer } from "@/hooks/usePlayer"
 import { artistHref } from "@/lib/artists"
@@ -14,6 +15,10 @@ interface PublicProfile {
   avatar_url: string | null
   created_at: string
   share_activity: boolean
+  regiao: string | null
+  nucleo: string | null
+  agrupamento_numero: number | null
+  agrupamento_nome: string | null
 }
 
 interface TopSong {
@@ -74,7 +79,9 @@ export function PublicProfilePage() {
       const sb = supabase!
       const profileRes = await sb
         .from("profiles")
-        .select("id, display_name, avatar_url, created_at, share_activity")
+        .select(
+          "id, display_name, avatar_url, created_at, share_activity, regiao, nucleo, agrupamento_numero, agrupamento_nome"
+        )
         .eq("id", userId)
         .maybeSingle()
       if (cancelled) return
@@ -225,6 +232,12 @@ export function PublicProfilePage() {
           <h2 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">
             {displayName}
           </h2>
+          <ScoutBadge
+            regiao={profile.regiao}
+            nucleo={profile.nucleo}
+            agrupamentoNumero={profile.agrupamento_numero}
+            agrupamentoNome={profile.agrupamento_nome}
+          />
           <p className="text-muted-foreground text-xs">
             Inscreveu-se a {formatDate(profile.created_at)}
           </p>
