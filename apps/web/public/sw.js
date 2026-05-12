@@ -100,6 +100,23 @@ async function prewarmAssets() {
   }
 }
 
+// Allow the page to tell us exactly which assets it loaded. The
+// regex-based prewarm can miss entries when CSP or timing get in the
+// way; an explicit list from the live document is the source of truth.
+self.addEventListener("message", (event) => {
+  const data = event.data
+  if (!data || data.type !== "cache-urls" || !Array.isArray(data.urls)) return
+  event.waitUntil(
+    caches.open(SHELL_CACHE).then((cache) =>
+      Promise.all(
+        data.urls.map((url) =>
+          cache.add(url).catch(() => undefined)
+        )
+      )
+    )
+  )
+})
+
 self.addEventListener("fetch", (event) => {
   const { request } = event
   if (request.method !== "GET") return
@@ -129,9 +146,16 @@ self.addEventListener("fetch", (event) => {
 })
 
 async function handleNavigation(request) {
+  // If the browser already knows it's offline, skip the network entirely
+  // — otherwise fetch can stall for seconds before rejecting, which on
+  // an SPA route change shows up as a hang.
+  if (self.navigator && self.navigator.onLine === false) {
+    return (await cachedShell()) || offlineFallback()
+  }
   try {
-    const response = await fetch(request)
-    // Re-cache the live index so the offline shell stays fresh.
+    // Race the network against a short timeout so flaky connectivity
+    // falls through to the cached shell quickly.
+    const response = await fetchWithTimeout(request, 3000)
     if (response && response.ok) {
       const copy = response.clone()
       caches
@@ -141,18 +165,41 @@ async function handleNavigation(request) {
     }
     return response
   } catch {
-    const cache = await caches.open(SHELL_CACHE)
-    const fallback =
-      (await cache.match("/index.html")) ||
-      (await cache.match("/")) ||
-      (await caches.match("/index.html")) ||
-      (await caches.match("/"))
-    if (fallback) return fallback
-    return new Response(
-      "<!doctype html><meta charset=utf-8><title>Offline</title><body style=\"font-family:sans-serif;padding:2rem\"><h1>Offline</h1><p>Não foi possível carregar a aplicação. Liga-te à internet pelo menos uma vez para guardar a app para uso offline.</p></body>",
-      { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
-    )
+    return (await cachedShell()) || offlineFallback()
   }
+}
+
+async function cachedShell() {
+  const cache = await caches.open(SHELL_CACHE)
+  return (
+    (await cache.match("/index.html")) ||
+    (await cache.match("/")) ||
+    (await caches.match("/index.html")) ||
+    (await caches.match("/"))
+  )
+}
+
+function offlineFallback() {
+  return new Response(
+    "<!doctype html><meta charset=utf-8><title>Offline</title><body style=\"font-family:sans-serif;padding:2rem\"><h1>Offline</h1><p>Não foi possível carregar a aplicação. Liga-te à internet pelo menos uma vez para guardar a app para uso offline.</p></body>",
+    { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
+  )
+}
+
+function fetchWithTimeout(request, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timeout")), ms)
+    fetch(request).then(
+      (res) => {
+        clearTimeout(timer)
+        resolve(res)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err)
+      }
+    )
+  })
 }
 
 async function handleAsset(request) {
