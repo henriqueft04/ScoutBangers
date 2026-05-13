@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Info, Loader2, LogOut, Pencil } from "lucide-react"
+import { Info, Loader2, LogOut } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
@@ -8,7 +8,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { SignInDialog } from "@/components/auth/sign-in-dialog"
 import { EmptyState } from "@/components/library/empty-state"
 import { ProfileEditSection } from "@/components/profile/profile-edit-section"
-import { ScoutBadge } from "@/components/profile/scout-badge"
+import { ProfileHeader } from "@/components/profile/profile-header"
 import { StorageSection } from "@/components/profile/storage-section"
 import { useAuth } from "@/hooks/useAuth"
 import { usePlayer } from "@/hooks/usePlayer"
@@ -216,106 +216,22 @@ export function ProfilePage() {
 
   return (
     <div className="mx-auto w-full max-w-3xl pb-4">
-      <section className="relative">
-        <button
-          type="button"
-          onClick={handleBannerPick}
-          disabled={uploadingBanner}
-          aria-label="Alterar imagem de capa"
-          className={cn(
-            "group bg-muted relative block h-44 w-full overflow-hidden md:h-60",
-            "md:rounded-b-xl"
-          )}
-        >
-          {bannerUrl ? (
-            <img
-              src={bannerUrl}
-              alt=""
-              className="size-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            <span
-              className="from-primary/70 to-primary/20 block size-full bg-gradient-to-br"
-              aria-hidden
-            />
-          )}
-          <span
-            aria-hidden
-            className={cn(
-              "bg-card text-foreground absolute top-3 right-3 flex size-8 items-center justify-center rounded-full shadow-sm transition-transform",
-              "group-hover:scale-110 group-focus-visible:scale-110"
-            )}
-          >
-            {uploadingBanner ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Pencil className="size-4" />
-            )}
-          </span>
-        </button>
-        <input
-          ref={bannerInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          className="hidden"
-          onChange={handleBannerChange}
-        />
-
-        <div className="bg-background relative -mt-6 flex flex-col items-center gap-2 rounded-t-3xl px-3 pt-3 md:px-6">
-
-          <button
-            type="button"
-            onClick={handleAvatarPick}
-            disabled={uploadingAvatar}
-            aria-label="Alterar foto de perfil"
-            className="group border-background relative -mt-14 size-28 shrink-0 rounded-full border-4 shadow-sm md:size-32"
-          >
-            <span className="bg-primary text-primary-foreground flex size-full items-center justify-center overflow-hidden rounded-full text-3xl font-semibold">
-              {avatarUrl ? (
-                <img
-                  src={avatarUrl}
-                  alt=""
-                  className="size-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                displayName.charAt(0).toUpperCase()
-              )}
-            </span>
-            <span
-              aria-hidden
-              className={cn(
-                "bg-card text-foreground border-background absolute right-0 bottom-0 flex size-8 items-center justify-center rounded-full border-2 shadow-sm transition-transform",
-                "group-hover:scale-110 group-focus-visible:scale-110"
-              )}
-            >
-              {uploadingAvatar ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Pencil className="size-4" />
-              )}
-            </span>
-          </button>
-          <input
-            ref={avatarInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="hidden"
-            onChange={handleAvatarChange}
-          />
-
-          <h2 className="text-foreground mt-1 text-center text-2xl font-semibold tracking-tight md:text-3xl">
-            {displayName}
-          </h2>
-          <ScoutBadge
-            regiao={profile?.regiao ?? null}
-            nucleo={profile?.nucleo ?? null}
-            agrupamentoNumero={profile?.agrupamento_numero ?? null}
-            agrupamentoNome={profile?.agrupamento_nome ?? null}
-            className="justify-center"
-          />
-          <p className="text-muted-foreground text-xs">Inscreveu-se a {joined}</p>
+      <ProfileHeader
+        displayName={displayName}
+        avatarUrl={avatarUrl}
+        bannerUrl={bannerUrl}
+        regiao={profile?.regiao ?? null}
+        nucleo={profile?.nucleo ?? null}
+        agrupamentoNumero={profile?.agrupamento_numero ?? null}
+        agrupamentoNome={profile?.agrupamento_nome ?? null}
+        subtitle={`Inscreveu-se a ${joined}`}
+        editable={{
+          onAvatarPick: handleAvatarPick,
+          onBannerPick: handleBannerPick,
+          uploadingAvatar,
+          uploadingBanner,
+        }}
+        bottomSlot={
           <Button
             type="button"
             variant="ghost"
@@ -326,8 +242,22 @@ export function ProfilePage() {
             <LogOut className="size-3.5" />
             Terminar sessão
           </Button>
-        </div>
-      </section>
+        }
+      />
+      <input
+        ref={avatarInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={handleAvatarChange}
+      />
+      <input
+        ref={bannerInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={handleBannerChange}
+      />
 
       <div className="flex flex-col gap-6 px-3 pt-6 md:px-6">
         {imageError ? (

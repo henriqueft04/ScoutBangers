@@ -3,7 +3,7 @@ import { ArrowLeft, Loader2, ListMusic } from "lucide-react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 
 import { EmptyState } from "@/components/library/empty-state"
-import { ScoutBadge } from "@/components/profile/scout-badge"
+import { ProfileHeader } from "@/components/profile/profile-header"
 import { useAuth } from "@/hooks/useAuth"
 import { usePlayer } from "@/hooks/usePlayer"
 import { artistHref } from "@/lib/artists"
@@ -13,6 +13,7 @@ interface PublicProfile {
   id: string
   display_name: string | null
   avatar_url: string | null
+  banner_url: string | null
   created_at: string
   share_activity: boolean
   regiao: string | null
@@ -80,7 +81,7 @@ export function PublicProfilePage() {
       const profileRes = await sb
         .from("profiles")
         .select(
-          "id, display_name, avatar_url, created_at, share_activity, regiao, nucleo, agrupamento_numero, agrupamento_nome"
+          "id, display_name, avatar_url, banner_url, created_at, share_activity, regiao, nucleo, agrupamento_numero, agrupamento_nome"
         )
         .eq("id", userId)
         .maybeSingle()
@@ -205,53 +206,40 @@ export function PublicProfilePage() {
   const isSelf = user?.id === profile.id
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-3 pt-3 pb-4 md:px-6 md:pt-4">
-      <button
-        type="button"
-        onClick={handleBack}
-        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 self-start text-sm"
-        aria-label="Voltar"
-      >
-        <ArrowLeft className="size-4" />
-        Voltar
-      </button>
-      <section className="flex items-center gap-4">
-        <div className="bg-primary text-primary-foreground flex size-20 items-center justify-center overflow-hidden rounded-full text-2xl font-semibold md:size-24">
-          {profile.avatar_url ? (
-            <img
-              src={profile.avatar_url}
-              alt=""
-              className="size-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            displayName.charAt(0).toUpperCase()
-          )}
-        </div>
-        <div className="flex flex-col gap-1">
-          <h2 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">
-            {displayName}
-          </h2>
-          <ScoutBadge
-            regiao={profile.regiao}
-            nucleo={profile.nucleo}
-            agrupamentoNumero={profile.agrupamento_numero}
-            agrupamentoNome={profile.agrupamento_nome}
-          />
-          <p className="text-muted-foreground text-xs">
-            Inscreveu-se a {formatDate(profile.created_at)}
-          </p>
-          {isSelf ? (
+    <div className="mx-auto w-full max-w-3xl pb-4">
+      <ProfileHeader
+        displayName={displayName}
+        avatarUrl={profile.avatar_url}
+        bannerUrl={profile.banner_url}
+        regiao={profile.regiao}
+        nucleo={profile.nucleo}
+        agrupamentoNumero={profile.agrupamento_numero}
+        agrupamentoNome={profile.agrupamento_nome}
+        subtitle={`Inscreveu-se a ${formatDate(profile.created_at)}`}
+        topLeftSlot={
+          <button
+            type="button"
+            onClick={handleBack}
+            className="bg-card/90 text-foreground hover:bg-card inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm shadow-sm backdrop-blur"
+            aria-label="Voltar"
+          >
+            <ArrowLeft className="size-4" />
+            Voltar
+          </button>
+        }
+        bottomSlot={
+          isSelf ? (
             <Link
               to="/profile"
-              className="text-muted-foreground hover:text-foreground self-start text-xs underline"
+              className="text-muted-foreground hover:text-foreground text-xs underline"
             >
               Editar perfil
             </Link>
-          ) : null}
-        </div>
-      </section>
+          ) : null
+        }
+      />
 
+      <div className="flex flex-col gap-6 px-3 pt-6 md:px-6">
       <section className="flex flex-col gap-2">
         <h3 className="text-muted-foreground text-xs uppercase tracking-wider">
           Top 5 músicas
@@ -349,6 +337,7 @@ export function PublicProfilePage() {
           </ul>
         )}
       </section>
+      </div>
     </div>
   )
 }
