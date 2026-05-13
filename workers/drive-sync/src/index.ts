@@ -93,8 +93,17 @@ async function runSync(env: Env): Promise<SyncResult> {
     }
     const existing = await env.AUDIO_BUCKET.head(file.id)
     if (existing) {
-      result.skipped += 1
-      continue
+      // Re-sync if Drive has a newer version. We tagged the existing
+      // object with `driveModifiedTime` when we last copied it; if
+      // Drive's current modifiedTime differs, the file's bytes have
+      // changed (new tags, embedded thumbnail, re-encoded audio, etc.)
+      // and we need to overwrite. Without this check, edits made on
+      // Drive after the first sync were silently invisible to the app.
+      const cachedMtime = existing.customMetadata?.driveModifiedTime
+      if (cachedMtime === file.modifiedTime) {
+        result.skipped += 1
+        continue
+      }
     }
     try {
       await copyOne(env, token, file)
