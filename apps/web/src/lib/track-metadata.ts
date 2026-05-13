@@ -217,18 +217,21 @@ export function ensureTrackMetadata(
   if (cached) {
     const cachedMtime = cachedModifiedTime.get(songId)
     const mtimeOk = !modifiedTime || cachedMtime === modifiedTime
-    // One-time migration: entries cached before we started tracking
-    // duration don't have the field. Refetch once so they pick it up.
-    // Identified by: meta exists, but no duration AND no picture (old
-    // empty-tag entries) — or has tags. We only re-fetch if there's
-    // ANY structured data (artist/album/title/picture) but no
-    // duration; an entry with neither tags nor duration is genuinely
-    // tagless and refetching wouldn't help.
-    const looksUpgradable =
+    // Re-fetch if: has tags but no duration (pre-duration cache entry),
+    // OR is completely blank (parse may have failed; blank entries are
+    // never persisted to IDB so a session restart retries automatically).
+    const isBlank =
+      !cached.artist &&
+      !cached.album &&
+      !cached.title &&
       cached.duration === undefined &&
-      Boolean(
-        cached.artist || cached.album || cached.title || cached.pictureBlob
-      )
+      !cached.pictureBlob
+    const looksUpgradable =
+      isBlank ||
+      (cached.duration === undefined &&
+        Boolean(
+          cached.artist || cached.album || cached.title || cached.pictureBlob
+        ))
     if (mtimeOk && !looksUpgradable) {
       return Promise.resolve(cached)
     }
@@ -247,18 +250,28 @@ export function ensureTrackMetadata(
       resolved.set(songId, value)
       cachedModifiedTime.set(songId, modifiedTime)
       inflight.delete(songId)
-      // Persist (best-effort, async, no await on the caller side).
-      void putPersisted({
-        songId,
-        modifiedTime,
-        artist: value.artist,
-        album: value.album,
-        title: value.title,
-        duration: value.duration,
-        pictureBlob: value.pictureBlob,
-        pictureType: value.pictureType,
-        cachedAt: Date.now(),
-      })
+      // Only persist if we got something useful — blank results are kept
+      // in-memory for the session but not written to IDB so the next
+      // session retries the fetch rather than loading a stale empty entry.
+      const hasData =
+        value.artist ||
+        value.album ||
+        value.title ||
+        value.duration !== undefined ||
+        value.pictureBlob
+      if (hasData) {
+        void putPersisted({
+          songId,
+          modifiedTime,
+          artist: value.artist,
+          album: value.album,
+          title: value.title,
+          duration: value.duration,
+          pictureBlob: value.pictureBlob,
+          pictureType: value.pictureType,
+          cachedAt: Date.now(),
+        })
+      }
       subscribers.get(songId)?.forEach((fn) => fn())
       globalSubscribers.forEach((fn) => fn())
       return value
