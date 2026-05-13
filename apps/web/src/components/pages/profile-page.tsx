@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Info, Loader2, LogOut } from "lucide-react"
+import { Info, Loader2, LogOut, Pencil } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
@@ -13,6 +13,7 @@ import { StorageSection } from "@/components/profile/storage-section"
 import { useAuth } from "@/hooks/useAuth"
 import { usePlayer } from "@/hooks/usePlayer"
 import { artistHref } from "@/lib/artists"
+import { uploadAvatar, uploadBanner } from "@/lib/avatar-upload"
 import { supabase, supabaseConfigured } from "@/lib/supabase"
 
 interface TopSong {
@@ -42,6 +43,63 @@ export function ProfilePage() {
   const [topArtists, setTopArtists] = React.useState<TopArtist[] | null>(null)
   const [signInOpen, setSignInOpen] = React.useState(false)
   const [savingPrivacy, setSavingPrivacy] = React.useState(false)
+  const [uploadingAvatar, setUploadingAvatar] = React.useState(false)
+  const [uploadingBanner, setUploadingBanner] = React.useState(false)
+  const [imageError, setImageError] = React.useState<string | null>(null)
+  const avatarInputRef = React.useRef<HTMLInputElement | null>(null)
+  const bannerInputRef = React.useRef<HTMLInputElement | null>(null)
+
+  const handleAvatarPick = () => {
+    if (uploadingAvatar) return
+    avatarInputRef.current?.click()
+  }
+  const handleBannerPick = () => {
+    if (uploadingBanner) return
+    bannerInputRef.current?.click()
+  }
+
+  const runUpload = async (
+    file: File,
+    field: "avatar_url" | "banner_url",
+    upload: (file: File) => Promise<string>,
+    setBusy: (busy: boolean) => void
+  ) => {
+    if (!supabase || !user) return
+    setImageError(null)
+    setBusy(true)
+    try {
+      const url = await upload(file)
+      const patch =
+        field === "avatar_url" ? { avatar_url: url } : { banner_url: url }
+      const { error: dbError } = await supabase
+        .from("profiles")
+        .update(patch)
+        .eq("id", user.id)
+      if (dbError) throw new Error(dbError.message)
+      await refreshProfile()
+    } catch (err) {
+      setImageError(
+        err instanceof Error ? err.message : "Falhou o carregamento da imagem."
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleAvatarChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (file) await runUpload(file, "avatar_url", uploadAvatar, setUploadingAvatar)
+  }
+  const handleBannerChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (file) await runUpload(file, "banner_url", uploadBanner, setUploadingBanner)
+  }
 
   const shareActivity = profile?.share_activity ?? true
 
@@ -153,25 +211,101 @@ export function ProfilePage() {
     user.email?.split("@")[0] ??
     "Ouvinte"
   const avatarUrl = profile?.avatar_url ?? user.user_metadata?.avatar_url ?? null
+  const bannerUrl = profile?.banner_url ?? null
   const joined = formatDate(user.created_at)
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-3 pt-3 pb-4 md:px-6 md:pt-4">
-      <section className="flex items-center gap-4">
-        <div className="bg-primary text-primary-foreground flex size-20 items-center justify-center overflow-hidden rounded-full text-2xl font-semibold md:size-24">
-          {avatarUrl ? (
+    <div className="mx-auto w-full max-w-3xl pb-4">
+      <section className="relative">
+        <button
+          type="button"
+          onClick={handleBannerPick}
+          disabled={uploadingBanner}
+          aria-label="Alterar imagem de capa"
+          className={cn(
+            "group bg-muted relative block h-44 w-full overflow-hidden md:h-60",
+            "md:rounded-b-xl"
+          )}
+        >
+          {bannerUrl ? (
             <img
-              src={avatarUrl}
+              src={bannerUrl}
               alt=""
               className="size-full object-cover"
               referrerPolicy="no-referrer"
             />
           ) : (
-            displayName.charAt(0).toUpperCase()
+            <span
+              className="from-primary/70 to-primary/20 block size-full bg-gradient-to-br"
+              aria-hidden
+            />
           )}
-        </div>
-        <div className="flex flex-col gap-1">
-          <h2 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">
+          <span
+            aria-hidden
+            className={cn(
+              "bg-card text-foreground absolute top-3 right-3 flex size-8 items-center justify-center rounded-full shadow-sm transition-transform",
+              "group-hover:scale-110 group-focus-visible:scale-110"
+            )}
+          >
+            {uploadingBanner ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Pencil className="size-4" />
+            )}
+          </span>
+        </button>
+        <input
+          ref={bannerInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={handleBannerChange}
+        />
+
+        <div className="bg-background relative -mt-6 flex flex-col items-center gap-2 rounded-t-3xl px-3 pt-3 md:px-6">
+
+          <button
+            type="button"
+            onClick={handleAvatarPick}
+            disabled={uploadingAvatar}
+            aria-label="Alterar foto de perfil"
+            className="group border-background relative -mt-14 size-28 shrink-0 rounded-full border-4 shadow-sm md:size-32"
+          >
+            <span className="bg-primary text-primary-foreground flex size-full items-center justify-center overflow-hidden rounded-full text-3xl font-semibold">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  className="size-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                displayName.charAt(0).toUpperCase()
+              )}
+            </span>
+            <span
+              aria-hidden
+              className={cn(
+                "bg-card text-foreground border-background absolute right-0 bottom-0 flex size-8 items-center justify-center rounded-full border-2 shadow-sm transition-transform",
+                "group-hover:scale-110 group-focus-visible:scale-110"
+              )}
+            >
+              {uploadingAvatar ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Pencil className="size-4" />
+              )}
+            </span>
+          </button>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={handleAvatarChange}
+          />
+
+          <h2 className="text-foreground mt-1 text-center text-2xl font-semibold tracking-tight md:text-3xl">
             {displayName}
           </h2>
           <ScoutBadge
@@ -179,6 +313,7 @@ export function ProfilePage() {
             nucleo={profile?.nucleo ?? null}
             agrupamentoNumero={profile?.agrupamento_numero ?? null}
             agrupamentoNome={profile?.agrupamento_nome ?? null}
+            className="justify-center"
           />
           <p className="text-muted-foreground text-xs">Inscreveu-se a {joined}</p>
           <Button
@@ -186,7 +321,7 @@ export function ProfilePage() {
             variant="ghost"
             size="sm"
             onClick={signOut}
-            className="text-muted-foreground hover:text-foreground self-start px-0"
+            className="text-muted-foreground hover:text-foreground"
           >
             <LogOut className="size-3.5" />
             Terminar sessão
@@ -194,7 +329,14 @@ export function ProfilePage() {
         </div>
       </section>
 
-      <ProfileEditSection />
+      <div className="flex flex-col gap-6 px-3 pt-6 md:px-6">
+        {imageError ? (
+          <p className="text-destructive text-center text-xs" role="alert">
+            {imageError}
+          </p>
+        ) : null}
+
+        <ProfileEditSection />
 
       <section className="border-border bg-card rounded-md border p-4">
         <h3 className="text-muted-foreground mb-2 text-xs uppercase tracking-wider">
@@ -304,13 +446,14 @@ export function ProfilePage() {
         )}
       </section>
 
-      <Link
-        to="/sobre"
-        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-2 self-start text-sm"
-      >
-        <Info className="size-4" />
-        Sobre o ScoutBangers
-      </Link>
+        <Link
+          to="/sobre"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-2 self-start text-sm"
+        >
+          <Info className="size-4" />
+          Sobre o ScoutBangers
+        </Link>
+      </div>
     </div>
   )
 }

@@ -24,23 +24,23 @@ export function ScoutBadge({
 }: ScoutBadgeProps) {
   if (!regiao && !agrupamentoNumero && !agrupamentoNome) return null
 
-  const parts = [
-    regiao,
-    nucleo,
-    agrupamentoNumero
-      ? `Agr. ${agrupamentoNumero}${agrupamentoNome ? ` ${agrupamentoNome}` : ""}`
-      : null,
-  ].filter(Boolean) as string[]
+  const topLine = [regiao, nucleo].filter(Boolean).join(" · ")
+  const agrupamento = agrupamentoNumero
+    ? `Agr. ${agrupamentoNumero}${agrupamentoNome ? ` ${agrupamentoNome}` : ""}`
+    : null
 
   return (
-    <p
+    <div
       className={cn(
-        "text-muted-foreground inline-flex items-center gap-1.5 text-xs",
+        "text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs",
         className
       )}
     >
       <MapPin className="size-3.5 shrink-0" aria-hidden />
-      <span className="truncate">{parts.join(" · ")}</span>
-    </p>
+      <div className="flex min-w-0 flex-col">
+        {topLine ? <p className="truncate">{topLine}</p> : null}
+        {agrupamento ? <p className="truncate">{agrupamento}</p> : null}
+      </div>
+    </div>
   )
 }

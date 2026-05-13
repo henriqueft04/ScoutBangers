@@ -16,7 +16,25 @@ import { nucleosFor, REGIOES, regiaoHasNucleos } from "@/lib/scout-regions"
 export function ProfileEditSection() {
   const { user, profile, refreshProfile } = useAuth()
 
-  const [open, setOpen] = React.useState(!profile?.regiao)
+  const isComplete = Boolean(
+    profile?.display_name &&
+      profile?.regiao &&
+      (!regiaoHasNucleos(profile.regiao) || profile?.nucleo) &&
+      profile?.agrupamento_numero &&
+      profile?.agrupamento_nome
+  )
+  const [open, setOpen] = React.useState(false)
+  // Profile loads async via Supabase. We default `open` to false and
+  // only auto-open on the first load if the profile turns out to be
+  // incomplete. After the user has interacted (toggled, saved), we
+  // leave their choice alone.
+  const autoOpenedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (autoOpenedRef.current) return
+    if (!profile) return
+    autoOpenedRef.current = true
+    if (!isComplete) setOpen(true)
+  }, [profile, isComplete])
   const [displayName, setDisplayName] = React.useState(profile?.display_name ?? "")
   const [regiao, setRegiao] = React.useState(profile?.regiao ?? "")
   const [nucleo, setNucleo] = React.useState(profile?.nucleo ?? "")
