@@ -303,18 +303,16 @@ async function fetchAndParse(songId: string): Promise<TrackMetadata> {
   let metadata = await fetchRange(songId, PARTIAL_BYTES)
   let result = await toTrackMetadata(metadata)
 
-  // Pass 2: if nothing landed (typical of MP4/M4A with the moov atom
-  // at the end), fall back to the full file. We still cap at 30 MB to
-  // avoid choking on bizarrely large rips.
-  const isMp4Like =
-    metadata.format.container?.toLowerCase().includes("mp4") ||
-    metadata.format.container?.toLowerCase().includes("m4a") ||
-    false
+  // Pass 2: if nothing landed, fall back to the full file. Originally
+  // gated on confirmed MP4/M4A container, but when moov is at the end
+  // the first 2 MB may not even identify the container — so now we
+  // retry whenever we got nothing useful, regardless of format.
+  // Still cap at 30 MB to avoid choking on large rips.
   const noUsefulMeta =
     !metadata.common.picture?.[0] &&
     !metadata.common.title &&
     !metadata.common.artist
-  if (isMp4Like && noUsefulMeta) {
+  if (noUsefulMeta) {
     try {
       metadata = await fetchRange(songId, 30 * 1024 * 1024)
       result = await toTrackMetadata(metadata)
