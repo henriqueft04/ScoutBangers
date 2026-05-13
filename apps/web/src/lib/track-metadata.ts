@@ -87,7 +87,7 @@ const LEGACY_STORAGE_KEY = "scoutbangers:track-metadata-v1"
 /** Per-entry modifiedTime, used to invalidate when the file changes. */
 const cachedModifiedTime = new Map<string, string | undefined>()
 
-const PICTURELESS_PURGE_KEY = "scoutbangers:meta:purged-pictureless-v1"
+const PICTURELESS_PURGE_KEY = "scoutbangers:meta:purged-pictureless-v2"
 
 async function loadPersistedCache(): Promise<void> {
   // One-time cleanup of the old localStorage cache so it stops eating
