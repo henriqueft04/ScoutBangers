@@ -87,6 +87,8 @@ const LEGACY_STORAGE_KEY = "scoutbangers:track-metadata-v1"
 /** Per-entry modifiedTime, used to invalidate when the file changes. */
 const cachedModifiedTime = new Map<string, string | undefined>()
 
+const PICTURELESS_PURGE_KEY = "scoutbangers:meta:purged-pictureless-v1"
+
 async function loadPersistedCache(): Promise<void> {
   // One-time cleanup of the old localStorage cache so it stops eating
   // the 5 MB budget. The IDB cache supersedes it.
@@ -98,8 +100,37 @@ async function loadPersistedCache(): Promise<void> {
     }
   }
 
+  // One-time migration: a previous bug stamped "no picture" records
+  // against the new modifiedTime when the SW served stale audio bytes
+  // during parsing. Those records look valid forever. Drop any entry
+  // that's missing a pictureBlob so it gets re-parsed once from the
+  // (by-now-fresh) bytes. Runs at most once per device.
+  let purged = false
+  if (typeof localStorage !== "undefined") {
+    try {
+      purged = localStorage.getItem(PICTURELESS_PURGE_KEY) === "1"
+    } catch {
+      purged = true
+    }
+  }
+
   const entries = await getAllPersisted()
-  for (const entry of entries) {
+  if (!purged) {
+    await Promise.all(
+      entries
+        .filter((e) => !e.pictureBlob)
+        .map((e) => deletePersisted(e.songId))
+    )
+    if (typeof localStorage !== "undefined") {
+      try {
+        localStorage.setItem(PICTURELESS_PURGE_KEY, "1")
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  const usableEntries = purged ? entries : entries.filter((e) => e.pictureBlob)
+  for (const entry of usableEntries) {
     const metadata: TrackMetadata = {
       artist: entry.artist,
       album: entry.album,
@@ -350,6 +381,25 @@ function enqueue<T>(task: () => Promise<T>): Promise<T> {
 interface PrefetchOptions {
   /** Only retry songs not already in the cache. Default: true. */
   skipCached?: boolean
+}
+
+/**
+ * Drop the parsed metadata for a song from every cache layer (in-
+ * memory + IDB). Called whenever the audio bytes change — e.g. after
+ * downloadSong succeeds with a new blob — because the IDB record is
+ * keyed on the new `modifiedTime` but was parsed from whatever bytes
+ * the SW served at the time, which can be stale. Without this, a
+ * "no picture" record gets stamped under the new mtime and survives
+ * forever (mtime matches → never re-parsed).
+ */
+export async function evictTrackMetadata(songId: string): Promise<void> {
+  const meta = resolved.get(songId)
+  if (meta?.pictureUrl) URL.revokeObjectURL(meta.pictureUrl)
+  resolved.delete(songId)
+  cachedModifiedTime.delete(songId)
+  subscribers.get(songId)?.forEach((fn) => fn())
+  globalSubscribers.forEach((fn) => fn())
+  await deletePersisted(songId)
 }
 
 /**

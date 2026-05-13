@@ -21,6 +21,7 @@
  */
 
 import { streamUrl } from "./audio-url"
+import { evictTrackMetadata } from "./track-metadata"
 
 // v2: previous cache stored entries under same-origin /api/stream/<id>,
 // but the audio element actually plays from audio.scoutbangers.com.
@@ -130,6 +131,11 @@ export async function downloadSong(
     },
   })
   await cache.put(streamPath(songId), cacheable)
+  // The bytes just changed — drop any parsed-tags record so the next
+  // metadata read re-parses from the new blob. Skipping this leaves an
+  // empty-tag record stamped with the new modifiedTime, which then
+  // looks "valid" forever and never gets re-parsed.
+  await evictTrackMetadata(songId).catch(() => undefined)
 }
 
 /**
