@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Loader2, LogIn, Moon, RefreshCw, Sun } from "lucide-react"
+import { CloudDownload, Loader2, LogIn, Moon, RefreshCw, Sun } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
@@ -9,6 +9,7 @@ import { SignInDialog } from "@/components/auth/sign-in-dialog"
 import { useAuth } from "@/hooks/useAuth"
 import { usePlayer } from "@/hooks/usePlayer"
 import { useTheme } from "@/hooks/useTheme"
+import { triggerDriveSync, useIsAdmin } from "@/lib/admin-sync"
 import { supabaseConfigured } from "@/lib/supabase"
 
 interface HeaderProps {
@@ -19,7 +20,28 @@ export function Header({ className }: HeaderProps) {
   const { reload, loading } = usePlayer()
   const { theme, toggle } = useTheme()
   const { user, profile } = useAuth()
+  const isAdmin = useIsAdmin()
   const [signInOpen, setSignInOpen] = React.useState(false)
+  const [syncing, setSyncing] = React.useState(false)
+
+  const handleAdminSync = async () => {
+    if (syncing) return
+    setSyncing(true)
+    try {
+      await triggerDriveSync()
+      await reload()
+    } catch (err) {
+      console.error("[admin sync]", err)
+      alert(
+        err instanceof Error
+          ? `Sincronização falhou: ${err.message}`
+          : "Sincronização falhou."
+      )
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   return (
     <header
       className={cn(
@@ -87,6 +109,19 @@ export function Header({ className }: HeaderProps) {
           >
             {theme === "dark" ? <Sun /> : <Moon />}
           </Button>
+          {isAdmin ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Sincronizar Drive (admin)"
+              onClick={handleAdminSync}
+              disabled={syncing || loading}
+              className="touch-manipulation"
+            >
+              {syncing ? <Loader2 className="animate-spin" /> : <CloudDownload />}
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="ghost"

@@ -5,7 +5,11 @@ import { useNavigate } from "react-router-dom"
 import { Button } from "@workspace/ui/components/button"
 
 import { usePlayer } from "@/hooks/usePlayer"
-import { hasOptedIntoOffline, inspectCache } from "@/lib/audio-cache"
+import {
+  hasOptedIntoOffline,
+  inspectCache,
+  refreshStaleDownloads,
+} from "@/lib/audio-cache"
 
 const DISMISSED_KEY = "scoutbangers:offline:new-songs-dismissed-mtime"
 
@@ -48,6 +52,13 @@ export function NewSongsBanner() {
       // user hasn't actually opted in, even if the flag was set
       // optimistically by something else).
       if (stats.cachedIds.size === 0) return
+
+      // Quietly refresh any downloaded songs whose tags changed on
+      // Drive (new embedded thumbnail, retag, etc.). Fire-and-forget
+      // — doesn't block the banner, doesn't surface a UI.
+      if (stats.staleIds.size > 0) {
+        void refreshStaleDownloads(manifest)
+      }
 
       const uncached = songs.filter((s) => !stats.cachedIds.has(s.id))
       if (uncached.length === 0) {

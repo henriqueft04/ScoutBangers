@@ -168,6 +168,46 @@ export async function evictSong(songId: string): Promise<void> {
   await cache.delete(streamPath(songId), { ignoreVary: true })
 }
 
+/**
+ * Re-download any cached songs whose `modifiedTime` no longer matches
+ * the manifest. Runs in the background after the listing loads so
+ * users who'd previously hit "Transferir" see fresh tags / artwork
+ * without having to touch the storage panel. Failures are swallowed —
+ * the old copy stays put and we'll retry next time. `concurrency`
+ * keeps us from saturating the connection if a big batch of files
+ * changed at once.
+ */
+export async function refreshStaleDownloads(
+  manifest: Map<string, string | undefined>,
+  concurrency = 2
+): Promise<void> {
+  const { staleIds } = await inspectCache(manifest)
+  if (staleIds.size === 0) return
+
+  const entries = Array.from(staleIds.entries())
+  let cursor = 0
+  const worker = async () => {
+    while (cursor < entries.length) {
+      const index = cursor++
+      const entry = entries[index]
+      if (!entry) break
+      const [songId, modifiedTime] = entry
+      try {
+        // Evict first so downloadSong's "already cached with matching
+        // mtime" early-out doesn't fire (the existing entry has the
+        // *old* mtime header).
+        await evictSong(songId)
+        await downloadSong(songId, modifiedTime)
+      } catch {
+        /* best-effort */
+      }
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.max(1, concurrency) }, () => worker())
+  )
+}
+
 export async function evictAll(): Promise<void> {
   if (typeof caches === "undefined") return
   try {
