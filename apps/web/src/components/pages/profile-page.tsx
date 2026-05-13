@@ -10,37 +10,20 @@ import { EmptyState } from "@/components/library/empty-state"
 import { ProfileEditSection } from "@/components/profile/profile-edit-section"
 import { ProfileHeader } from "@/components/profile/profile-header"
 import { StorageSection } from "@/components/profile/storage-section"
+import { TopList } from "@/components/profile/top-list"
 import { useAuth } from "@/hooks/useAuth"
-import { usePlayer } from "@/hooks/usePlayer"
+import { useTopStats } from "@/hooks/useTopStats"
 import { artistHref } from "@/lib/artists"
 import { uploadAvatar, uploadBanner } from "@/lib/avatar-upload"
+import { formatJoinDate } from "@/lib/format-date"
 import { supabase, supabaseConfigured } from "@/lib/supabase"
-
-interface TopSong {
-  id: string
-  title: string
-  playCount: number
-}
-interface TopArtist {
-  name: string
-  playCount: number
-}
-
-function formatDate(iso: string): string {
-  const date = new Date(iso)
-  return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  })
-}
 
 export function ProfilePage() {
   const { user, profile, loading: authLoading, signOut, refreshProfile } =
     useAuth()
-  const { songs } = usePlayer()
-  const [topSongs, setTopSongs] = React.useState<TopSong[] | null>(null)
-  const [topArtists, setTopArtists] = React.useState<TopArtist[] | null>(null)
+  const { topSongs, topArtists } = useTopStats(user?.id ?? null, {
+    refetchOnVisibility: true,
+  })
   const [signInOpen, setSignInOpen] = React.useState(false)
   const [savingPrivacy, setSavingPrivacy] = React.useState(false)
   const [uploadingAvatar, setUploadingAvatar] = React.useState(false)
@@ -115,52 +98,6 @@ export function ProfilePage() {
     setSavingPrivacy(false)
   }
 
-  React.useEffect(() => {
-    if (!supabase || !user) return
-    let cancelled = false
-
-    const fetchStats = async () => {
-      if (!supabase || !user) return
-      const [songsRes, artistsRes] = await Promise.all([
-        supabase.rpc("top_songs_for_user", { uid: user.id, lim: 5 }),
-        supabase.rpc("top_artists_for_user", { uid: user.id, lim: 5 }),
-      ])
-      if (cancelled) return
-      if (!songsRes.error && songsRes.data) {
-        const byId = new Map(songs.map((s) => [s.id, s]))
-        setTopSongs(
-          songsRes.data
-            .map((row) => {
-              const song = byId.get(row.song_id)
-              return song
-                ? { id: song.id, title: song.title, playCount: Number(row.play_count) }
-                : null
-            })
-            .filter((row): row is TopSong => row !== null)
-        )
-      }
-      if (!artistsRes.error && artistsRes.data) {
-        setTopArtists(
-          artistsRes.data.map((row) => ({
-            name: row.artist,
-            playCount: Number(row.play_count),
-          }))
-        )
-      }
-    }
-
-    void fetchStats()
-
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") void fetchStats()
-    }
-    document.addEventListener("visibilitychange", onVisibility)
-    return () => {
-      cancelled = true
-      document.removeEventListener("visibilitychange", onVisibility)
-    }
-  }, [user, songs])
-
   if (authLoading) {
     return (
       <div className="mx-auto w-full max-w-3xl px-3 pt-6 md:px-6">
@@ -212,7 +149,7 @@ export function ProfilePage() {
     "Ouvinte"
   const avatarUrl = profile?.avatar_url ?? user.user_metadata?.avatar_url ?? null
   const bannerUrl = profile?.banner_url ?? null
-  const joined = formatDate(user.created_at)
+  const joined = formatJoinDate(user.created_at)
 
   return (
     <div className="mx-auto w-full max-w-3xl pb-4">
@@ -309,72 +246,30 @@ export function ProfilePage() {
 
       <StorageSection />
 
-      <section className="flex flex-col gap-2">
-        <h3 className="text-muted-foreground text-xs uppercase tracking-wider">
-          Top 5 músicas
-        </h3>
-        {topSongs === null ? (
-          <Loader2 className="text-muted-foreground size-4 animate-spin" />
-        ) : topSongs.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            Ainda nada — ouve umas músicas para veres o teu top.
-          </p>
-        ) : (
-          <ol className="flex flex-col gap-1">
-            {topSongs.map((song, index) => (
-              <li
-                key={song.id}
-                className="flex items-baseline gap-3 text-sm"
-              >
-                <span className="text-muted-foreground w-5 tabular-nums">
-                  {index + 1}
-                </span>
-                <span className="text-foreground flex-1 truncate">
-                  {song.title}
-                </span>
-                <span className="text-muted-foreground text-xs tabular-nums">
-                  {song.playCount}
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
+      <TopList
+        title="Top 5 músicas"
+        items={
+          topSongs?.map((song) => ({
+            id: song.id,
+            label: song.title,
+            count: song.playCount,
+          })) ?? null
+        }
+        emptyMessage="Ainda nada — ouve umas músicas para veres o teu top."
+      />
 
-      <section className="flex flex-col gap-2">
-        <h3 className="text-muted-foreground text-xs uppercase tracking-wider">
-          Top 5 artistas
-        </h3>
-        {topArtists === null ? (
-          <Loader2 className="text-muted-foreground size-4 animate-spin" />
-        ) : topArtists.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            Ainda não há reproduções de artistas registadas.
-          </p>
-        ) : (
-          <ol className="flex flex-col gap-1">
-            {topArtists.map((artist, index) => (
-              <li
-                key={artist.name}
-                className="flex items-baseline gap-3 text-sm"
-              >
-                <span className="text-muted-foreground w-5 tabular-nums">
-                  {index + 1}
-                </span>
-                <Link
-                  to={artistHref(artist.name)}
-                  className="text-foreground hover:underline flex-1 truncate"
-                >
-                  {artist.name}
-                </Link>
-                <span className="text-muted-foreground text-xs tabular-nums">
-                  {artist.playCount}
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
+      <TopList
+        title="Top 5 artistas"
+        items={
+          topArtists?.map((artist) => ({
+            id: artist.name,
+            label: artist.name,
+            count: artist.playCount,
+            href: artistHref(artist.name),
+          })) ?? null
+        }
+        emptyMessage="Ainda não há reproduções de artistas registadas."
+      />
 
         <Link
           to="/sobre"
