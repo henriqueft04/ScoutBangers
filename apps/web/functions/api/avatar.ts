@@ -16,7 +16,11 @@
 
 interface Env {
   AVATAR_BUCKET: R2Bucket
-  SUPABASE_JWT_SECRET: string
+  /** Legacy HS256 secret. Optional once a project moves to asymmetric keys. */
+  SUPABASE_JWT_SECRET?: string
+  /** Supabase project URL, e.g. https://abc123.supabase.co. Used to fetch
+   *  the JWKS for RS256/ES256 verification. */
+  SUPABASE_URL?: string
   AVATAR_PUBLIC_BASE_URL: string
 }
 
@@ -54,7 +58,9 @@ function keyPrefixFor(kind: Kind): string {
  * preview deploy.
  */
 function checkConfig(env: Env): Response | null {
-  if (!env.AVATAR_BUCKET || !env.SUPABASE_JWT_SECRET || !env.AVATAR_PUBLIC_BASE_URL) {
+  // Need either the legacy HS256 secret or the project URL for JWKS.
+  const hasAuthConfig = Boolean(env.SUPABASE_JWT_SECRET || env.SUPABASE_URL)
+  if (!env.AVATAR_BUCKET || !hasAuthConfig || !env.AVATAR_PUBLIC_BASE_URL) {
     return json(
       {
         error:
@@ -73,41 +79,122 @@ function json(body: unknown, status = 200): Response {
   })
 }
 
-async function verifyJwt(
-  token: string,
-  secret: string
-): Promise<{ sub: string } | null> {
+interface JwtHeader {
+  alg: string
+  kid?: string
+}
+
+interface JwtPayload {
+  sub?: string
+  exp?: number
+}
+
+let jwksCache: { fetchedAt: number; keys: JsonWebKey[] } | null = null
+const JWKS_TTL_MS = 60 * 60 * 1000 // 1h
+
+async function getJwks(supabaseUrl: string): Promise<JsonWebKey[]> {
+  if (jwksCache && Date.now() - jwksCache.fetchedAt < JWKS_TTL_MS) {
+    return jwksCache.keys
+  }
+  const base = supabaseUrl.replace(/\/+$/, "")
+  const res = await fetch(`${base}/auth/v1/.well-known/jwks.json`)
+  if (!res.ok) throw new Error(`JWKS fetch failed: ${res.status}`)
+  const body = (await res.json()) as { keys: JsonWebKey[] }
+  jwksCache = { fetchedAt: Date.now(), keys: body.keys ?? [] }
+  return jwksCache.keys
+}
+
+function bufferFromBytes(bytes: Uint8Array): ArrayBuffer {
+  // Web Crypto wants a plain ArrayBuffer (not SharedArrayBuffer-typed).
+  const buf = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(buf).set(bytes)
+  return buf
+}
+
+type VerifyResult =
+  | { ok: true; sub: string }
+  | { ok: false; reason: string }
+
+async function verifyJwt(token: string, env: Env): Promise<VerifyResult> {
   const parts = token.split(".")
-  if (parts.length !== 3) return null
+  if (parts.length !== 3) return { ok: false, reason: "malformed token" }
   const [headerB64, payloadB64, signatureB64] = parts as [string, string, string]
 
-  const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`)
-  const signature = b64urlToBytes(signatureB64)
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["verify"]
-  )
-  // Copy into a fresh ArrayBuffer to satisfy Web Crypto's BufferSource
-  // signature (the source Uint8Array can have a SharedArrayBuffer-typed
-  // .buffer in some TS lib configs).
-  const sigBuffer = new ArrayBuffer(signature.byteLength)
-  new Uint8Array(sigBuffer).set(signature)
-  const ok = await crypto.subtle.verify("HMAC", key, sigBuffer, data)
-  if (!ok) return null
-
-  const payloadJson = new TextDecoder().decode(b64urlToBytes(payloadB64))
-  let payload: { sub?: string; exp?: number }
+  let header: JwtHeader
   try {
-    payload = JSON.parse(payloadJson)
+    header = JSON.parse(new TextDecoder().decode(b64urlToBytes(headerB64)))
   } catch {
-    return null
+    return { ok: false, reason: "bad header" }
   }
-  if (!payload.sub) return null
-  if (payload.exp && payload.exp * 1000 < Date.now()) return null
-  return { sub: payload.sub }
+
+  const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`)
+  const signature = bufferFromBytes(b64urlToBytes(signatureB64))
+
+  let signatureValid = false
+  try {
+    if (header.alg === "HS256") {
+      if (!env.SUPABASE_JWT_SECRET)
+        return { ok: false, reason: "HS256 token but SUPABASE_JWT_SECRET unset" }
+      const key = await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(env.SUPABASE_JWT_SECRET),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["verify"]
+      )
+      signatureValid = await crypto.subtle.verify("HMAC", key, signature, data)
+    } else if (header.alg === "RS256" || header.alg === "ES256") {
+      if (!env.SUPABASE_URL)
+        return { ok: false, reason: `${header.alg} token but SUPABASE_URL unset` }
+      const jwks = await getJwks(env.SUPABASE_URL)
+      if (jwks.length === 0)
+        return { ok: false, reason: "JWKS empty" }
+      const match =
+        jwks.find((k) => (k as { kid?: string }).kid === header.kid) ?? jwks[0]
+      if (!match)
+        return { ok: false, reason: `no JWKS key for kid=${header.kid}` }
+      const algParams: RsaHashedImportParams | EcKeyImportParams =
+        header.alg === "RS256"
+          ? { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }
+          : { name: "ECDSA", namedCurve: "P-256" }
+      const key = await crypto.subtle.importKey(
+        "jwk",
+        match,
+        algParams,
+        false,
+        ["verify"]
+      )
+      const verifyParams =
+        header.alg === "RS256"
+          ? "RSASSA-PKCS1-v1_5"
+          : { name: "ECDSA", hash: "SHA-256" }
+      signatureValid = await crypto.subtle.verify(
+        verifyParams,
+        key,
+        signature,
+        data
+      )
+    } else {
+      return { ok: false, reason: `unsupported alg ${header.alg}` }
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      reason: `crypto error: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+  if (!signatureValid) return { ok: false, reason: `bad signature (alg=${header.alg})` }
+
+  let payload: JwtPayload
+  try {
+    payload = JSON.parse(new TextDecoder().decode(b64urlToBytes(payloadB64)))
+  } catch {
+    return { ok: false, reason: "bad payload" }
+  }
+  if (!payload.sub) return { ok: false, reason: "no sub" }
+  if (payload.exp && payload.exp * 1000 < Date.now())
+    return { ok: false, reason: "expired" }
+  return { ok: true, sub: payload.sub }
 }
 
 function b64urlToBytes(input: string): Uint8Array {
@@ -128,8 +215,10 @@ async function authenticate(
     return json({ error: "Não autenticado" }, 401)
   }
   const token = auth.slice("Bearer ".length).trim()
-  const result = await verifyJwt(token, env.SUPABASE_JWT_SECRET)
-  if (!result) return json({ error: "Token inválido" }, 401)
+  const result = await verifyJwt(token, env)
+  if (!result.ok) {
+    return json({ error: `Token inválido: ${result.reason}` }, 401)
+  }
   return { userId: result.sub }
 }
 
