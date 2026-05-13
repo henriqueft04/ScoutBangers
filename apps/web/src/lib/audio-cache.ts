@@ -21,13 +21,8 @@
  */
 
 import { streamUrl } from "./audio-url"
+import { AUDIO_CACHE } from "./audio-cache-name"
 import { evictTrackMetadata } from "./track-metadata"
-
-// v2: previous cache stored entries under same-origin /api/stream/<id>,
-// but the audio element actually plays from audio.scoutbangers.com.
-// Old entries are unreachable for the SW intercept — discard and force
-// a redownload under the correct key.
-const AUDIO_CACHE = "scoutbangers-audio-v2"
 
 export interface DownloadProgress {
   /** Bytes received so far. */
@@ -135,7 +130,7 @@ export async function downloadSong(
   // metadata read re-parses from the new blob. Skipping this leaves an
   // empty-tag record stamped with the new modifiedTime, which then
   // looks "valid" forever and never gets re-parsed.
-  await evictTrackMetadata(songId).catch(() => undefined)
+  await evictTrackMetadata(songId, modifiedTime).catch(() => undefined)
 }
 
 /**

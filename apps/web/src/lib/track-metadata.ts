@@ -1,5 +1,6 @@
 import { parseBlob } from "music-metadata"
 
+import { AUDIO_CACHE as AUDIO_CACHE_NAME } from "./audio-cache-name"
 import { streamUrl } from "./audio-url"
 import {
   deletePersisted,
@@ -67,6 +68,10 @@ const resolved = new Map<string, TrackMetadata>()
 const inflight = new Map<string, Promise<TrackMetadata>>()
 const subscribers = new Map<string, Set<() => void>>()
 const globalSubscribers = new Set<() => void>()
+// Incremented on every eviction. In-flight fetches check their captured
+// generation on completion and discard results if the song was evicted
+// while the fetch was running.
+const evictGen = new Map<string, number>()
 
 let consecutiveFailures = 0
 let cooldownUntil = 0
@@ -244,8 +249,12 @@ export function ensureTrackMetadata(
   const pending = inflight.get(songId)
   if (pending) return pending
 
+  const gen = evictGen.get(songId) ?? 0
   const promise = enqueue(() => fetchAndParse(songId))
     .then(async (value) => {
+      // If the song was evicted while this fetch was in-flight, discard
+      // the (stale) result rather than overwriting the fresh eviction.
+      if ((evictGen.get(songId) ?? 0) !== gen) return value
       consecutiveFailures = 0
       resolved.set(songId, value)
       cachedModifiedTime.set(songId, modifiedTime)
@@ -324,7 +333,37 @@ async function fetchAndParse(songId: string): Promise<TrackMetadata> {
   return result
 }
 
+/**
+ * Read the full cached audio blob for a song directly from the Cache API,
+ * bypassing the service worker entirely. Returns null if not downloaded.
+ */
+async function getCachedAudioBlob(songId: string): Promise<Blob | null> {
+  if (typeof caches === "undefined") return null
+  try {
+    const cache = await caches.open(AUDIO_CACHE_NAME)
+    const response = await cache.match(streamUrl(songId), { ignoreVary: true })
+    if (!response) return null
+    return await response.blob()
+  } catch {
+    return null
+  }
+}
+
 async function fetchRange(songId: string, bytes: number) {
+  // Read directly from the audio cache when available. This avoids
+  // routing through the service worker, which can serve stale bytes or
+  // interfere with cross-origin Range requests in ways a direct Cache
+  // API read does not.
+  const cachedBlob = await getCachedAudioBlob(songId)
+  if (cachedBlob) {
+    const slice = cachedBlob.slice(0, Math.min(bytes, cachedBlob.size))
+    return parseBlob(slice, {
+      skipCovers: false,
+      skipPostHeaders: false,
+      duration: false,
+    })
+  }
+
   const response = await fetch(streamUrl(songId), {
     headers: { Range: `bytes=0-${bytes - 1}` },
   })
@@ -332,10 +371,12 @@ async function fetchRange(songId: string, bytes: number) {
     throw new Error(`metadata fetch ${response.status}`)
   }
   const buffer = await response.arrayBuffer()
-  const blob = new Blob([buffer])
+  const blob = new Blob([buffer], {
+    type: response.headers.get("Content-Type") ?? "",
+  })
   return parseBlob(blob, {
     skipCovers: false,
-    skipPostHeaders: true,
+    skipPostHeaders: false,
     duration: false,
   })
 }
@@ -403,14 +444,25 @@ interface PrefetchOptions {
  * "no picture" record gets stamped under the new mtime and survives
  * forever (mtime matches → never re-parsed).
  */
-export async function evictTrackMetadata(songId: string): Promise<void> {
+export async function evictTrackMetadata(
+  songId: string,
+  modifiedTime?: string
+): Promise<void> {
   const meta = resolved.get(songId)
   if (meta?.pictureUrl) URL.revokeObjectURL(meta.pictureUrl)
   resolved.delete(songId)
   cachedModifiedTime.delete(songId)
+  // Bump generation so any in-flight fetch discards its stale result.
+  evictGen.set(songId, (evictGen.get(songId) ?? 0) + 1)
+  // Remove inflight entry so ensureTrackMetadata queues a fresh fetch below.
+  inflight.delete(songId)
   subscribers.get(songId)?.forEach((fn) => fn())
   globalSubscribers.forEach((fn) => fn())
   await deletePersisted(songId)
+  // Re-queue immediately so the fresh audio bytes (just written to the
+  // audio cache by downloadSong) get parsed without waiting for the
+  // hook's useEffect to re-run on the next render.
+  void ensureTrackMetadata(songId, modifiedTime)
 }
 
 /**
