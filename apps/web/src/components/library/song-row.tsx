@@ -21,8 +21,20 @@ interface SongRowProps {
   onPlay: (index: number) => void
   /** When set, shown as a numeric badge on the left (e.g. for top-10 lists). */
   rank?: number
-  /** When set, replaces the artist line with "N plays" — used on the home top-10. */
+  /**
+   * When set, renders the play count in the subtitle line. By default
+   * it's appended to the artist as `Artist · N reproduções` (home
+   * top-10 style); set `hideArtist` to suppress the artist half and
+   * show only the count (used on the artist page where the artist
+   * name is already in the header).
+   */
   playCount?: number
+  /**
+   * When true, never include the artist in the subtitle. Useful on
+   * the artist page where every row would otherwise repeat the same
+   * artist name already shown in the page heading.
+   */
+  hideArtist?: boolean
 }
 
 const SWIPE_THRESHOLD_PX = 70
@@ -47,6 +59,7 @@ export function SongRow({
   onPlay,
   rank,
   playCount,
+  hideArtist = false,
 }: SongRowProps) {
   const { ref, meta } = useTrackVisuals<HTMLDivElement>(
     song.id,
@@ -217,20 +230,36 @@ export function SongRow({
           >
             {title}
           </MarqueeText>
-          {playCount !== undefined ? (
-            <p className="text-muted-foreground text-xs tabular-nums">
-              {playCount.toLocaleString()}{" "}
-              {playCount === 1 ? "reprodução" : "reproduções"}
-            </p>
-          ) : artist ? (
-            // Plain text — not a link. Stops accidental taps on the
-            // artist line from navigating to the artist page when the
-            // user meant to play the song. Artist navigation is still
-            // available from the player bar / fullscreen player.
-            <p className="text-muted-foreground truncate text-xs">
-              {artist}
-            </p>
-          ) : null}
+          {(() => {
+            // Compose the subtitle from artist + play count. Home
+            // top-10 wants both (`Artist · 12 reproduções`); the
+            // library wants just the artist; the artist page wants
+            // just the play count (hideArtist=true) because the
+            // artist name already lives in the page heading.
+            const showArtist = !hideArtist && artist
+            const showCount = playCount !== undefined
+            if (!showArtist && !showCount) return null
+            const countLabel =
+              showCount
+                ? `${playCount!.toLocaleString()} ${
+                    playCount === 1 ? "reprodução" : "reproduções"
+                  }`
+                : null
+            return (
+              // Plain text — not a link. Stops accidental taps on the
+              // artist line from navigating to the artist page when
+              // the user meant to play the song. Artist navigation is
+              // still available from the player bar / fullscreen
+              // player.
+              <p className="text-muted-foreground truncate text-xs">
+                {showArtist ? artist : null}
+                {showArtist && countLabel ? " · " : null}
+                {countLabel ? (
+                  <span className="tabular-nums">{countLabel}</span>
+                ) : null}
+              </p>
+            )
+          })()}
         </div>
         <Button
           type="button"

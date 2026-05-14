@@ -10,6 +10,7 @@ import { useAllMetadataVersion } from "@/hooks/useAllMetadataVersion"
 import { usePlayFromList } from "@/hooks/usePlayFromList"
 import { usePlayer } from "@/hooks/usePlayer"
 import { songsByArtist } from "@/lib/artists"
+import { supabase, supabaseConfigured } from "@/lib/supabase"
 
 /**
  * Spotify-like artist profile. Resolved from the URL segment, lists every
@@ -35,6 +36,44 @@ export function ArtistPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [songs, decoded, metadataVersion]
   )
+
+  // All-time global play counts per song. We fetch once on mount and
+  // build a Map for O(1) lookup when rendering each row + summing
+  // for the artist total. The RPC returns the global top — same data
+  // would power the home Top 10 — so a single high-limit call is
+  // cheap relative to one-per-song queries.
+  const [playCounts, setPlayCounts] = React.useState<Map<string, number>>(
+    () => new Map()
+  )
+  React.useEffect(() => {
+    if (!supabaseConfigured || !supabase) return
+    let cancelled = false
+    const fetchCounts = async () => {
+      if (!supabase) return
+      const { data, error } = await supabase.rpc("stats_top_songs", {
+        period: "all",
+        lim: 10000,
+      })
+      if (cancelled || error || !data) return
+      const map = new Map<string, number>()
+      for (const row of data) {
+        map.set(row.song_id, Number(row.play_count))
+      }
+      setPlayCounts(map)
+    }
+    void fetchCounts()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const totalPlays = React.useMemo(() => {
+    let sum = 0
+    for (const song of matched) {
+      sum += playCounts.get(song.id) ?? 0
+    }
+    return sum
+  }, [matched, playCounts])
 
   const currentSongId =
     currentIndex !== null ? songs[currentIndex]?.id : undefined
@@ -68,6 +107,13 @@ export function ArtistPage() {
         </h1>
         <p className="text-muted-foreground mt-1 text-sm">
           {matched.length} {matched.length === 1 ? "música" : "músicas"}
+          {totalPlays > 0 ? (
+            <>
+              {" · "}
+              {totalPlays.toLocaleString()}{" "}
+              {totalPlays === 1 ? "reprodução" : "reproduções"}
+            </>
+          ) : null}
         </p>
       </div>
 
@@ -86,6 +132,8 @@ export function ArtistPage() {
           }
           isPlaying={isPlaying}
           onPlay={handlePlay}
+          playCounts={playCounts}
+          hideArtist
         />
       )}
     </div>

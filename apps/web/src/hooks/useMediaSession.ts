@@ -1,5 +1,6 @@
 import * as React from "react"
 
+import { isIOS } from "@/lib/audio-engine"
 import { displayArtist, displayTitle } from "@/lib/song-display"
 import { getPictureDataUrl } from "@/lib/track-metadata"
 
@@ -82,16 +83,27 @@ export function useMediaSession(): void {
     session.setActionHandler("seekto", (details) => {
       if (typeof details.seekTime === "number") seekRef.current(details.seekTime)
     })
-    session.setActionHandler("seekbackward", (details) => {
-      const offset = details.seekOffset ?? SEEK_OFFSET_SECONDS
-      seekRef.current(Math.max(0, positionRef.current - offset))
-    })
-    session.setActionHandler("seekforward", (details) => {
-      const offset = details.seekOffset ?? SEEK_OFFSET_SECONDS
-      const target = positionRef.current + offset
-      const cap = durationRef.current > 0 ? durationRef.current : target
-      seekRef.current(Math.min(cap, target))
-    })
+    // iOS only renders TWO secondary control slots on the lock
+    // screen. When the seekbackward/seekforward handlers are
+    // registered alongside previoustrack/nexttrack, it picks the
+    // seek buttons (showing -10s / +10s) and drops the track-skip
+    // ones — which is the opposite of what users expect for a
+    // music player. We register the seek handlers only on
+    // non-iOS, where there's no slot collision and the ±10s
+    // buttons are genuinely useful in Android's media
+    // notification.
+    if (!isIOS()) {
+      session.setActionHandler("seekbackward", (details) => {
+        const offset = details.seekOffset ?? SEEK_OFFSET_SECONDS
+        seekRef.current(Math.max(0, positionRef.current - offset))
+      })
+      session.setActionHandler("seekforward", (details) => {
+        const offset = details.seekOffset ?? SEEK_OFFSET_SECONDS
+        const target = positionRef.current + offset
+        const cap = durationRef.current > 0 ? durationRef.current : target
+        seekRef.current(Math.min(cap, target))
+      })
+    }
 
     return () => {
       session.setActionHandler("play", null)

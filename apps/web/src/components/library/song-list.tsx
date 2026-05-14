@@ -8,6 +8,19 @@ interface SongListProps {
   currentIndex: number | null
   isPlaying: boolean
   onPlay: (index: number) => void
+  /**
+   * Optional per-song global play counts. When supplied, each row
+   * shows its count under the title (same render path the home Top
+   * 10 uses). Missing entries are rendered as no-count rather than 0
+   * so a row whose count hasn't been fetched yet doesn't lie.
+   */
+  playCounts?: Map<string, number>
+  /**
+   * When true, song rows suppress the artist line. Used on the
+   * artist page where every row would otherwise repeat the same
+   * artist already shown in the page heading.
+   */
+  hideArtist?: boolean
   className?: string
 }
 
@@ -16,6 +29,8 @@ export function SongList({
   currentIndex,
   isPlaying,
   onPlay,
+  playCounts,
+  hideArtist,
   className,
 }: SongListProps) {
   return (
@@ -38,6 +53,8 @@ export function SongList({
             isCurrent={currentIndex === index}
             isPlaying={isPlaying}
             onPlay={onPlay}
+            playCount={playCounts?.get(song.id)}
+            hideArtist={hideArtist}
           />
         </li>
       ))}
