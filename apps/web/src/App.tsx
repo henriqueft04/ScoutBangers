@@ -6,46 +6,109 @@ import { AuthProvider } from "@/components/auth/auth-provider"
 import { HomePage } from "@/components/pages/home-page"
 import { PlayerProvider } from "@/components/player/player-provider"
 
+/**
+ * After a deploy, the cached index.html (served by the service worker
+ * or held by the browser HTTP cache) can reference Vite chunk hashes
+ * that the host has since pruned. Any client-side route change that
+ * needs a lazy chunk then fails with "Failed to fetch dynamically
+ * imported module" / 404, and React's Suspense — whose fallback is
+ * null — silently shows nothing. Result: from the user's POV, only
+ * the eager-loaded home route works; tapping anything else does
+ * nothing.
+ *
+ * `lazyWithReload` recovers automatically: if the import rejects, we
+ * force a full reload. A full navigation hits the SW's
+ * network-first `handleNavigation`, which fetches the live
+ * index.html (with current chunk hashes) and overwrites the cached
+ * copy. Second attempt succeeds.
+ *
+ * A session-scoped flag prevents reload loops if the failure is
+ * something other than stale hashes (offline + uncached, broken
+ * deploy). The flag clears as soon as any lazy chunk loads
+ * successfully, so future deploys remain self-healing for the same
+ * tab.
+ */
+const RELOAD_KEY = "scoutbangers:chunk-reload"
+
+function safeSessionStorage(): Storage | null {
+  try {
+    return typeof sessionStorage !== "undefined" ? sessionStorage : null
+  } catch {
+    return null
+  }
+}
+
+function lazyWithReload<T extends React.ComponentType<unknown>>(
+  factory: () => Promise<{ default: T }>
+): React.LazyExoticComponent<T> {
+  return React.lazy(async () => {
+    try {
+      const mod = await factory()
+      safeSessionStorage()?.removeItem(RELOAD_KEY)
+      return mod
+    } catch (err) {
+      const storage = safeSessionStorage()
+      if (storage?.getItem(RELOAD_KEY) === "1") {
+        // Already reloaded once and the chunk still fails — surface
+        // the error rather than loop. Caller will see the Suspense
+        // fallback / error boundary.
+        throw err
+      }
+      try {
+        storage?.setItem(RELOAD_KEY, "1")
+      } catch {
+        /* private mode / quota — best-effort */
+      }
+      if (typeof window !== "undefined") {
+        window.location.reload()
+      }
+      // Suspend forever so React doesn't render an error frame before
+      // the reload kicks in.
+      return await new Promise<never>(() => {})
+    }
+  })
+}
+
 // Routes that aren't the home page get code-split so the initial JS
 // payload is lean — most users land on /, and the rest of the routes
 // load on demand. The library page is also lazy because it pulls in
 // the full song list rendering.
-const LibraryPage = React.lazy(() =>
+const LibraryPage = lazyWithReload(() =>
   import("@/components/pages/library-page").then((m) => ({
     default: m.LibraryPage,
   }))
 )
-const PlaylistsPage = React.lazy(() =>
+const PlaylistsPage = lazyWithReload(() =>
   import("@/components/pages/playlists-page").then((m) => ({
     default: m.PlaylistsPage,
   }))
 )
-const PlaylistDetailPage = React.lazy(() =>
+const PlaylistDetailPage = lazyWithReload(() =>
   import("@/components/pages/playlist-detail-page").then((m) => ({
     default: m.PlaylistDetailPage,
   }))
 )
-const ProfilePage = React.lazy(() =>
+const ProfilePage = lazyWithReload(() =>
   import("@/components/pages/profile-page").then((m) => ({
     default: m.ProfilePage,
   }))
 )
-const AboutPage = React.lazy(() =>
+const AboutPage = lazyWithReload(() =>
   import("@/components/pages/about-page").then((m) => ({
     default: m.AboutPage,
   }))
 )
-const PublicProfilePage = React.lazy(() =>
+const PublicProfilePage = lazyWithReload(() =>
   import("@/components/pages/public-profile-page").then((m) => ({
     default: m.PublicProfilePage,
   }))
 )
-const ArtistPage = React.lazy(() =>
+const ArtistPage = lazyWithReload(() =>
   import("@/components/pages/artist-page").then((m) => ({
     default: m.ArtistPage,
   }))
 )
-const StatsPage = React.lazy(() =>
+const StatsPage = lazyWithReload(() =>
   import("@/components/pages/stats-page").then((m) => ({
     default: m.StatsPage,
   }))
