@@ -35,7 +35,7 @@ export function ScoutBadge({
   return (
     <p
       className={cn(
-        "text-muted-foreground inline-flex items-center gap-1.5 text-xs",
+        "text-muted-foreground inline-flex min-w-0 items-center gap-1.5 text-xs",
         className
       )}
     >

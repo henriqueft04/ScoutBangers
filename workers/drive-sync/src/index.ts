@@ -66,15 +66,25 @@ async function copyOne(env: Env, token: string, file: DriveFile): Promise<void> 
   })
 }
 
+interface DebugRow {
+  name: string
+  driveMtime: string
+  r2Mtime: string | undefined
+  decision: "copy" | "skip" | "new"
+}
+
 interface SyncResult {
   scanned: number
   copied: string[]
   skipped: number
   errors: Array<{ id: string; name: string; error: string }>
   remaining: number
+  /** Filled only when debug=1. First N rows of the comparison so we can
+   *  confirm modifiedTime is actually changing. */
+  debug?: DebugRow[]
 }
 
-async function runSync(env: Env): Promise<SyncResult> {
+async function runSync(env: Env, debug = false): Promise<SyncResult> {
   const token = await getDriveAccessToken(env.GOOGLE_SERVICE_ACCOUNT_JSON)
   const files = await listFolder(token, env.DRIVE_FOLDER_ID)
 
@@ -85,6 +95,7 @@ async function runSync(env: Env): Promise<SyncResult> {
     errors: [],
     remaining: 0,
   }
+  if (debug) result.debug = []
 
   for (const file of files) {
     if (result.copied.length >= PER_RUN_CAP) {
@@ -92,10 +103,37 @@ async function runSync(env: Env): Promise<SyncResult> {
       continue
     }
     const existing = await env.AUDIO_BUCKET.head(file.id)
+    let decision: "copy" | "skip" | "new" = "new"
+    let cachedMtime: string | undefined
     if (existing) {
+      // Re-sync if Drive has a newer version. We tagged the existing
+      // object with `driveModifiedTime` when we last copied it; if
+      // Drive's current modifiedTime differs, the file's bytes have
+      // changed (new tags, embedded thumbnail, re-encoded audio, etc.)
+      // and we need to overwrite. Without this check, edits made on
+      // Drive after the first sync were silently invisible to the app.
+      cachedMtime = existing.customMetadata?.driveModifiedTime
+      if (cachedMtime === file.modifiedTime) {
+        decision = "skip"
+      } else {
+        decision = "copy"
+      }
+    }
+
+    if (debug && result.debug && result.debug.length < 10) {
+      result.debug.push({
+        name: file.name,
+        driveMtime: file.modifiedTime,
+        r2Mtime: cachedMtime,
+        decision,
+      })
+    }
+
+    if (decision === "skip") {
       result.skipped += 1
       continue
     }
+
     try {
       await copyOne(env, token, file)
       result.copied.push(file.name)
@@ -126,7 +164,8 @@ export default {
       return new Response("Unauthorized", { status: 401 })
     }
     try {
-      const result = await runSync(env)
+      const debug = url.searchParams.get("debug") === "1"
+      const result = await runSync(env, debug)
       return new Response(JSON.stringify(result, null, 2), {
         headers: { "Content-Type": "application/json" },
       })

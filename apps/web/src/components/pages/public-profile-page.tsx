@@ -3,16 +3,19 @@ import { ArrowLeft, Loader2, ListMusic } from "lucide-react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 
 import { EmptyState } from "@/components/library/empty-state"
-import { ScoutBadge } from "@/components/profile/scout-badge"
+import { ProfileHeader } from "@/components/profile/profile-header"
+import { TopList } from "@/components/profile/top-list"
 import { useAuth } from "@/hooks/useAuth"
-import { usePlayer } from "@/hooks/usePlayer"
+import { useTopStats } from "@/hooks/useTopStats"
 import { artistHref } from "@/lib/artists"
+import { formatJoinDate } from "@/lib/format-date"
 import { supabase, supabaseConfigured } from "@/lib/supabase"
 
 interface PublicProfile {
   id: string
   display_name: string | null
   avatar_url: string | null
+  banner_url: string | null
   created_at: string
   share_activity: boolean
   regiao: string | null
@@ -21,27 +24,10 @@ interface PublicProfile {
   agrupamento_nome: string | null
 }
 
-interface TopSong {
-  id: string
-  title: string
-  playCount: number
-}
-interface TopArtist {
-  name: string
-  playCount: number
-}
 interface PublicPlaylist {
   id: string
   name: string
   song_count: number
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  })
 }
 
 /**
@@ -64,10 +50,8 @@ export function PublicProfilePage() {
     if (window.history.length > 1) navigate(-1)
     else navigate("/")
   }, [navigate])
-  const { songs } = usePlayer()
+  const { topSongs, topArtists } = useTopStats(userId ?? null)
   const [profile, setProfile] = React.useState<PublicProfile | null>(null)
-  const [topSongs, setTopSongs] = React.useState<TopSong[] | null>(null)
-  const [topArtists, setTopArtists] = React.useState<TopArtist[] | null>(null)
   const [playlists, setPlaylists] = React.useState<PublicPlaylist[] | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
@@ -80,7 +64,7 @@ export function PublicProfilePage() {
       const profileRes = await sb
         .from("profiles")
         .select(
-          "id, display_name, avatar_url, created_at, share_activity, regiao, nucleo, agrupamento_numero, agrupamento_nome"
+          "id, display_name, avatar_url, banner_url, created_at, share_activity, regiao, nucleo, agrupamento_numero, agrupamento_nome"
         )
         .eq("id", userId)
         .maybeSingle()
@@ -97,48 +81,13 @@ export function PublicProfilePage() {
       }
       setProfile(profileRes.data)
 
-      const [songsRes, artistsRes, playlistsRes] = await Promise.all([
-        sb.rpc("top_songs_for_user", { uid: userId, lim: 5 }),
-        sb.rpc("top_artists_for_user", { uid: userId, lim: 5 }),
-        sb
-          .from("playlists")
-          .select("id, name")
-          .eq("user_id", userId)
-          .eq("is_public", true)
-          .order("created_at", { ascending: false }),
-      ])
+      const playlistsRes = await sb
+        .from("playlists")
+        .select("id, name")
+        .eq("user_id", userId)
+        .eq("is_public", true)
+        .order("created_at", { ascending: false })
       if (cancelled) return
-
-      if (!songsRes.error && songsRes.data) {
-        const byId = new Map(songs.map((s) => [s.id, s]))
-        setTopSongs(
-          songsRes.data
-            .map((row) => {
-              const song = byId.get(row.song_id)
-              return song
-                ? {
-                    id: song.id,
-                    title: song.title,
-                    playCount: Number(row.play_count),
-                  }
-                : null
-            })
-            .filter((row): row is TopSong => row !== null)
-        )
-      } else {
-        setTopSongs([])
-      }
-
-      if (!artistsRes.error && artistsRes.data) {
-        setTopArtists(
-          artistsRes.data.map((row) => ({
-            name: row.artist,
-            playCount: Number(row.play_count),
-          }))
-        )
-      } else {
-        setTopArtists([])
-      }
 
       if (!playlistsRes.error && playlistsRes.data) {
         const lists = playlistsRes.data
@@ -172,7 +121,7 @@ export function PublicProfilePage() {
     return () => {
       cancelled = true
     }
-  }, [userId, songs])
+  }, [userId])
 
   if (!supabaseConfigured) {
     return (
@@ -205,117 +154,64 @@ export function PublicProfilePage() {
   const isSelf = user?.id === profile.id
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-3 pt-3 pb-4 md:px-6 md:pt-4">
-      <button
-        type="button"
-        onClick={handleBack}
-        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 self-start text-sm"
-        aria-label="Voltar"
-      >
-        <ArrowLeft className="size-4" />
-        Voltar
-      </button>
-      <section className="flex items-center gap-4">
-        <div className="bg-primary text-primary-foreground flex size-20 items-center justify-center overflow-hidden rounded-full text-2xl font-semibold md:size-24">
-          {profile.avatar_url ? (
-            <img
-              src={profile.avatar_url}
-              alt=""
-              className="size-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            displayName.charAt(0).toUpperCase()
-          )}
-        </div>
-        <div className="flex flex-col gap-1">
-          <h2 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">
-            {displayName}
-          </h2>
-          <ScoutBadge
-            regiao={profile.regiao}
-            nucleo={profile.nucleo}
-            agrupamentoNumero={profile.agrupamento_numero}
-            agrupamentoNome={profile.agrupamento_nome}
-          />
-          <p className="text-muted-foreground text-xs">
-            Inscreveu-se a {formatDate(profile.created_at)}
-          </p>
-          {isSelf ? (
+    <div className="mx-auto w-full max-w-3xl pb-4">
+      <ProfileHeader
+        displayName={displayName}
+        avatarUrl={profile.avatar_url}
+        bannerUrl={profile.banner_url}
+        regiao={profile.regiao}
+        nucleo={profile.nucleo}
+        agrupamentoNumero={profile.agrupamento_numero}
+        agrupamentoNome={profile.agrupamento_nome}
+        subtitle={`Inscreveu-se a ${formatJoinDate(profile.created_at)}`}
+        topLeftSlot={
+          <button
+            type="button"
+            onClick={handleBack}
+            className="bg-card/90 text-foreground hover:bg-card inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm shadow-sm backdrop-blur"
+            aria-label="Voltar"
+          >
+            <ArrowLeft className="size-4" />
+            Voltar
+          </button>
+        }
+        bottomSlot={
+          isSelf ? (
             <Link
               to="/profile"
-              className="text-muted-foreground hover:text-foreground self-start text-xs underline"
+              className="text-muted-foreground hover:text-foreground text-xs underline"
             >
               Editar perfil
             </Link>
-          ) : null}
-        </div>
-      </section>
+          ) : null
+        }
+      />
 
-      <section className="flex flex-col gap-2">
-        <h3 className="text-muted-foreground text-xs uppercase tracking-wider">
-          Top 5 músicas
-        </h3>
-        {topSongs === null ? (
-          <Loader2 className="text-muted-foreground size-4 animate-spin" />
-        ) : topSongs.length === 0 ? (
-          <p className="text-muted-foreground text-sm">Ainda não há reproduções.</p>
-        ) : (
-          <ol className="flex flex-col gap-1">
-            {topSongs.map((song, index) => (
-              <li
-                key={song.id}
-                className="flex items-baseline gap-3 text-sm"
-              >
-                <span className="text-muted-foreground w-5 tabular-nums">
-                  {index + 1}
-                </span>
-                <span className="text-foreground flex-1 truncate">
-                  {song.title}
-                </span>
-                <span className="text-muted-foreground text-xs tabular-nums">
-                  {song.playCount}
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
+      <div className="flex flex-col gap-6 px-3 pt-6 md:px-6">
+      <TopList
+        title="Top 5 músicas"
+        items={
+          topSongs?.map((song) => ({
+            id: song.id,
+            label: song.title,
+            count: song.playCount,
+          })) ?? null
+        }
+        emptyMessage="Ainda não há reproduções."
+      />
 
-      <section className="flex flex-col gap-2">
-        <h3 className="text-muted-foreground text-xs uppercase tracking-wider">
-          Top 5 artistas
-        </h3>
-        {topArtists === null ? (
-          <Loader2 className="text-muted-foreground size-4 animate-spin" />
-        ) : topArtists.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            Ainda não há reproduções de artistas.
-          </p>
-        ) : (
-          <ol className="flex flex-col gap-1">
-            {topArtists.map((artist, index) => (
-              <li
-                key={artist.name}
-                className="flex items-baseline gap-3 text-sm"
-              >
-                <span className="text-muted-foreground w-5 tabular-nums">
-                  {index + 1}
-                </span>
-                <Link
-                  to={artistHref(artist.name)}
-                  className="text-foreground hover:underline flex-1 truncate"
-                >
-                  {artist.name}
-                </Link>
-                <span className="text-muted-foreground text-xs tabular-nums">
-                  {artist.playCount}
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
+      <TopList
+        title="Top 5 artistas"
+        items={
+          topArtists?.map((artist) => ({
+            id: artist.name,
+            label: artist.name,
+            count: artist.playCount,
+            href: artistHref(artist.name),
+          })) ?? null
+        }
+        emptyMessage="Ainda não há reproduções de artistas."
+      />
 
       <section className="flex flex-col gap-2">
         <h3 className="text-muted-foreground text-xs uppercase tracking-wider">
@@ -349,6 +245,7 @@ export function PublicProfilePage() {
           </ul>
         )}
       </section>
+      </div>
     </div>
   )
 }

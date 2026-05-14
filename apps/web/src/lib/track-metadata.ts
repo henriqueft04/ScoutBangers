@@ -1,5 +1,6 @@
 import { parseBlob } from "music-metadata"
 
+import { AUDIO_CACHE as AUDIO_CACHE_NAME } from "./audio-cache-name"
 import { streamUrl } from "./audio-url"
 import {
   deletePersisted,
@@ -67,6 +68,10 @@ const resolved = new Map<string, TrackMetadata>()
 const inflight = new Map<string, Promise<TrackMetadata>>()
 const subscribers = new Map<string, Set<() => void>>()
 const globalSubscribers = new Set<() => void>()
+// Incremented on every eviction. In-flight fetches check their captured
+// generation on completion and discard results if the song was evicted
+// while the fetch was running.
+const evictGen = new Map<string, number>()
 
 let consecutiveFailures = 0
 let cooldownUntil = 0
@@ -87,6 +92,8 @@ const LEGACY_STORAGE_KEY = "scoutbangers:track-metadata-v1"
 /** Per-entry modifiedTime, used to invalidate when the file changes. */
 const cachedModifiedTime = new Map<string, string | undefined>()
 
+const PICTURELESS_PURGE_KEY = "scoutbangers:meta:purged-pictureless-v2"
+
 async function loadPersistedCache(): Promise<void> {
   // One-time cleanup of the old localStorage cache so it stops eating
   // the 5 MB budget. The IDB cache supersedes it.
@@ -98,8 +105,37 @@ async function loadPersistedCache(): Promise<void> {
     }
   }
 
+  // One-time migration: a previous bug stamped "no picture" records
+  // against the new modifiedTime when the SW served stale audio bytes
+  // during parsing. Those records look valid forever. Drop any entry
+  // that's missing a pictureBlob so it gets re-parsed once from the
+  // (by-now-fresh) bytes. Runs at most once per device.
+  let purged = false
+  if (typeof localStorage !== "undefined") {
+    try {
+      purged = localStorage.getItem(PICTURELESS_PURGE_KEY) === "1"
+    } catch {
+      purged = true
+    }
+  }
+
   const entries = await getAllPersisted()
-  for (const entry of entries) {
+  if (!purged) {
+    await Promise.all(
+      entries
+        .filter((e) => !e.pictureBlob)
+        .map((e) => deletePersisted(e.songId))
+    )
+    if (typeof localStorage !== "undefined") {
+      try {
+        localStorage.setItem(PICTURELESS_PURGE_KEY, "1")
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  const usableEntries = purged ? entries : entries.filter((e) => e.pictureBlob)
+  for (const entry of usableEntries) {
     const metadata: TrackMetadata = {
       artist: entry.artist,
       album: entry.album,
@@ -186,18 +222,21 @@ export function ensureTrackMetadata(
   if (cached) {
     const cachedMtime = cachedModifiedTime.get(songId)
     const mtimeOk = !modifiedTime || cachedMtime === modifiedTime
-    // One-time migration: entries cached before we started tracking
-    // duration don't have the field. Refetch once so they pick it up.
-    // Identified by: meta exists, but no duration AND no picture (old
-    // empty-tag entries) — or has tags. We only re-fetch if there's
-    // ANY structured data (artist/album/title/picture) but no
-    // duration; an entry with neither tags nor duration is genuinely
-    // tagless and refetching wouldn't help.
-    const looksUpgradable =
+    // Re-fetch if: has tags but no duration (pre-duration cache entry),
+    // OR is completely blank (parse may have failed; blank entries are
+    // never persisted to IDB so a session restart retries automatically).
+    const isBlank =
+      !cached.artist &&
+      !cached.album &&
+      !cached.title &&
       cached.duration === undefined &&
-      Boolean(
-        cached.artist || cached.album || cached.title || cached.pictureBlob
-      )
+      !cached.pictureBlob
+    const looksUpgradable =
+      isBlank ||
+      (cached.duration === undefined &&
+        Boolean(
+          cached.artist || cached.album || cached.title || cached.pictureBlob
+        ))
     if (mtimeOk && !looksUpgradable) {
       return Promise.resolve(cached)
     }
@@ -210,24 +249,38 @@ export function ensureTrackMetadata(
   const pending = inflight.get(songId)
   if (pending) return pending
 
+  const gen = evictGen.get(songId) ?? 0
   const promise = enqueue(() => fetchAndParse(songId))
     .then(async (value) => {
+      // If the song was evicted while this fetch was in-flight, discard
+      // the (stale) result rather than overwriting the fresh eviction.
+      if ((evictGen.get(songId) ?? 0) !== gen) return value
       consecutiveFailures = 0
       resolved.set(songId, value)
       cachedModifiedTime.set(songId, modifiedTime)
       inflight.delete(songId)
-      // Persist (best-effort, async, no await on the caller side).
-      void putPersisted({
-        songId,
-        modifiedTime,
-        artist: value.artist,
-        album: value.album,
-        title: value.title,
-        duration: value.duration,
-        pictureBlob: value.pictureBlob,
-        pictureType: value.pictureType,
-        cachedAt: Date.now(),
-      })
+      // Only persist if we got something useful — blank results are kept
+      // in-memory for the session but not written to IDB so the next
+      // session retries the fetch rather than loading a stale empty entry.
+      const hasData =
+        value.artist ||
+        value.album ||
+        value.title ||
+        value.duration !== undefined ||
+        value.pictureBlob
+      if (hasData) {
+        void putPersisted({
+          songId,
+          modifiedTime,
+          artist: value.artist,
+          album: value.album,
+          title: value.title,
+          duration: value.duration,
+          pictureBlob: value.pictureBlob,
+          pictureType: value.pictureType,
+          cachedAt: Date.now(),
+        })
+      }
       subscribers.get(songId)?.forEach((fn) => fn())
       globalSubscribers.forEach((fn) => fn())
       return value
@@ -259,18 +312,16 @@ async function fetchAndParse(songId: string): Promise<TrackMetadata> {
   let metadata = await fetchRange(songId, PARTIAL_BYTES)
   let result = await toTrackMetadata(metadata)
 
-  // Pass 2: if nothing landed (typical of MP4/M4A with the moov atom
-  // at the end), fall back to the full file. We still cap at 30 MB to
-  // avoid choking on bizarrely large rips.
-  const isMp4Like =
-    metadata.format.container?.toLowerCase().includes("mp4") ||
-    metadata.format.container?.toLowerCase().includes("m4a") ||
-    false
+  // Pass 2: if nothing landed, fall back to the full file. Originally
+  // gated on confirmed MP4/M4A container, but when moov is at the end
+  // the first 2 MB may not even identify the container — so now we
+  // retry whenever we got nothing useful, regardless of format.
+  // Still cap at 30 MB to avoid choking on large rips.
   const noUsefulMeta =
     !metadata.common.picture?.[0] &&
     !metadata.common.title &&
     !metadata.common.artist
-  if (isMp4Like && noUsefulMeta) {
+  if (noUsefulMeta) {
     try {
       metadata = await fetchRange(songId, 30 * 1024 * 1024)
       result = await toTrackMetadata(metadata)
@@ -282,7 +333,37 @@ async function fetchAndParse(songId: string): Promise<TrackMetadata> {
   return result
 }
 
+/**
+ * Read the full cached audio blob for a song directly from the Cache API,
+ * bypassing the service worker entirely. Returns null if not downloaded.
+ */
+async function getCachedAudioBlob(songId: string): Promise<Blob | null> {
+  if (typeof caches === "undefined") return null
+  try {
+    const cache = await caches.open(AUDIO_CACHE_NAME)
+    const response = await cache.match(streamUrl(songId), { ignoreVary: true })
+    if (!response) return null
+    return await response.blob()
+  } catch {
+    return null
+  }
+}
+
 async function fetchRange(songId: string, bytes: number) {
+  // Read directly from the audio cache when available. This avoids
+  // routing through the service worker, which can serve stale bytes or
+  // interfere with cross-origin Range requests in ways a direct Cache
+  // API read does not.
+  const cachedBlob = await getCachedAudioBlob(songId)
+  if (cachedBlob) {
+    const slice = cachedBlob.slice(0, Math.min(bytes, cachedBlob.size))
+    return parseBlob(slice, {
+      skipCovers: false,
+      skipPostHeaders: false,
+      duration: false,
+    })
+  }
+
   const response = await fetch(streamUrl(songId), {
     headers: { Range: `bytes=0-${bytes - 1}` },
   })
@@ -290,10 +371,12 @@ async function fetchRange(songId: string, bytes: number) {
     throw new Error(`metadata fetch ${response.status}`)
   }
   const buffer = await response.arrayBuffer()
-  const blob = new Blob([buffer])
+  const blob = new Blob([buffer], {
+    type: response.headers.get("Content-Type") ?? "",
+  })
   return parseBlob(blob, {
     skipCovers: false,
-    skipPostHeaders: true,
+    skipPostHeaders: false,
     duration: false,
   })
 }
@@ -350,6 +433,36 @@ function enqueue<T>(task: () => Promise<T>): Promise<T> {
 interface PrefetchOptions {
   /** Only retry songs not already in the cache. Default: true. */
   skipCached?: boolean
+}
+
+/**
+ * Drop the parsed metadata for a song from every cache layer (in-
+ * memory + IDB). Called whenever the audio bytes change — e.g. after
+ * downloadSong succeeds with a new blob — because the IDB record is
+ * keyed on the new `modifiedTime` but was parsed from whatever bytes
+ * the SW served at the time, which can be stale. Without this, a
+ * "no picture" record gets stamped under the new mtime and survives
+ * forever (mtime matches → never re-parsed).
+ */
+export async function evictTrackMetadata(
+  songId: string,
+  modifiedTime?: string
+): Promise<void> {
+  const meta = resolved.get(songId)
+  if (meta?.pictureUrl) URL.revokeObjectURL(meta.pictureUrl)
+  resolved.delete(songId)
+  cachedModifiedTime.delete(songId)
+  // Bump generation so any in-flight fetch discards its stale result.
+  evictGen.set(songId, (evictGen.get(songId) ?? 0) + 1)
+  // Remove inflight entry so ensureTrackMetadata queues a fresh fetch below.
+  inflight.delete(songId)
+  subscribers.get(songId)?.forEach((fn) => fn())
+  globalSubscribers.forEach((fn) => fn())
+  await deletePersisted(songId)
+  // Re-queue immediately so the fresh audio bytes (just written to the
+  // audio cache by downloadSong) get parsed without waiting for the
+  // hook's useEffect to re-run on the next render.
+  void ensureTrackMetadata(songId, modifiedTime)
 }
 
 /**

@@ -1,6 +1,6 @@
 import * as React from "react"
 import { createPortal } from "react-dom"
-import { HardDrive, X } from "lucide-react"
+import { HardDrive, Trash2, X } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 
@@ -11,6 +11,7 @@ interface DownloadedSongsModalProps {
   onClose: () => void
   cachedIds: Set<string>
   songs: Song[]
+  onEvict?: (songId: string) => Promise<void>
 }
 
 function formatBytes(bytes: number): string {
@@ -33,7 +34,9 @@ export function DownloadedSongsModal({
   onClose,
   cachedIds,
   songs,
+  onEvict,
 }: DownloadedSongsModalProps) {
+  const [evicting, setEvicting] = React.useState<string | null>(null)
   React.useEffect(() => {
     if (!open) return
     const handler = (event: KeyboardEvent) => {
@@ -92,9 +95,9 @@ export function DownloadedSongsModal({
               {cached.map((song) => (
                 <li
                   key={song.id}
-                  className="border-border flex items-center justify-between gap-3 border-b px-5 py-2.5 last:border-b-0"
+                  className="border-border flex items-center gap-3 border-b px-5 py-2.5 last:border-b-0"
                 >
-                  <div className="flex min-w-0 flex-col">
+                  <div className="flex min-w-0 flex-1 flex-col">
                     <span className="text-foreground truncate text-sm font-medium">
                       {song.title}
                     </span>
@@ -107,6 +110,23 @@ export function DownloadedSongsModal({
                   <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
                     {formatBytes(song.size)}
                   </span>
+                  {onEvict ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Remover transferência"
+                      disabled={evicting === song.id}
+                      onClick={async () => {
+                        setEvicting(song.id)
+                        await onEvict(song.id).catch(() => undefined)
+                        setEvicting(null)
+                      }}
+                      className="text-muted-foreground hover:text-destructive shrink-0"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  ) : null}
                 </li>
               ))}
             </ol>

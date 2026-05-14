@@ -8,40 +8,81 @@ import { cn } from "@workspace/ui/lib/utils"
 import { SignInDialog } from "@/components/auth/sign-in-dialog"
 import { EmptyState } from "@/components/library/empty-state"
 import { ProfileEditSection } from "@/components/profile/profile-edit-section"
-import { ScoutBadge } from "@/components/profile/scout-badge"
+import { ProfileHeader } from "@/components/profile/profile-header"
 import { StorageSection } from "@/components/profile/storage-section"
+import { TopList } from "@/components/profile/top-list"
 import { useAuth } from "@/hooks/useAuth"
-import { usePlayer } from "@/hooks/usePlayer"
+import { useTopStats } from "@/hooks/useTopStats"
 import { artistHref } from "@/lib/artists"
+import { uploadAvatar, uploadBanner } from "@/lib/avatar-upload"
+import { formatJoinDate } from "@/lib/format-date"
 import { supabase, supabaseConfigured } from "@/lib/supabase"
-
-interface TopSong {
-  id: string
-  title: string
-  playCount: number
-}
-interface TopArtist {
-  name: string
-  playCount: number
-}
-
-function formatDate(iso: string): string {
-  const date = new Date(iso)
-  return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  })
-}
 
 export function ProfilePage() {
   const { user, profile, loading: authLoading, signOut, refreshProfile } =
     useAuth()
-  const { songs } = usePlayer()
-  const [topSongs, setTopSongs] = React.useState<TopSong[] | null>(null)
-  const [topArtists, setTopArtists] = React.useState<TopArtist[] | null>(null)
+  const { topSongs, topArtists } = useTopStats(user?.id ?? null, {
+    refetchOnVisibility: true,
+  })
   const [signInOpen, setSignInOpen] = React.useState(false)
   const [savingPrivacy, setSavingPrivacy] = React.useState(false)
+  const [uploadingAvatar, setUploadingAvatar] = React.useState(false)
+  const [uploadingBanner, setUploadingBanner] = React.useState(false)
+  const [imageError, setImageError] = React.useState<string | null>(null)
+  const avatarInputRef = React.useRef<HTMLInputElement | null>(null)
+  const bannerInputRef = React.useRef<HTMLInputElement | null>(null)
+
+  const handleAvatarPick = () => {
+    if (uploadingAvatar) return
+    avatarInputRef.current?.click()
+  }
+  const handleBannerPick = () => {
+    if (uploadingBanner) return
+    bannerInputRef.current?.click()
+  }
+
+  const runUpload = async (
+    file: File,
+    field: "avatar_url" | "banner_url",
+    upload: (file: File) => Promise<string>,
+    setBusy: (busy: boolean) => void
+  ) => {
+    if (!supabase || !user) return
+    setImageError(null)
+    setBusy(true)
+    try {
+      const url = await upload(file)
+      const patch =
+        field === "avatar_url" ? { avatar_url: url } : { banner_url: url }
+      const { error: dbError } = await supabase
+        .from("profiles")
+        .update(patch)
+        .eq("id", user.id)
+      if (dbError) throw new Error(dbError.message)
+      await refreshProfile()
+    } catch (err) {
+      setImageError(
+        err instanceof Error ? err.message : "Falhou o carregamento da imagem."
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleAvatarChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (file) await runUpload(file, "avatar_url", uploadAvatar, setUploadingAvatar)
+  }
+  const handleBannerChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (file) await runUpload(file, "banner_url", uploadBanner, setUploadingBanner)
+  }
 
   const shareActivity = profile?.share_activity ?? true
 
@@ -56,52 +97,6 @@ export function ProfilePage() {
     await refreshProfile()
     setSavingPrivacy(false)
   }
-
-  React.useEffect(() => {
-    if (!supabase || !user) return
-    let cancelled = false
-
-    const fetchStats = async () => {
-      if (!supabase || !user) return
-      const [songsRes, artistsRes] = await Promise.all([
-        supabase.rpc("top_songs_for_user", { uid: user.id, lim: 5 }),
-        supabase.rpc("top_artists_for_user", { uid: user.id, lim: 5 }),
-      ])
-      if (cancelled) return
-      if (!songsRes.error && songsRes.data) {
-        const byId = new Map(songs.map((s) => [s.id, s]))
-        setTopSongs(
-          songsRes.data
-            .map((row) => {
-              const song = byId.get(row.song_id)
-              return song
-                ? { id: song.id, title: song.title, playCount: Number(row.play_count) }
-                : null
-            })
-            .filter((row): row is TopSong => row !== null)
-        )
-      }
-      if (!artistsRes.error && artistsRes.data) {
-        setTopArtists(
-          artistsRes.data.map((row) => ({
-            name: row.artist,
-            playCount: Number(row.play_count),
-          }))
-        )
-      }
-    }
-
-    void fetchStats()
-
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") void fetchStats()
-    }
-    document.addEventListener("visibilitychange", onVisibility)
-    return () => {
-      cancelled = true
-      document.removeEventListener("visibilitychange", onVisibility)
-    }
-  }, [user, songs])
 
   if (authLoading) {
     return (
@@ -153,48 +148,62 @@ export function ProfilePage() {
     user.email?.split("@")[0] ??
     "Ouvinte"
   const avatarUrl = profile?.avatar_url ?? user.user_metadata?.avatar_url ?? null
-  const joined = formatDate(user.created_at)
+  const bannerUrl = profile?.banner_url ?? null
+  const joined = formatJoinDate(user.created_at)
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-3 pt-3 pb-4 md:px-6 md:pt-4">
-      <section className="flex items-center gap-4">
-        <div className="bg-primary text-primary-foreground flex size-20 items-center justify-center overflow-hidden rounded-full text-2xl font-semibold md:size-24">
-          {avatarUrl ? (
-            <img
-              src={avatarUrl}
-              alt=""
-              className="size-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            displayName.charAt(0).toUpperCase()
-          )}
-        </div>
-        <div className="flex flex-col gap-1">
-          <h2 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">
-            {displayName}
-          </h2>
-          <ScoutBadge
-            regiao={profile?.regiao ?? null}
-            nucleo={profile?.nucleo ?? null}
-            agrupamentoNumero={profile?.agrupamento_numero ?? null}
-            agrupamentoNome={profile?.agrupamento_nome ?? null}
-          />
-          <p className="text-muted-foreground text-xs">Inscreveu-se a {joined}</p>
+    <div className="mx-auto w-full max-w-3xl pb-4">
+      <ProfileHeader
+        displayName={displayName}
+        avatarUrl={avatarUrl}
+        bannerUrl={bannerUrl}
+        regiao={profile?.regiao ?? null}
+        nucleo={profile?.nucleo ?? null}
+        agrupamentoNumero={profile?.agrupamento_numero ?? null}
+        agrupamentoNome={profile?.agrupamento_nome ?? null}
+        subtitle={`Inscreveu-se a ${joined}`}
+        editable={{
+          onAvatarPick: handleAvatarPick,
+          onBannerPick: handleBannerPick,
+          uploadingAvatar,
+          uploadingBanner,
+        }}
+        bottomSlot={
           <Button
             type="button"
             variant="ghost"
             size="sm"
             onClick={signOut}
-            className="text-muted-foreground hover:text-foreground self-start px-0"
+            className="text-muted-foreground hover:text-foreground"
           >
             <LogOut className="size-3.5" />
             Terminar sessão
           </Button>
-        </div>
-      </section>
+        }
+      />
+      <input
+        ref={avatarInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={handleAvatarChange}
+      />
+      <input
+        ref={bannerInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={handleBannerChange}
+      />
 
-      <ProfileEditSection />
+      <div className="flex flex-col gap-6 px-3 pt-6 md:px-6">
+        {imageError ? (
+          <p className="text-destructive text-center text-xs" role="alert">
+            {imageError}
+          </p>
+        ) : null}
+
+        <ProfileEditSection />
 
       <section className="border-border bg-card rounded-md border p-4">
         <h3 className="text-muted-foreground mb-2 text-xs uppercase tracking-wider">
@@ -237,80 +246,39 @@ export function ProfilePage() {
 
       <StorageSection />
 
-      <section className="flex flex-col gap-2">
-        <h3 className="text-muted-foreground text-xs uppercase tracking-wider">
-          Top 5 músicas
-        </h3>
-        {topSongs === null ? (
-          <Loader2 className="text-muted-foreground size-4 animate-spin" />
-        ) : topSongs.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            Ainda nada — ouve umas músicas para veres o teu top.
-          </p>
-        ) : (
-          <ol className="flex flex-col gap-1">
-            {topSongs.map((song, index) => (
-              <li
-                key={song.id}
-                className="flex items-baseline gap-3 text-sm"
-              >
-                <span className="text-muted-foreground w-5 tabular-nums">
-                  {index + 1}
-                </span>
-                <span className="text-foreground flex-1 truncate">
-                  {song.title}
-                </span>
-                <span className="text-muted-foreground text-xs tabular-nums">
-                  {song.playCount}
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
+      <TopList
+        title="Top 5 músicas"
+        items={
+          topSongs?.map((song) => ({
+            id: song.id,
+            label: song.title,
+            count: song.playCount,
+          })) ?? null
+        }
+        emptyMessage="Ainda nada — ouve umas músicas para veres o teu top."
+      />
 
-      <section className="flex flex-col gap-2">
-        <h3 className="text-muted-foreground text-xs uppercase tracking-wider">
-          Top 5 artistas
-        </h3>
-        {topArtists === null ? (
-          <Loader2 className="text-muted-foreground size-4 animate-spin" />
-        ) : topArtists.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            Ainda não há reproduções de artistas registadas.
-          </p>
-        ) : (
-          <ol className="flex flex-col gap-1">
-            {topArtists.map((artist, index) => (
-              <li
-                key={artist.name}
-                className="flex items-baseline gap-3 text-sm"
-              >
-                <span className="text-muted-foreground w-5 tabular-nums">
-                  {index + 1}
-                </span>
-                <Link
-                  to={artistHref(artist.name)}
-                  className="text-foreground hover:underline flex-1 truncate"
-                >
-                  {artist.name}
-                </Link>
-                <span className="text-muted-foreground text-xs tabular-nums">
-                  {artist.playCount}
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
+      <TopList
+        title="Top 5 artistas"
+        items={
+          topArtists?.map((artist) => ({
+            id: artist.name,
+            label: artist.name,
+            count: artist.playCount,
+            href: artistHref(artist.name),
+          })) ?? null
+        }
+        emptyMessage="Ainda não há reproduções de artistas registadas."
+      />
 
-      <Link
-        to="/sobre"
-        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-2 self-start text-sm"
-      >
-        <Info className="size-4" />
-        Sobre o ScoutBangers
-      </Link>
+        <Link
+          to="/sobre"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-2 self-start text-sm"
+        >
+          <Info className="size-4" />
+          Sobre o ScoutBangers
+        </Link>
+      </div>
     </div>
   )
 }

@@ -12,6 +12,7 @@ export interface Database {
           id: string
           display_name: string | null
           avatar_url: string | null
+          banner_url: string | null
           share_activity: boolean
           created_at: string
           regiao: string | null
@@ -23,6 +24,7 @@ export interface Database {
           id: string
           display_name?: string | null
           avatar_url?: string | null
+          banner_url?: string | null
           share_activity?: boolean
           created_at?: string
           regiao?: string | null
@@ -34,6 +36,7 @@ export interface Database {
           id?: string
           display_name?: string | null
           avatar_url?: string | null
+          banner_url?: string | null
           share_activity?: boolean
           created_at?: string
           regiao?: string | null

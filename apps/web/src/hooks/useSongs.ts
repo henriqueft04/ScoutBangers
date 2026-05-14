@@ -1,6 +1,7 @@
 import * as React from "react"
 
 import { fetchSongs } from "@/lib/api"
+import { refreshStaleDownloads } from "@/lib/audio-cache"
 import { getCached, setCached } from "@/lib/storage"
 import type { Song } from "@/lib/types"
 
@@ -55,6 +56,11 @@ export function useSongs(): UseSongsResult {
         if (cancelled) return
         setCached(CACHE_KEY, fresh, CACHE_TTL_MS)
         setState({ songs: fresh, loading: false, error: null })
+        // Refresh any downloaded songs whose R2 bytes changed (new
+        // thumbnail, retag, etc.). Evicting stale audio triggers
+        // evictTrackMetadata so metadata re-parses from fresh bytes.
+        const manifest = new Map(fresh.map((s) => [s.id, s.modifiedTime]))
+        void refreshStaleDownloads(manifest)
       })
       .catch((error: unknown) => {
         if (cancelled) return

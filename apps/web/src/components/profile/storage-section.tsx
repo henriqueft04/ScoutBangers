@@ -13,12 +13,14 @@ import { usePlayer } from "@/hooks/usePlayer"
 import {
   downloadSong,
   evictAll,
+  evictSong,
   inspectCache,
   isLikelyCellular,
   markOptedIntoOffline,
   requestPersistence,
   originUsage,
 } from "@/lib/audio-cache"
+import { evictTrackMetadata } from "@/lib/track-metadata"
 import type { Song } from "@/lib/types"
 
 import { ConfirmDialog } from "./confirm-dialog"
@@ -328,6 +330,15 @@ export function StorageSection() {
         onClose={() => setViewOpen(false)}
         cachedIds={cachedIds}
         songs={songs}
+        onEvict={async (songId) => {
+          await evictSong(songId)
+          await evictTrackMetadata(songId)
+          setCachedIds((prev) => {
+            const next = new Set(prev)
+            next.delete(songId)
+            return next
+          })
+        }}
       />
       <ConfirmDialog
         open={confirmCellular}
