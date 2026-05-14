@@ -86,7 +86,11 @@ export function SearchInput({ value, onChange, className }: SearchInputProps) {
   const showDropdown = focused && value.length === 0 && history.length > 0
 
   return (
-    <div ref={containerRef} className={cn("relative", className)}>
+    <div
+      ref={containerRef}
+      data-tour-id="library-search"
+      className={cn("relative", className)}
+    >
       <Search
         aria-hidden
         className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"

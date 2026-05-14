@@ -1,21 +1,8 @@
-import { Home, Info, ListMusic, Music2, User } from "lucide-react"
 import { NavLink } from "react-router-dom"
 
 import { cn } from "@workspace/ui/lib/utils"
 
-interface NavItem {
-  to: string
-  label: string
-  Icon: typeof Home
-}
-
-const ITEMS: ReadonlyArray<NavItem> = [
-  { to: "/", label: "Início", Icon: Home },
-  { to: "/music", label: "Músicas", Icon: Music2 },
-  { to: "/playlists", label: "Playlists", Icon: ListMusic },
-  { to: "/profile", label: "Perfil", Icon: User },
-  { to: "/sobre", label: "Sobre", Icon: Info },
-]
+import { NAV_ITEMS } from "./nav-items"
 
 /**
  * Sticky bottom nav with 5 tabs. Sits below the PlayerBar in the layout
@@ -31,11 +18,12 @@ export function BottomNav() {
       )}
     >
       <ul className="mx-auto flex w-full max-w-6xl items-stretch justify-around px-2 py-1 md:px-6">
-        {ITEMS.map(({ to, label, Icon }) => (
+        {NAV_ITEMS.map(({ to, label, Icon, tourId }) => (
           <li key={to} className="flex-1">
             <NavLink
               to={to}
               end={to === "/"}
+              data-tour-id={tourId}
               className={({ isActive }) =>
                 cn(
                   "flex flex-col items-center justify-center gap-0.5 rounded-md py-1.5 text-[11px] font-medium transition-colors touch-manipulation",

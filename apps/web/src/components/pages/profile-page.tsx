@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Info, Loader2, LogOut } from "lucide-react"
+import { Compass, Info, Loader2, LogOut } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
@@ -13,6 +13,7 @@ import { StorageSection } from "@/components/profile/storage-section"
 import { TopList } from "@/components/profile/top-list"
 import { useAuth } from "@/hooks/useAuth"
 import { useTopStats } from "@/hooks/useTopStats"
+import { useTour } from "@/hooks/useTour"
 import { artistHref } from "@/lib/artists"
 import { uploadAvatar, uploadBanner } from "@/lib/avatar-upload"
 import { formatJoinDate } from "@/lib/format-date"
@@ -21,6 +22,7 @@ import { supabase, supabaseConfigured } from "@/lib/supabase"
 export function ProfilePage() {
   const { user, profile, loading: authLoading, signOut, refreshProfile } =
     useAuth()
+  const { start: startTour } = useTour()
   const { topSongs, topArtists } = useTopStats(user?.id ?? null, {
     refetchOnVisibility: true,
   })
@@ -204,6 +206,31 @@ export function ProfilePage() {
         ) : null}
 
         <ProfileEditSection />
+
+      <section className="border-border bg-card rounded-md border p-4">
+        <h3 className="text-muted-foreground mb-2 text-xs uppercase tracking-wider">
+          Tutorial
+        </h3>
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex flex-col">
+            <span className="text-foreground text-sm font-medium">
+              Passeio guiado
+            </span>
+            <span className="text-muted-foreground text-xs">
+              Volta a ver a apresentação interativa das funcionalidades da app.
+            </span>
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => startTour("main")}
+            className="shrink-0"
+          >
+            <Compass className="size-4" />
+            Iniciar
+          </Button>
+        </div>
+      </section>
 
       <section className="border-border bg-card rounded-md border p-4">
         <h3 className="text-muted-foreground mb-2 text-xs uppercase tracking-wider">

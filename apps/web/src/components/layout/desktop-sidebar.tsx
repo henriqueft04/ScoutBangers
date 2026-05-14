@@ -1,21 +1,8 @@
-import { Home, Info, ListMusic, Music2, User } from "lucide-react"
 import { Link, NavLink } from "react-router-dom"
 
 import { cn } from "@workspace/ui/lib/utils"
 
-interface NavItem {
-  to: string
-  label: string
-  Icon: typeof Home
-}
-
-const ITEMS: ReadonlyArray<NavItem> = [
-  { to: "/", label: "Início", Icon: Home },
-  { to: "/music", label: "Músicas", Icon: Music2 },
-  { to: "/playlists", label: "Playlists", Icon: ListMusic },
-  { to: "/profile", label: "Perfil", Icon: User },
-  { to: "/sobre", label: "Sobre", Icon: Info },
-]
+import { NAV_ITEMS } from "./nav-items"
 
 /**
  * Persistent left rail at lg+. Replaces the bottom nav on desktop and
@@ -45,11 +32,12 @@ export function DesktopSidebar() {
       </Link>
 
       <nav aria-label="Principal" className="mt-2 flex flex-col gap-1">
-        {ITEMS.map(({ to, label, Icon }) => (
+        {NAV_ITEMS.map(({ to, label, Icon, tourId }) => (
           <NavLink
             key={to}
             to={to}
             end={to === "/"}
+            data-tour-id={tourId}
             className={({ isActive }) =>
               cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",

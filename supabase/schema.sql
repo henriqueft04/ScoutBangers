@@ -13,6 +13,10 @@ create table if not exists public.profiles (
   avatar_url text,
   -- When false, the user is hidden from the friends activity feed.
   share_activity boolean not null default true,
+  -- Set when the user finishes (or skips) the interactive tour. Null
+  -- means "never seen the tour" — used to auto-start it on first
+  -- login. Replaying is always allowed via the Profile menu.
+  tour_completed_at timestamptz,
   created_at timestamptz not null default now()
 );
 

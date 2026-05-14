@@ -14,6 +14,7 @@ export interface Database {
           avatar_url: string | null
           banner_url: string | null
           share_activity: boolean
+          tour_completed_at: string | null
           created_at: string
           regiao: string | null
           nucleo: string | null
@@ -26,6 +27,7 @@ export interface Database {
           avatar_url?: string | null
           banner_url?: string | null
           share_activity?: boolean
+          tour_completed_at?: string | null
           created_at?: string
           regiao?: string | null
           nucleo?: string | null
@@ -38,6 +40,7 @@ export interface Database {
           avatar_url?: string | null
           banner_url?: string | null
           share_activity?: boolean
+          tour_completed_at?: string | null
           created_at?: string
           regiao?: string | null
           nucleo?: string | null

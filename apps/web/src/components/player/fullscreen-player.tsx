@@ -272,6 +272,7 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
           size="icon-sm"
           aria-label="Recolher leitor"
           onClick={onClose}
+          data-tour-id="fullscreen-close"
           className="touch-manipulation"
         >
           <ChevronDown />
@@ -341,18 +342,21 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
             )}
           </div>
           {song ? (
-            <FavoriteButton
-              songId={song.id}
-              size="md"
-              stopPropagation={false}
-              className="hidden md:inline-flex"
-            />
+            <span data-tour-id="player-favorite" className="hidden md:inline-flex">
+              <FavoriteButton
+                songId={song.id}
+                size="md"
+                stopPropagation={false}
+              />
+            </span>
           ) : null}
         </div>
 
         <div className="flex w-full max-w-sm flex-col gap-4">
           <ProgressBar />
-          <MainControls size="lg" />
+          <div data-tour-id="fullscreen-controls-wrap">
+            <MainControls size="lg" />
+          </div>
           {/* Mobile actions row: share | heart | queue */}
           {song ? (
             <div className="flex items-center justify-between px-2 md:hidden">
@@ -362,6 +366,7 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
                 size="icon"
                 aria-label="Partilhar música"
                 onClick={handleShare}
+                data-tour-id="player-share"
                 className="touch-manipulation size-11"
               >
                 {copied ? (
@@ -370,11 +375,13 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
                   <Share2 className="size-5" />
                 )}
               </Button>
-              <FavoriteButton
-                songId={song.id}
-                size="md"
-                stopPropagation={false}
-              />
+              <span data-tour-id="player-favorite" className="inline-flex">
+                <FavoriteButton
+                  songId={song.id}
+                  size="md"
+                  stopPropagation={false}
+                />
+              </span>
               <Button
                 type="button"
                 variant="ghost"
@@ -382,6 +389,7 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
                 aria-label={lyricsOpen ? "Fechar letra" : "Abrir letra"}
                 aria-pressed={lyricsOpen}
                 onClick={() => setLyricsOpen((v) => !v)}
+                data-tour-id="player-lyrics"
                 className={cn(
                   "touch-manipulation",
                   lyricsOpen && "text-primary"
@@ -389,10 +397,12 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
               >
                 <FileText className="size-5" />
               </Button>
-              <QueueToggleButton
-                open={queueOpen}
-                onClick={() => setQueueOpen((v) => !v)}
-              />
+              <span data-tour-id="player-queue" className="inline-flex">
+                <QueueToggleButton
+                  open={queueOpen}
+                  onClick={() => setQueueOpen((v) => !v)}
+                />
+              </span>
             </div>
           ) : null}
           {/* Desktop: lyrics + queue buttons left of the volume slider */}
@@ -405,15 +415,18 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
                 aria-label={lyricsOpen ? "Fechar letra" : "Abrir letra"}
                 aria-pressed={lyricsOpen}
                 onClick={() => setLyricsOpen((v) => !v)}
+                data-tour-id="player-lyrics"
                 className={cn("size-10", lyricsOpen && "text-primary")}
               >
                 <FileText className="size-5" />
               </Button>
-              <QueueToggleButton
-                open={queueOpen}
-                onClick={() => setQueueOpen((v) => !v)}
-                sizeClass="size-10"
-              />
+              <span data-tour-id="player-queue" className="inline-flex">
+                <QueueToggleButton
+                  open={queueOpen}
+                  onClick={() => setQueueOpen((v) => !v)}
+                  sizeClass="size-10"
+                />
+              </span>
               <VolumeControl className="flex-1" />
             </div>
           ) : null}

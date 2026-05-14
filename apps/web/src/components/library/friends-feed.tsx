@@ -91,7 +91,10 @@ export function FriendsFeed({ variant = "carousel", className }: FriendsFeedProp
   const isRail = variant === "rail"
 
   return (
-    <section className={cn("flex flex-col gap-2", className)}>
+    <section
+      data-tour-id="home-friends"
+      className={cn("flex flex-col gap-2", className)}
+    >
       <header className="flex items-baseline justify-between gap-2">
         <h3 className="text-foreground text-lg font-semibold tracking-tight">
           Amigos
@@ -103,6 +106,7 @@ export function FriendsFeed({ variant = "carousel", className }: FriendsFeedProp
         ) : (
           <Link
             to="/estatisticas"
+            data-tour-id="home-stats"
             className="bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors touch-manipulation"
           >
             <BarChart3 className="size-3.5" aria-hidden />

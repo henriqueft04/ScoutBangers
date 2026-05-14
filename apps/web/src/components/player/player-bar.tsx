@@ -47,6 +47,7 @@ export function PlayerBar({
   const hasSong = currentIndex !== null && Boolean(songs[currentIndex])
   return (
     <div
+      data-tour-id="player-bar"
       className={cn(
         "border-border bg-background/95 supports-[backdrop-filter]:bg-background/80 border-t backdrop-blur",
         className

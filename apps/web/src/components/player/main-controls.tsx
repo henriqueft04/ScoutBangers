@@ -49,6 +49,7 @@ export function MainControls({ className, size = "default" }: MainControlsProps)
 
   return (
     <div
+      data-tour-id="player-controls"
       className={cn(
         "flex items-center justify-center gap-1 md:gap-2",
         isLg && "gap-3 md:gap-4",
@@ -63,6 +64,7 @@ export function MainControls({ className, size = "default" }: MainControlsProps)
         aria-pressed={shuffle}
         onClick={toggleShuffle}
         disabled={!hasSongs}
+        data-tour-id="player-shuffle"
         className={cn(
           "touch-manipulation",
           sideButton,
@@ -120,6 +122,7 @@ export function MainControls({ className, size = "default" }: MainControlsProps)
         aria-pressed={repeat !== "off"}
         onClick={cycleRepeat}
         disabled={!hasSongs}
+        data-tour-id="player-repeat"
         className={cn(
           "touch-manipulation",
           sideButton,

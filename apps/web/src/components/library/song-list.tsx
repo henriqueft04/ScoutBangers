@@ -24,7 +24,14 @@ export function SongList({
       className={cn("flex flex-col gap-px py-1", className)}
     >
       {songs.map((song, index) => (
-        <li key={song.id}>
+        <li
+          key={song.id}
+          // Tour uses the 2nd row as the demo target: more songs have
+          // embedded lyrics from track #2 onwards in the catalog, and
+          // the lyrics step downstream depends on the playing song
+          // having a lyrics payload to show.
+          data-tour-id={index === 1 ? "song-list-demo" : undefined}
+        >
           <SongRow
             song={song}
             index={index}
