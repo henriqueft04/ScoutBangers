@@ -199,6 +199,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   /** True while we're swapping the audio.src — causes a transient pause
    *  event we want to ignore so the OS lock-screen UI doesn't flicker. */
   const switchingSrcRef = React.useRef(false)
+  /**
+   * iOS-only: song id we already advanced PAST via the interval-driven
+   * preempt. Used so that (a) the preempt doesn't fire twice for the
+   * same song and (b) a ghost `ended` event arriving moments after the
+   * preempt doesn't trigger a second advance. Compared by id rather
+   * than reset on song change so the lock survives the React render
+   * cycle between dispatching SET_INDEX and the state ref updating.
+   */
+  const iosPreemptedRef = React.useRef<string | null>(null)
 
   const [state, dispatch] = React.useReducer(
     playerReducer,
@@ -499,6 +508,45 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
+      // iOS: always swap src on the active deck. The deck-swap and
+      // crossfade paths below both rely on starting a previously-paused
+      // <audio> element via programmatic .play(), which iOS rejects
+      // when the page is backgrounded / the screen is locked — and a
+      // rejection in that path strands the player in silence until the
+      // user opens the app and taps something. Swapping src on the
+      // element that already owns the audio session is the only
+      // pattern iOS reliably keeps alive across track changes when
+      // locked. The play() call rides the same gesture-rooted session
+      // as the current playback, so it isn't subject to the
+      // "background autoplay" block.
+      if (IS_IOS) {
+        cancelFades()
+        if (!idle.paused) idle.pause()
+        switchingSrcRef.current = true
+        if (active.src !== newSrc) {
+          active.src = newSrc
+        }
+        try {
+          active.currentTime = 0
+        } catch {
+          /* some iOS versions throw on seek before metadata loads */
+        }
+        audioEngine.setVolume(active, userTargetVolume())
+        const playPromise = active.play()
+        void Promise.resolve(playPromise)
+          .catch((err) => {
+            debugWarn("[player] ios same-deck play rejected", err)
+            dispatch({ type: "SET_PLAYING", isPlaying: false })
+          })
+          .finally(() => {
+            switchingSrcRef.current = false
+          })
+        dispatch({ type: "SET_INDEX", index })
+        dispatch({ type: "TIME", position: 0 })
+        dispatch({ type: "PLAYBACK_ERROR", message: null })
+        return
+      }
+
       if (!wantsCrossfade) {
         cancelFades()
         // Fast path: if the idle deck already has this song preloaded
@@ -561,7 +609,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         // resolves.
         idle.pause()
         switchingSrcRef.current = true
-        if (active.src !== window.location.origin + newSrc) {
+        // newSrc is an absolute cross-origin URL (audio.scoutbangers.com).
+        // Compare directly against active.src — the previous
+        // `window.location.origin + newSrc` concatenation always
+        // mismatched, so this branch was effectively always re-assigning
+        // src (a no-op + reload). Use the absolute URL.
+        if (active.src !== newSrc) {
           active.src = newSrc
         } else {
           active.currentTime = 0
@@ -635,6 +688,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const handleEnded = React.useCallback(() => {
     debugLog("[player] handleEnded fired", {
       crossfadeArmed: crossfadeArmedRef.current,
+      iosPreempted: iosPreemptedRef.current,
       hidden: typeof document !== "undefined" ? document.hidden : null,
     })
     if (crossfadeArmedRef.current) {
@@ -643,6 +697,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       return
     }
     const s = stateRef.current
+    const currentSongId =
+      s.currentIndex !== null ? s.songs[s.currentIndex]?.id ?? null : null
+    // iOS guard: if the interval-driven preempt already advanced past
+    // this song, the natural `ended` arrives moments later as a ghost
+    // event for the now-replaced source. Skip it so we don't
+    // double-advance (which would silently skip the song the preempt
+    // just started).
+    if (
+      IS_IOS &&
+      currentSongId !== null &&
+      iosPreemptedRef.current === currentSongId
+    ) {
+      return
+    }
     if (s.repeat === "one" && s.currentIndex !== null) {
       const active = getDeck(activeDeckRef.current)
       if (active) {
@@ -653,6 +721,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
     const advance = computeAdvance(1, true)
     if (advance) {
+      // Record the preempt lock here too so any ghost ended that
+      // arrives after we kick off the next song is ignored.
+      if (IS_IOS && currentSongId !== null) {
+        iosPreemptedRef.current = currentSongId
+      }
       playIndex(advance.index)
     } else {
       dispatch({ type: "SET_PLAYING", isPlaying: false })
@@ -855,20 +928,63 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: "SET_PLAYING", isPlaying: actuallyPlaying })
       }
 
-      // Crossfade trigger that survives backgrounded throttling.
-      // Fires when within CROSSFADE_LEAD_SECONDS of the reported end
-      // OR when the audio has actually ended (catches VBR files where
-      // audio.duration is overestimated and the song ends silently
-      // before the duration math says it should).
       const duration = canonicalDuration(active)
       const endsSoon =
         Number.isFinite(duration) &&
         duration > 0 &&
         duration - active.currentTime <= CROSSFADE_LEAD_SECONDS
+
+      // iOS-specific auto-advance: same-deck src swap, fired BEFORE the
+      // current song reaches its end. This is the linchpin of locked-
+      // screen reliability — once a song fully ends, iOS revokes the
+      // audio session in the brief idle gap, after which no
+      // programmatic play() (active deck OR idle deck) is accepted.
+      // Preempting at ~CROSSFADE_LEAD_SECONDS keeps audio output
+      // continuous, so the session is never released. Tracked by song
+      // id so the preempt fires exactly once per song; the same lock
+      // also stops a ghost `ended` event from re-advancing.
+      if (IS_IOS) {
+        const s = stateRef.current
+        const currentSongId =
+          s.currentIndex !== null ? s.songs[s.currentIndex]?.id ?? null : null
+        // Skip preempt for songs shorter than 2× the lead so we don't
+        // immediately advance past a 1-second clip. Short songs play to
+        // their natural end and advance via `handleEnded`.
+        const longEnough =
+          Number.isFinite(duration) && duration > CROSSFADE_LEAD_SECONDS * 2
+        const shouldAdvance =
+          s.repeat !== "one" &&
+          currentSongId !== null &&
+          iosPreemptedRef.current !== currentSongId &&
+          ((actuallyPlaying && longEnough && endsSoon) || active.ended)
+        if (shouldAdvance) {
+          const advance = computeAdvance(1, true)
+          if (advance) {
+            debugLog("[player] ios preempt fire", {
+              remaining:
+                Number.isFinite(duration) && duration > 0
+                  ? duration - active.currentTime
+                  : null,
+              audioEnded: active.ended,
+              hidden:
+                typeof document !== "undefined" ? document.hidden : null,
+            })
+            iosPreemptedRef.current = currentSongId
+            playIndex(advance.index)
+          }
+        }
+        return
+      }
+
+      // Non-iOS crossfade trigger that survives backgrounded throttling.
+      // Fires when within CROSSFADE_LEAD_SECONDS of the reported end
+      // OR when the audio has actually ended (catches VBR files where
+      // audio.duration is overestimated and the song ends silently
+      // before the duration math says it should).
       if (
         !crossfadeArmedRef.current &&
         stateRef.current.repeat !== "one" &&
-        ((!IS_IOS && actuallyPlaying && endsSoon) || active.ended)
+        ((actuallyPlaying && endsSoon) || active.ended)
       ) {
         const advance = computeAdvance(1, true)
         if (advance) {
