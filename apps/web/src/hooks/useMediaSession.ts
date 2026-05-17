@@ -72,32 +72,51 @@ export function useMediaSession(): void {
     if (!supported) return
     const session = navigator.mediaSession
 
-    session.setActionHandler("play", () => {
+    // setActionHandler throws TypeError on browsers that don't know
+    // a given action. We don't want one unsupported action to abort
+    // the whole registration (e.g. failing `seekto` shouldn't leave
+    // prev/next unregistered), so wrap each call individually.
+    const safeSet = (
+      action: MediaSessionAction,
+      handler: MediaSessionActionHandler | null,
+    ) => {
+      try {
+        session.setActionHandler(action, handler)
+      } catch {
+        /* action not supported on this UA */
+      }
+    }
+
+    safeSet("play", () => {
       if (!isPlayingRef.current) toggleRef.current()
     })
-    session.setActionHandler("pause", () => {
+    safeSet("pause", () => {
       if (isPlayingRef.current) toggleRef.current()
     })
-    session.setActionHandler("previoustrack", () => prevRef.current())
-    session.setActionHandler("nexttrack", () => nextRef.current())
-    session.setActionHandler("seekto", (details) => {
+    safeSet("previoustrack", () => prevRef.current())
+    safeSet("nexttrack", () => nextRef.current())
+    safeSet("seekto", (details) => {
       if (typeof details.seekTime === "number") seekRef.current(details.seekTime)
     })
-    // iOS only renders TWO secondary control slots on the lock
-    // screen. When the seekbackward/seekforward handlers are
-    // registered alongside previoustrack/nexttrack, it picks the
-    // seek buttons (showing -10s / +10s) and drops the track-skip
-    // ones — which is the opposite of what users expect for a
-    // music player. We register the seek handlers only on
-    // non-iOS, where there's no slot collision and the ±10s
-    // buttons are genuinely useful in Android's media
-    // notification.
-    if (!isIOS()) {
-      session.setActionHandler("seekbackward", (details) => {
+
+    // iOS shows TWO secondary control slots in the lock-screen /
+    // Control Center Now Playing widget. The default for HTML5
+    // audio is the ±15s seek buttons — and WebKit keeps that
+    // default in place unless you EXPLICITLY null out
+    // seekbackward/seekforward via setActionHandler. Just *not*
+    // registering them (what we used to do) leaves the UA default
+    // active and the track-skip buttons we registered get hidden.
+    // On non-iOS, ±10s is genuinely useful in the Android media
+    // notification, so we register real handlers there.
+    if (isIOS()) {
+      safeSet("seekbackward", null)
+      safeSet("seekforward", null)
+    } else {
+      safeSet("seekbackward", (details) => {
         const offset = details.seekOffset ?? SEEK_OFFSET_SECONDS
         seekRef.current(Math.max(0, positionRef.current - offset))
       })
-      session.setActionHandler("seekforward", (details) => {
+      safeSet("seekforward", (details) => {
         const offset = details.seekOffset ?? SEEK_OFFSET_SECONDS
         const target = positionRef.current + offset
         const cap = durationRef.current > 0 ? durationRef.current : target
@@ -106,13 +125,13 @@ export function useMediaSession(): void {
     }
 
     return () => {
-      session.setActionHandler("play", null)
-      session.setActionHandler("pause", null)
-      session.setActionHandler("previoustrack", null)
-      session.setActionHandler("nexttrack", null)
-      session.setActionHandler("seekto", null)
-      session.setActionHandler("seekbackward", null)
-      session.setActionHandler("seekforward", null)
+      safeSet("play", null)
+      safeSet("pause", null)
+      safeSet("previoustrack", null)
+      safeSet("nexttrack", null)
+      safeSet("seekto", null)
+      safeSet("seekbackward", null)
+      safeSet("seekforward", null)
     }
   }, [supported])
 
