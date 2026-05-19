@@ -55,7 +55,8 @@ interface FetchState<T> {
 
 function useRpc<T>(
   enabled: boolean,
-  fetcher: () => Promise<{ data: T | null; error: { message: string } | null }>
+  fetcher: () => Promise<{ data: T | null; error: { message: string } | null }>,
+  deps: React.DependencyList
 ): FetchState<T> {
   const [state, setState] = React.useState<FetchState<T>>({
     data: null,
@@ -93,7 +94,8 @@ function useRpc<T>(
       cancelled = true
       document.removeEventListener("visibilitychange", onVisibility)
     }
-  }, [enabled])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, ...deps])
 
   return state
 }
@@ -104,7 +106,7 @@ export function useStatsSummary(period: StatsPeriod) {
     const { data, error } = await supabase.rpc("stats_summary", { period })
     if (error) return { data: null, error }
     return { data: (data?.[0] ?? null) as SummaryRow | null, error: null }
-  })
+  }, [period])
 }
 
 export function useTopListeners(period: StatsPeriod, lim = 10) {
@@ -116,7 +118,7 @@ export function useTopListeners(period: StatsPeriod, lim = 10) {
     })
     if (error) return { data: null, error }
     return { data: (data ?? []) as ListenerRow[], error: null }
-  })
+  }, [period, lim])
 }
 
 export function useTopArtists(days: number | null, lim = 10) {
@@ -128,7 +130,7 @@ export function useTopArtists(days: number | null, lim = 10) {
     })
     if (error) return { data: null, error }
     return { data: (data ?? []) as ArtistRow[], error: null }
-  })
+  }, [days, lim])
 }
 
 export function usePlaysPerDay(days = 30) {
@@ -137,7 +139,7 @@ export function usePlaysPerDay(days = 30) {
     const { data, error } = await supabase.rpc("stats_plays_per_day", { days })
     if (error) return { data: null, error }
     return { data: (data ?? []) as DailyRow[], error: null }
-  })
+  }, [days])
 }
 
 export function useTopSongs(period: StatsPeriod, lim = 10) {
@@ -149,7 +151,7 @@ export function useTopSongs(period: StatsPeriod, lim = 10) {
     })
     if (error) return { data: null, error }
     return { data: (data ?? []) as SongCountRow[], error: null }
-  })
+  }, [period, lim])
 }
 
 export function useTopSongsWeekly(weeksBack = 8) {
@@ -160,5 +162,5 @@ export function useTopSongsWeekly(weeksBack = 8) {
     })
     if (error) return { data: null, error }
     return { data: (data ?? []) as WeeklySongRow[], error: null }
-  })
+  }, [weeksBack])
 }

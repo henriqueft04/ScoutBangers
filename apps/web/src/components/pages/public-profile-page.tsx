@@ -3,10 +3,12 @@ import { ArrowLeft, Loader2, ListMusic } from "lucide-react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 
 import { EmptyState } from "@/components/library/empty-state"
+import { ListenerBadges } from "@/components/profile/listener-badges"
 import { ProfileHeader } from "@/components/profile/profile-header"
 import { TopList } from "@/components/profile/top-list"
 import { useAuth } from "@/hooks/useAuth"
 import { useTopStats } from "@/hooks/useTopStats"
+import { useUserBadges } from "@/hooks/useUserBadges"
 import { artistHref } from "@/lib/artists"
 import { formatJoinDate } from "@/lib/format-date"
 import { supabase, supabaseConfigured } from "@/lib/supabase"
@@ -51,6 +53,7 @@ export function PublicProfilePage() {
     else navigate("/")
   }, [navigate])
   const { topSongs, topArtists } = useTopStats(userId ?? null)
+  const badgeCounts = useUserBadges(userId ?? null)
   const [profile, setProfile] = React.useState<PublicProfile | null>(null)
   const [playlists, setPlaylists] = React.useState<PublicPlaylist[] | null>(null)
   const [loading, setLoading] = React.useState(true)
@@ -188,6 +191,8 @@ export function PublicProfilePage() {
       />
 
       <div className="flex flex-col gap-6 px-3 pt-6 md:px-6">
+      <ListenerBadges userId={userId} counts={badgeCounts} />
+
       <TopList
         title="Top 5 músicas"
         items={

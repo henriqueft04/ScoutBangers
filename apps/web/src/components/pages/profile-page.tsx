@@ -7,12 +7,14 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { SignInDialog } from "@/components/auth/sign-in-dialog"
 import { EmptyState } from "@/components/library/empty-state"
+import { ListenerBadges } from "@/components/profile/listener-badges"
 import { ProfileEditSection } from "@/components/profile/profile-edit-section"
 import { ProfileHeader } from "@/components/profile/profile-header"
 import { StorageSection } from "@/components/profile/storage-section"
 import { TopList } from "@/components/profile/top-list"
 import { useAuth } from "@/hooks/useAuth"
 import { useTopStats } from "@/hooks/useTopStats"
+import { useUserBadges } from "@/hooks/useUserBadges"
 import { useTour } from "@/hooks/useTour"
 import { artistHref } from "@/lib/artists"
 import { uploadAvatar, uploadBanner } from "@/lib/avatar-upload"
@@ -26,8 +28,10 @@ export function ProfilePage() {
   const { topSongs, topArtists } = useTopStats(user?.id ?? null, {
     refetchOnVisibility: true,
   })
+  const badgeCounts = useUserBadges(user?.id ?? null)
   const [signInOpen, setSignInOpen] = React.useState(false)
   const [savingPrivacy, setSavingPrivacy] = React.useState(false)
+  const [savingBadges, setSavingBadges] = React.useState(false)
   const [uploadingAvatar, setUploadingAvatar] = React.useState(false)
   const [uploadingBanner, setUploadingBanner] = React.useState(false)
   const [imageError, setImageError] = React.useState<string | null>(null)
@@ -87,6 +91,12 @@ export function ProfilePage() {
   }
 
   const shareActivity = profile?.share_activity ?? true
+  const showBadges = profile?.show_badges ?? true
+  const hasAnyBadges =
+    (badgeCounts?.gold ?? 0) +
+      (badgeCounts?.silver ?? 0) +
+      (badgeCounts?.bronze ?? 0) >
+    0
 
   const togglePrivacy = async () => {
     if (!supabase || !user) return
@@ -98,6 +108,18 @@ export function ProfilePage() {
       .eq("id", user.id)
     await refreshProfile()
     setSavingPrivacy(false)
+  }
+
+  const toggleBadges = async () => {
+    if (!supabase || !user) return
+    setSavingBadges(true)
+    const next = !showBadges
+    await supabase
+      .from("profiles")
+      .update({ show_badges: next })
+      .eq("id", user.id)
+    await refreshProfile()
+    setSavingBadges(false)
   }
 
   if (authLoading) {
@@ -232,8 +254,8 @@ export function ProfilePage() {
         </div>
       </section>
 
-      <section className="border-border bg-card rounded-md border p-4">
-        <h3 className="text-muted-foreground mb-2 text-xs uppercase tracking-wider">
+      <section className="border-border bg-card flex flex-col gap-4 rounded-md border p-4">
+        <h3 className="text-muted-foreground text-xs uppercase tracking-wider">
           Privacidade
         </h3>
         <button
@@ -269,7 +291,45 @@ export function ProfilePage() {
             />
           </span>
         </button>
+
+        {hasAnyBadges ? (
+          <button
+            type="button"
+            onClick={toggleBadges}
+            disabled={savingBadges}
+            className="flex w-full items-center justify-between gap-3 text-left"
+            aria-pressed={showBadges}
+          >
+            <span className="flex flex-col">
+              <span className="text-foreground text-sm font-medium">
+                Mostrar distinções no perfil
+              </span>
+              <span className="text-muted-foreground text-xs">
+                {showBadges
+                  ? "As tuas distinções semanais aparecem no teu perfil público."
+                  : "Ocultas — continuas a ganhá-las, mas mais ninguém as vê."}
+              </span>
+            </span>
+            <span
+              role="presentation"
+              className={cn(
+                "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+                showBadges ? "bg-primary" : "bg-muted",
+                savingBadges && "opacity-60"
+              )}
+            >
+              <span
+                className={cn(
+                  "bg-background size-5 rounded-full shadow transition-transform",
+                  showBadges ? "translate-x-5" : "translate-x-0.5"
+                )}
+              />
+            </span>
+          </button>
+        ) : null}
       </section>
+
+      <ListenerBadges userId={user.id} counts={badgeCounts} />
 
       <StorageSection />
 

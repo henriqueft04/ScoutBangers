@@ -14,6 +14,7 @@ export interface Database {
           avatar_url: string | null
           banner_url: string | null
           share_activity: boolean
+          show_badges: boolean
           tour_completed_at: string | null
           created_at: string
           regiao: string | null
@@ -27,6 +28,7 @@ export interface Database {
           avatar_url?: string | null
           banner_url?: string | null
           share_activity?: boolean
+          show_badges?: boolean
           tour_completed_at?: string | null
           created_at?: string
           regiao?: string | null
@@ -40,6 +42,7 @@ export interface Database {
           avatar_url?: string | null
           banner_url?: string | null
           share_activity?: boolean
+          show_badges?: boolean
           tour_completed_at?: string | null
           created_at?: string
           regiao?: string | null
@@ -233,6 +236,14 @@ export interface Database {
           biggest_day: string | null
           biggest_day_count: number | null
         }[]
+      }
+      get_user_badges: {
+        Args: { uid: string }
+        Returns: { rank: number; badge_count: number }[]
+      }
+      get_user_badge_weeks: {
+        Args: { uid: string; rank_in: number }
+        Returns: { week_start: string; play_count: number }[]
       }
     }
     Enums: Record<string, never>
