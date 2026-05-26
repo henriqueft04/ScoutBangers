@@ -7,13 +7,17 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { ActivityChart } from "@/components/stats/activity-chart"
 import { BumpChart } from "@/components/stats/bump-chart"
+import { ListenersByRegion } from "@/components/stats/listeners-by-region"
+import { UsersByRegion } from "@/components/stats/users-by-region"
 import { SummaryCards } from "@/components/stats/summary-cards"
 import { TopArtists } from "@/components/stats/top-artists"
 import { TopListeners } from "@/components/stats/top-listeners"
 import { TopSongs } from "@/components/stats/top-songs"
 import { usePlayer } from "@/hooks/usePlayer"
 import {
+  useListenersByRegion,
   usePlaysPerDay,
+  useUsersByRegion,
   useStatsSummary,
   useTopArtists,
   useTopListeners,
@@ -51,12 +55,15 @@ export function StatsPage() {
   const [songsPeriod, setSongsPeriod] = React.useState<StatsPeriod>("week")
   const [listenersPeriod, setListenersPeriod] =
     React.useState<StatsPeriod>("week")
+  const [regionPeriod, setRegionPeriod] = React.useState<StatsPeriod>("week")
   const [artistRange, setArtistRange] = React.useState<number | null>(30)
 
   const summary = useStatsSummary(summaryPeriod)
   const topSongs = useTopSongs(songsPeriod, 10)
   const listeners = useTopListeners(listenersPeriod, 10)
   const artists = useTopArtists(artistRange, 10)
+  const regions = useListenersByRegion(regionPeriod, 10)
+  const usersByRegion = useUsersByRegion(10)
   const activity = usePlaysPerDay(30)
   const weeklySongs = useTopSongsWeekly(8)
 
@@ -162,6 +169,27 @@ export function StatsPage() {
         }
       >
         <TopArtists rows={artists.data} loading={artists.loading} />
+      </Section>
+
+      <Section
+        title="Regiões / Núcleos"
+        toolbar={
+          <SegmentedControl
+            value={regionPeriod}
+            options={SUMMARY_PERIODS}
+            onChange={setRegionPeriod}
+            ariaLabel="Período das regiões"
+          />
+        }
+      >
+        <ListenersByRegion rows={regions.data} loading={regions.loading} />
+      </Section>
+
+      <Section
+        title="Utilizadores por região / núcleo"
+        subtitle="Utilizadores registados com região definida no perfil."
+      >
+        <UsersByRegion rows={usersByRegion.data} loading={usersByRegion.loading} />
       </Section>
 
       <Section

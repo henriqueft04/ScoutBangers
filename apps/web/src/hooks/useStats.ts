@@ -40,6 +40,18 @@ export interface DailyRow {
   play_count: number
 }
 
+export interface RegionRow {
+  regiao: string
+  nucleo: string | null
+  play_count: number
+}
+
+export interface RegionUserRow {
+  regiao: string
+  nucleo: string | null
+  user_count: number
+}
+
 export interface WeeklySongRow {
   week_start: string
   song_id: string
@@ -152,6 +164,27 @@ export function useTopSongs(period: StatsPeriod, lim = 10) {
     if (error) return { data: null, error }
     return { data: (data ?? []) as SongCountRow[], error: null }
   }, [period, lim])
+}
+
+export function useListenersByRegion(period: StatsPeriod, lim = 10) {
+  return useRpc<RegionRow[]>(supabaseConfigured, async () => {
+    if (!supabase) return { data: null, error: null }
+    const { data, error } = await supabase.rpc("stats_listeners_by_region", {
+      period,
+      lim,
+    })
+    if (error) return { data: null, error }
+    return { data: (data ?? []) as RegionRow[], error: null }
+  }, [period, lim])
+}
+
+export function useUsersByRegion(lim = 10) {
+  return useRpc<RegionUserRow[]>(supabaseConfigured, async () => {
+    if (!supabase) return { data: null, error: null }
+    const { data, error } = await supabase.rpc("stats_users_by_region", { lim })
+    if (error) return { data: null, error }
+    return { data: (data ?? []) as RegionUserRow[], error: null }
+  }, [lim])
 }
 
 export function useTopSongsWeekly(weeksBack = 8) {
