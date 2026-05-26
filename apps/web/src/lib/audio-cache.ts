@@ -20,7 +20,7 @@
  * blobs as the user scrubs around).
  */
 
-import { streamUrl } from "./audio-url"
+import { invalidateResolvedSrc, resolveAudioSrc, streamUrl } from "./audio-url"
 import { AUDIO_CACHE } from "./audio-cache-name"
 import { evictTrackMetadata } from "./track-metadata"
 
@@ -131,6 +131,10 @@ export async function downloadSong(
   // empty-tag record stamped with the new modifiedTime, which then
   // looks "valid" forever and never gets re-parsed.
   await evictTrackMetadata(songId, modifiedTime).catch(() => undefined)
+  // Invalidate any stale blob URL and pre-warm a fresh one so the player
+  // can serve this song offline immediately without SW interception.
+  invalidateResolvedSrc(songId)
+  void resolveAudioSrc(songId)
 }
 
 /**
@@ -167,6 +171,7 @@ export async function evictSong(songId: string): Promise<void> {
   const cache = await openAudioCache()
   if (!cache) return
   await cache.delete(streamPath(songId), { ignoreVary: true })
+  invalidateResolvedSrc(songId)
 }
 
 /**

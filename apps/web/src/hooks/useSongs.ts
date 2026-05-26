@@ -2,7 +2,8 @@ import * as React from "react"
 
 import { fetchSongs } from "@/lib/api"
 import { refreshStaleDownloads } from "@/lib/audio-cache"
-import { getCached, setCached } from "@/lib/storage"
+import { preResolveAudioSrcs } from "@/lib/audio-url"
+import { getCached, getStaleCached, setCached } from "@/lib/storage"
 import type { Song } from "@/lib/types"
 
 const CACHE_KEY = "scoutbangers:songs"
@@ -30,10 +31,13 @@ interface State {
  */
 export function useSongs(): UseSongsResult {
   const [state, setState] = React.useState<State>(() => {
-    const cached = getCached<Song[]>(CACHE_KEY)
+    // Use fresh cached data first; fall back to stale data (ignores TTL) so
+    // the song list still appears when the app is opened offline after the
+    // 5-minute TTL has expired.
+    const cached = getCached<Song[]>(CACHE_KEY) ?? getStaleCached<Song[]>(CACHE_KEY)
     return {
       songs: cached ?? [],
-      loading: cached === null,
+      loading: true,
       error: null,
     }
   })
@@ -56,6 +60,9 @@ export function useSongs(): UseSongsResult {
         if (cancelled) return
         setCached(CACHE_KEY, fresh, CACHE_TTL_MS)
         setState({ songs: fresh, loading: false, error: null })
+        // Pre-resolve blob URLs for downloaded songs so the player can use
+        // them immediately without relying on SW interception (critical on iOS).
+        void preResolveAudioSrcs(fresh.map((s) => s.id))
         // Refresh any downloaded songs whose R2 bytes changed (new
         // thumbnail, retag, etc.). Evicting stale audio triggers
         // evictTrackMetadata so metadata re-parses from fresh bytes.
@@ -67,7 +74,16 @@ export function useSongs(): UseSongsResult {
         setState((prev) => ({
           songs: prev.songs,
           loading: false,
-          error: error instanceof Error ? error.message : "Erro desconhecido",
+          // If we have cached songs, hide the error — the list is still
+          // usable. Only surface an error when we have nothing to show.
+          error:
+            prev.songs.length > 0
+              ? null
+              : !navigator.onLine
+                ? "Sem ligação à internet."
+                : error instanceof Error
+                  ? error.message
+                  : "Erro desconhecido",
         }))
       })
     return () => {

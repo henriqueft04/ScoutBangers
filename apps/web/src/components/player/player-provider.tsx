@@ -2,7 +2,7 @@ import * as React from "react"
 
 import { useSongs } from "@/hooks/useSongs"
 import { audioEngine, isIOS, type FadeHandle } from "@/lib/audio-engine"
-import { streamUrl } from "@/lib/audio-url"
+import { peekResolvedSrc, streamUrl } from "@/lib/audio-url"
 import { rememberSearch } from "@/lib/search-history"
 import { shufflePreservingCurrent } from "@/lib/shuffle"
 import { displayArtist, displayTitle } from "@/lib/song-display"
@@ -122,7 +122,7 @@ function warmHttpCacheForUpcoming(
       continue
     }
     warmedSongIds.add(id)
-    void fetch(`/api/stream/${id}`).catch(() => undefined)
+    void fetch(streamUrl(id)).catch(() => undefined)
     warmed++
   }
 }
@@ -344,7 +344,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: "TIME", position: safe })
     }
     audio.addEventListener("loadedmetadata", onLoaded)
-    audio.src = streamUrl(stored.songId)
+    audio.src = peekResolvedSrc(stored.songId)
     audio.load()
     activeDeckRef.current = 0
     dispatch({ type: "SET_INDEX", index })
@@ -482,7 +482,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         }
       })
 
-      const newSrc = streamUrl(song.id)
+      const newSrc = peekResolvedSrc(song.id)
       const sameSong = s.currentIndex === index
       const wasPlaying = !active.paused
       const wantsCrossfade = Boolean(opts.crossfade) && wasPlaying && !sameSong
@@ -782,7 +782,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             if (nextSong) {
               const idle = getDeck(otherDeck(activeDeckRef.current))
               if (idle) {
-                idle.src = streamUrl(nextSong.id)
+                idle.src = peekResolvedSrc(nextSong.id)
                 prefetchedIdRef.current = nextSong.id
               }
               // Pre-resolve the picture data URL too, so the
@@ -831,6 +831,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       const handleError = () => {
         if (!isActive()) return
         const err = audio.error
+        const s = stateRef.current
+        const songName =
+          s.currentIndex !== null ? s.songs[s.currentIndex]?.title : null
+
+        // Offline + network error → give a clear actionable message.
+        if (
+          !navigator.onLine ||
+          err?.code === MediaError.MEDIA_ERR_NETWORK
+        ) {
+          dispatch({
+            type: "PLAYBACK_ERROR",
+            message: songName
+              ? `Sem ligação à internet. Transfere "${songName}" para a ouvir offline.`
+              : "Sem ligação à internet. Transfere as músicas para as ouvir offline.",
+          })
+          return
+        }
+
         if (!err) {
           dispatch({ type: "PLAYBACK_ERROR", message: "Erro de reprodução desconhecido" })
           return
@@ -838,17 +856,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         const codeName =
           err.code === MediaError.MEDIA_ERR_ABORTED
             ? "interrompido"
-            : err.code === MediaError.MEDIA_ERR_NETWORK
-              ? "erro de rede"
-              : err.code === MediaError.MEDIA_ERR_DECODE
-                ? "erro de descodificação"
-                : err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
-                  ? "formato não suportado"
-                  : `código ${err.code}`
+            : err.code === MediaError.MEDIA_ERR_DECODE
+              ? "erro de descodificação"
+              : err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
+                ? "formato não suportado"
+                : `código ${err.code}`
         const detail = err.message ? `${codeName} — ${err.message}` : codeName
-        const s = stateRef.current
-        const songName =
-          s.currentIndex !== null ? s.songs[s.currentIndex]?.title : null
         console.error("[player] audio error", {
           deck: deckId,
           code: err.code,

@@ -133,6 +133,13 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
+  // Song manifest: network-first with cache fallback so the list is
+  // available offline. Bust requests (with ?bust=) always go to network.
+  if (url.pathname === "/api/songs" && !url.searchParams.has("bust")) {
+    event.respondWith(handleSongsRequest(request))
+    return
+  }
+
   // Other API calls always go to network so Range / freshness work.
   if (url.pathname.startsWith("/api/")) return
 
@@ -148,6 +155,23 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(handleAsset(request))
   }
 })
+
+async function handleSongsRequest(request) {
+  try {
+    const response = await fetchWithTimeout(request, 5000)
+    if (response && response.ok) {
+      const copy = response.clone()
+      caches
+        .open(SHELL_CACHE)
+        .then((cache) => cache.put("/api/songs", copy))
+        .catch(() => undefined)
+    }
+    return response
+  } catch {
+    const cached = await caches.match("/api/songs")
+    return cached || Response.error()
+  }
+}
 
 async function handleNavigation(request) {
   // If the browser already knows it's offline, skip the network entirely
