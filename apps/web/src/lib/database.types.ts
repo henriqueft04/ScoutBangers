@@ -245,6 +245,14 @@ export interface Database {
         Args: { uid: string; rank_in: number }
         Returns: { week_start: string; play_count: number }[]
       }
+      stats_listeners_by_region: {
+        Args: { period?: "week" | "month" | "all"; lim?: number }
+        Returns: { regiao: string; nucleo: string | null; play_count: number }[]
+      }
+      stats_users_by_region: {
+        Args: { lim?: number }
+        Returns: { regiao: string; nucleo: string | null; user_count: number }[]
+      }
     }
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>

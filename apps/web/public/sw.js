@@ -157,9 +157,15 @@ async function handleNavigation(request) {
     return (await cachedShell()) || offlineFallback()
   }
   try {
+    // Always bypass the browser HTTP cache for navigation so a new deploy
+    // is picked up on the very first refresh, not after the cache expires.
+    const networkRequest = new Request(request.url, {
+      cache: "no-cache",
+      headers: request.headers,
+    })
     // Race the network against a short timeout so flaky connectivity
     // falls through to the cached shell quickly.
-    const response = await fetchWithTimeout(request, 3000)
+    const response = await fetchWithTimeout(networkRequest, 3000)
     if (response && response.ok) {
       const copy = response.clone()
       caches

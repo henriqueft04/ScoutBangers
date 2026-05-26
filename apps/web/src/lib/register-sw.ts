@@ -9,6 +9,16 @@ export function registerServiceWorker(): void {
   if (!("serviceWorker" in navigator)) return
   if (!import.meta.env.PROD) return
 
+  // When a new SW takes control (skipWaiting + clients.claim), reload the
+  // page so the new app bundle is loaded. Guard against reload loops with
+  // a flag — controllerchange can fire more than once in edge cases.
+  let reloading = false
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloading) return
+    reloading = true
+    window.location.reload()
+  })
+
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("/sw.js")
