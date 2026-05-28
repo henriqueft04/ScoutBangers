@@ -122,6 +122,7 @@ export interface Database {
           song_id: string
           artist: string | null
           played_at: string
+          duration_seconds: number | null
         }
         Insert: {
           id?: string
@@ -129,6 +130,7 @@ export interface Database {
           song_id: string
           artist?: string | null
           played_at?: string
+          duration_seconds?: number | null
         }
         Update: {
           id?: string
@@ -136,6 +138,7 @@ export interface Database {
           song_id?: string
           artist?: string | null
           played_at?: string
+          duration_seconds?: number | null
         }
         Relationships: []
       }
@@ -235,9 +238,14 @@ export interface Database {
           unique_artists: number
           biggest_day: string | null
           biggest_day_count: number | null
+          total_seconds: number
         }[]
       }
-      get_user_badges: {
+      stats_for_user: {
+        Args: { uid: string }
+        Returns: { total_seconds: number; total_plays: number }[]
+      }
+get_user_badges: {
         Args: { uid: string }
         Returns: { rank: number; badge_count: number }[]
       }
