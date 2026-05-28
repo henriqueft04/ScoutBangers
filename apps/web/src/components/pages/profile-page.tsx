@@ -8,12 +8,13 @@ import { cn } from "@workspace/ui/lib/utils"
 import { SignInDialog } from "@/components/auth/sign-in-dialog"
 import { EmptyState } from "@/components/library/empty-state"
 import { ListenerBadges } from "@/components/profile/listener-badges"
+import { ListeningStats } from "@/components/profile/listening-stats"
 import { ProfileEditSection } from "@/components/profile/profile-edit-section"
 import { ProfileHeader } from "@/components/profile/profile-header"
 import { StorageSection } from "@/components/profile/storage-section"
 import { TopList } from "@/components/profile/top-list"
 import { useAuth } from "@/hooks/useAuth"
-import { useTopStats } from "@/hooks/useTopStats"
+import { useTopStats, useUserListeningStats } from "@/hooks/useTopStats"
 import { useUserBadges } from "@/hooks/useUserBadges"
 import { useTour } from "@/hooks/useTour"
 import { artistHref } from "@/lib/artists"
@@ -26,6 +27,9 @@ export function ProfilePage() {
     useAuth()
   const { start: startTour } = useTour()
   const { topSongs, topArtists } = useTopStats(user?.id ?? null, {
+    refetchOnVisibility: true,
+  })
+  const listeningStats = useUserListeningStats(user?.id ?? null, {
     refetchOnVisibility: true,
   })
   const badgeCounts = useUserBadges(user?.id ?? null)
@@ -330,6 +334,8 @@ export function ProfilePage() {
       </section>
 
       <ListenerBadges userId={user.id} counts={badgeCounts} />
+
+      <ListeningStats stats={listeningStats} />
 
       <StorageSection />
 

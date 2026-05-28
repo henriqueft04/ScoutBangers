@@ -16,6 +16,7 @@ export interface SummaryRow {
   unique_artists: number
   biggest_day: string | null
   biggest_day_count: number | null
+  total_seconds: number
 }
 
 export interface ListenerRow {

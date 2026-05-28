@@ -60,7 +60,15 @@ export function usePlayTracking(): void {
       const userId = user?.id ?? null
       void sb
         .from("plays")
-        .insert({ user_id: userId, song_id: trackId, artist: meta?.artist ?? null })
+        .insert({
+          user_id: userId,
+          song_id: trackId,
+          artist: meta?.artist ?? null,
+          duration_seconds:
+            typeof meta?.duration === "number" && meta.duration > 0
+              ? Math.round(meta.duration)
+              : null,
+        })
         .then(({ error }) => {
           if (error) {
             console.warn("[plays] insert failed", error)

@@ -10,6 +10,7 @@ import { InstallPrompt } from "@/components/onboarding/install-prompt"
 import { FullscreenPlayer } from "@/components/player/fullscreen-player"
 import { LyricsPanel } from "@/components/player/lyrics-panel"
 import { PlayerBar } from "@/components/player/player-bar"
+import { useBackfillPlayDurations } from "@/hooks/useBackfillPlayDurations"
 import { useMediaSession } from "@/hooks/useMediaSession"
 import { usePlayer } from "@/hooks/usePlayer"
 import { usePlayTracking } from "@/hooks/usePlayTracking"
@@ -31,6 +32,7 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   useMediaSession()
   usePlayTracking()
+  useBackfillPlayDurations()
   const { toggle } = usePlayer()
 
   // Desktop-only: spacebar toggles play/pause from anywhere in the app,

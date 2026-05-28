@@ -4,10 +4,11 @@ import { Link, useNavigate, useParams } from "react-router-dom"
 
 import { EmptyState } from "@/components/library/empty-state"
 import { ListenerBadges } from "@/components/profile/listener-badges"
+import { ListeningStats } from "@/components/profile/listening-stats"
 import { ProfileHeader } from "@/components/profile/profile-header"
 import { TopList } from "@/components/profile/top-list"
 import { useAuth } from "@/hooks/useAuth"
-import { useTopStats } from "@/hooks/useTopStats"
+import { useTopStats, useUserListeningStats } from "@/hooks/useTopStats"
 import { useUserBadges } from "@/hooks/useUserBadges"
 import { artistHref } from "@/lib/artists"
 import { formatJoinDate } from "@/lib/format-date"
@@ -53,6 +54,7 @@ export function PublicProfilePage() {
     else navigate("/")
   }, [navigate])
   const { topSongs, topArtists } = useTopStats(userId ?? null)
+  const listeningStats = useUserListeningStats(userId ?? null)
   const badgeCounts = useUserBadges(userId ?? null)
   const [profile, setProfile] = React.useState<PublicProfile | null>(null)
   const [playlists, setPlaylists] = React.useState<PublicPlaylist[] | null>(null)
@@ -192,6 +194,8 @@ export function PublicProfilePage() {
 
       <div className="flex flex-col gap-6 px-3 pt-6 md:px-6">
       <ListenerBadges userId={userId} counts={badgeCounts} />
+
+      <ListeningStats stats={listeningStats} />
 
       <TopList
         title="Top 5 músicas"

@@ -3,6 +3,51 @@ import * as React from "react"
 import { usePlayer } from "@/hooks/usePlayer"
 import { supabase } from "@/lib/supabase"
 
+export interface UserListeningStats {
+  totalSeconds: number
+  totalPlays: number
+}
+
+export function useUserListeningStats(
+  userId: string | null | undefined,
+  options: { refetchOnVisibility?: boolean } = {}
+): UserListeningStats | null {
+  const { refetchOnVisibility = false } = options
+  const [stats, setStats] = React.useState<UserListeningStats | null>(null)
+
+  React.useEffect(() => {
+    if (!supabase || !userId) return
+    let cancelled = false
+    const sb = supabase
+
+    const run = async () => {
+      const { data, error } = await sb.rpc("stats_for_user", { uid: userId })
+      if (cancelled || error || !data?.[0]) return
+      setStats({
+        totalSeconds: Number(data[0].total_seconds),
+        totalPlays: Number(data[0].total_plays),
+      })
+    }
+
+    void run()
+
+    if (refetchOnVisibility) {
+      const onVisibility = () => {
+        if (document.visibilityState === "visible") void run()
+      }
+      document.addEventListener("visibilitychange", onVisibility)
+      return () => {
+        cancelled = true
+        document.removeEventListener("visibilitychange", onVisibility)
+      }
+    }
+
+    return () => { cancelled = true }
+  }, [userId, refetchOnVisibility])
+
+  return stats
+}
+
 export interface TopSong {
   id: string
   title: string
