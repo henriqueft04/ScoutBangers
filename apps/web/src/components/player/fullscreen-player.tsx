@@ -55,6 +55,8 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
   const [copied, setCopied] = React.useState(false)
   const [queueOpenRaw, setQueueOpenRaw] = React.useState(false)
   const [lyricsOpenRaw, setLyricsOpenRaw] = React.useState(false)
+  // Live vertical offset while the user swipes the sheet down to dismiss.
+  const [dragY, setDragY] = React.useState(0)
 
   // When the sheet opens with an `initialPanel` request, mirror it onto
   // the local raw state. Only fires on the open transition so the user
@@ -250,6 +252,53 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
     }
   }, [open])
 
+  // Reset any leftover drag offset whenever the sheet (re)opens.
+  React.useEffect(() => {
+    if (open) setDragY(0)
+  }, [open])
+
+  // Swipe-down to dismiss (touch). We only track a downward drag and snap
+  // back if the user doesn't pull far enough. Gestures that start on an
+  // interactive control (button, slider, link) are ignored so taps and the
+  // progress/volume sliders keep working.
+  const touchStartY = React.useRef<number | null>(null)
+  const dragYRef = React.useRef(0)
+  const DISMISS_THRESHOLD = 90
+
+  const handleTouchStart = React.useCallback((event: React.TouchEvent) => {
+    if ((event.target as HTMLElement).closest("button, a, input, [role='slider']")) {
+      touchStartY.current = null
+      return
+    }
+    touchStartY.current = event.touches[0]?.clientY ?? null
+  }, [])
+
+  const handleTouchMove = React.useCallback((event: React.TouchEvent) => {
+    if (touchStartY.current === null) return
+    const delta = (event.touches[0]?.clientY ?? 0) - touchStartY.current
+    // Only follow downward drags; clamp upward movement to zero.
+    const next = Math.max(0, delta)
+    dragYRef.current = next
+    setDragY(next)
+  }, [])
+
+  const handleTouchEnd = React.useCallback(() => {
+    if (touchStartY.current === null) return
+    touchStartY.current = null
+    if (dragYRef.current > DISMISS_THRESHOLD) onClose()
+    dragYRef.current = 0
+    setDragY(0)
+  }, [onClose])
+
+  // Scroll-down to dismiss (desktop wheel / trackpad). A clear downward
+  // scroll collapses the sheet.
+  const handleWheel = React.useCallback(
+    (event: React.WheelEvent) => {
+      if (event.deltaY > 30) onClose()
+    },
+    [onClose]
+  )
+
   if (!open) return null
 
   const title = song ? displayTitle(song, meta) : "Nada a tocar"
@@ -260,7 +309,21 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
       role="dialog"
       aria-modal="true"
       aria-label="A reproduzir agora"
-      className="bg-background animate-in slide-in-from-bottom fixed inset-0 z-40 flex flex-col duration-300 ease-out"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onWheel={handleWheel}
+      className={cn(
+        "bg-background fixed inset-0 z-40 flex flex-col",
+        dragY === 0 &&
+          "animate-in slide-in-from-bottom duration-300 ease-out"
+      )}
+      style={{
+        transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
+        transition: dragY > 0 ? "none" : "transform 0.3s ease-out",
+        // Fade slightly as the sheet is pulled down for tactile feedback.
+        opacity: dragY > 0 ? Math.max(0.6, 1 - dragY / 600) : undefined,
+      }}
     >
       <header
         className="flex items-center justify-between px-3 py-3 md:px-6"

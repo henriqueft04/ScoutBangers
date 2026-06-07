@@ -175,6 +175,14 @@ export interface Database {
         Args: { uid: string; lim?: number }
         Returns: { artist: string; play_count: number }[]
       }
+      search_profiles: {
+        Args: { q: string; lim?: number }
+        Returns: {
+          id: string
+          display_name: string | null
+          avatar_url: string | null
+        }[]
+      }
       recent_plays: {
         Args: { lim?: number }
         Returns: {

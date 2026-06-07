@@ -11,6 +11,8 @@ import { relativeTime } from "@/lib/relative-time"
 import { supabase, supabaseConfigured } from "@/lib/supabase"
 import type { Song } from "@/lib/types"
 
+import { PeopleSearch } from "./people-search"
+
 interface FeedEntry {
   songId: string
   userId: string
@@ -115,6 +117,8 @@ export function FriendsFeed({ variant = "carousel", className }: FriendsFeedProp
         )}
       </header>
 
+      <PeopleSearch />
+
       {loading ? (
         <div className="text-muted-foreground py-4 text-center">
           <Loader2 className="mx-auto size-5 animate-spin" />
@@ -139,7 +143,7 @@ export function FriendsFeed({ variant = "carousel", className }: FriendsFeedProp
       ) : (
         <div
           role="list"
-          className="-mx-3 grid auto-cols-[16rem] grid-flow-col grid-rows-2 gap-2 overflow-x-auto px-3 pb-2 snap-x snap-mandatory md:-mx-6 md:auto-cols-[18rem] md:px-6"
+          className="-mr-3 grid auto-cols-[16rem] grid-flow-col grid-rows-2 gap-2 overflow-x-auto pr-3 pb-2 snap-x snap-mandatory md:-mr-6 md:auto-cols-[18rem] md:pr-6"
         >
           {entries.map((entry, index) => (
             <FeedRow
