@@ -123,6 +123,7 @@ export interface Database {
           artist: string | null
           played_at: string
           duration_seconds: number | null
+          device_id: string | null
         }
         Insert: {
           id?: string
@@ -131,6 +132,7 @@ export interface Database {
           artist?: string | null
           played_at?: string
           duration_seconds?: number | null
+          device_id?: string | null
         }
         Update: {
           id?: string
@@ -139,6 +141,25 @@ export interface Database {
           artist?: string | null
           played_at?: string
           duration_seconds?: number | null
+          device_id?: string | null
+        }
+        Relationships: []
+      }
+      active_devices: {
+        Row: {
+          device_id: string
+          is_playing: boolean
+          last_seen_at: string
+        }
+        Insert: {
+          device_id: string
+          is_playing?: boolean
+          last_seen_at?: string
+        }
+        Update: {
+          device_id?: string
+          is_playing?: boolean
+          last_seen_at?: string
         }
         Relationships: []
       }
@@ -235,7 +256,7 @@ export interface Database {
         Returns: { artist: string; play_count: number }[]
       }
       stats_plays_per_day: {
-        Args: { days?: number }
+        Args: { days?: number | null }
         Returns: { day: string; play_count: number }[]
       }
       stats_summary: {
@@ -247,6 +268,8 @@ export interface Database {
           biggest_day: string | null
           biggest_day_count: number | null
           total_seconds: number
+          total_devices: number
+          total_users: number
         }[]
       }
       stats_for_user: {

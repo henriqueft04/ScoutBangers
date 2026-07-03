@@ -18,6 +18,19 @@ import { supabase } from "@/lib/supabase"
  */
 const PLAY_THRESHOLD_SECONDS = 30
 
+function getOrCreateDeviceId(): string {
+  if (typeof window === "undefined") return ""
+  let deviceId = localStorage.getItem("sb_device_id")
+  if (!deviceId) {
+    deviceId =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Math.random().toString(36).substring(2) + Date.now().toString(36)
+    localStorage.setItem("sb_device_id", deviceId)
+  }
+  return deviceId
+}
+
 export function usePlayTracking(): void {
   const { user } = useAuth()
   const { songs, currentIndex, isPlaying } = usePlayer()
@@ -58,6 +71,8 @@ export function usePlayTracking(): void {
       recordedRef.current = true
       const meta = peekTrackMetadata(trackId)
       const userId = user?.id ?? null
+      const deviceId = getOrCreateDeviceId()
+
       void sb
         .from("plays")
         .insert({
@@ -68,6 +83,7 @@ export function usePlayTracking(): void {
             typeof meta?.duration === "number" && meta.duration > 0
               ? Math.round(meta.duration)
               : null,
+          device_id: deviceId,
         })
         .then(({ error }) => {
           if (error) {
@@ -81,4 +97,43 @@ export function usePlayTracking(): void {
 
     return () => clearInterval(interval)
   }, [isPlaying, songId, user])
+
+  // Presence heartbeat: upsert playing status to public.active_devices.
+  React.useEffect(() => {
+    const sb = supabase
+    if (!sb) return
+
+    const deviceId = getOrCreateDeviceId()
+    if (!deviceId) return
+
+    const updatePresence = (playing: boolean) => {
+      void sb
+        .from("active_devices")
+        .upsert({
+          device_id: deviceId,
+          is_playing: playing,
+          last_seen_at: new Date().toISOString(),
+        })
+        .then(({ error }) => {
+          if (error) {
+            console.warn("[presence] upsert failed", error)
+          }
+        })
+    }
+
+    // Send immediate update on playback state change
+    updatePresence(isPlaying)
+
+    // Heartbeat every 15 seconds if playing
+    let interval: NodeJS.Timeout | undefined
+    if (isPlaying) {
+      interval = setInterval(() => {
+        updatePresence(true)
+      }, 15000)
+    }
+
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [isPlaying])
 }

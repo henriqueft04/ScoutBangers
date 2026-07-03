@@ -17,6 +17,8 @@ export interface SummaryRow {
   biggest_day: string | null
   biggest_day_count: number | null
   total_seconds: number
+  total_devices: number
+  total_users: number
 }
 
 export interface ListenerRow {
@@ -146,7 +148,7 @@ export function useTopArtists(days: number | null, lim = 10) {
   }, [days, lim])
 }
 
-export function usePlaysPerDay(days = 30) {
+export function usePlaysPerDay(days: number | null = 30) {
   return useRpc<DailyRow[]>(supabaseConfigured, async () => {
     if (!supabase) return { data: null, error: null }
     const { data, error } = await supabase.rpc("stats_plays_per_day", { days })
@@ -188,7 +190,7 @@ export function useUsersByRegion(lim = 10) {
   }, [lim])
 }
 
-export function useTopSongsWeekly(weeksBack = 8) {
+export function useTopSongsWeekly(weeksBack: number | null = 8) {
   return useRpc<WeeklySongRow[]>(supabaseConfigured, async () => {
     if (!supabase) return { data: null, error: null }
     const { data, error } = await supabase.rpc("stats_top_songs_weekly", {

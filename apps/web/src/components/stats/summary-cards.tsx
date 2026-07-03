@@ -1,4 +1,4 @@
-import { Activity, ListMusic, TrendingUp, Users } from "lucide-react"
+import { Activity, CircleUser, ListMusic, Smartphone, TrendingUp, Users } from "lucide-react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -49,6 +49,18 @@ export function SummaryCards({ data, loading, period }: SummaryCardsProps) {
       Icon: Users,
     },
     {
+      label: "Utilizadores",
+      value: data ? numberFmt.format(data.total_users) : "—",
+      sub: "registados",
+      Icon: CircleUser,
+    },
+    {
+      label: "Dispositivos",
+      value: data ? numberFmt.format(data.total_devices) : "—",
+      sub: "a tocar agora",
+      Icon: Smartphone,
+    },
+    {
       label: "Maior dia",
       value: data ? formatBiggestDay(data.biggest_day) : "—",
       sub: data?.biggest_day_count
@@ -59,7 +71,7 @@ export function SummaryCards({ data, loading, period }: SummaryCardsProps) {
   ]
 
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
       {cards.map(({ label, value, sub, Icon }) => (
         <div
           key={label}

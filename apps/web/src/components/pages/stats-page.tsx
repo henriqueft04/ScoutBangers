@@ -38,6 +38,18 @@ const ARTIST_RANGES: { value: number | null; label: string }[] = [
   { value: null, label: "Sempre" },
 ]
 
+const ACTIVITY_RANGES: { value: number | null; label: string }[] = [
+  { value: 30, label: "Últimos 30 dias" },
+  { value: 90, label: "Últimos 90 dias" },
+  { value: null, label: "Sempre" },
+]
+
+const WEEKLY_SONGS_RANGES: { value: number | null; label: string }[] = [
+  { value: 8, label: "Últimas 8 semanas" },
+  { value: 24, label: "Últimas 24 semanas" },
+  { value: null, label: "Sempre" },
+]
+
 /**
  * /estatisticas — group-wide listening stats. Aggregates everyone's plays
  * (registered + anonymous) for songs/artists/activity, but the "top
@@ -57,6 +69,8 @@ export function StatsPage() {
     React.useState<StatsPeriod>("week")
   const [regionPeriod, setRegionPeriod] = React.useState<StatsPeriod>("week")
   const [artistRange, setArtistRange] = React.useState<number | null>(30)
+  const [activityRange, setActivityRange] = React.useState<number | null>(30)
+  const [weeklySongsRange, setWeeklySongsRange] = React.useState<number | null>(8)
 
   const summary = useStatsSummary(summaryPeriod)
   const topSongs = useTopSongs(songsPeriod, 10)
@@ -64,8 +78,8 @@ export function StatsPage() {
   const artists = useTopArtists(artistRange, 10)
   const regions = useListenersByRegion(regionPeriod, 10)
   const usersByRegion = useUsersByRegion(10)
-  const activity = usePlaysPerDay(30)
-  const weeklySongs = useTopSongsWeekly(8)
+  const activity = usePlaysPerDay(activityRange)
+  const weeklySongs = useTopSongsWeekly(weeklySongsRange)
 
   if (!supabaseConfigured) {
     return (
@@ -194,14 +208,38 @@ export function StatsPage() {
 
       <Section
         title="Atividade"
-        subtitle="Reproduções por dia nos últimos 30 dias."
+        subtitle={
+          activityRange === null
+            ? "Reproduções por dia desde o início."
+            : `Reproduções por dia nos últimos ${activityRange} dias.`
+        }
+        toolbar={
+          <SegmentedControl
+            value={activityRange}
+            options={ACTIVITY_RANGES}
+            onChange={setActivityRange}
+            ariaLabel="Período da atividade"
+          />
+        }
       >
         <ActivityChart rows={activity.data} loading={activity.loading} />
       </Section>
 
       <Section
         title="Top 10 ao longo do tempo"
-        subtitle="Posição semanal das músicas mais ouvidas (últimas 8 semanas)."
+        subtitle={
+          weeklySongsRange === null
+            ? "Posição semanal das músicas mais ouvidas ao longo de todo o período."
+            : `Posição semanal das músicas mais ouvidas (últimas ${weeklySongsRange} semanas).`
+        }
+        toolbar={
+          <SegmentedControl
+            value={weeklySongsRange}
+            options={WEEKLY_SONGS_RANGES}
+            onChange={setWeeklySongsRange}
+            ariaLabel="Período do top semanal"
+          />
+        }
       >
         <BumpChart
           rows={weeklySongs.data}
