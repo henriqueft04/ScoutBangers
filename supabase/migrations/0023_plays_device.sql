@@ -20,6 +20,22 @@ drop policy if exists "allow_anon_all" on public.active_devices;
 create policy "allow_anon_all" on public.active_devices
   for all using (true) with check (true);
 
+-- Create a database trigger to set last_seen_at using the DB server's current timestamp.
+-- This ensures clock synchronization is handled server-side regardless of client system clock drift.
+create or replace function public.set_last_seen_at()
+returns trigger as $$
+begin
+  new.last_seen_at = now();
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists active_devices_last_seen_trigger on public.active_devices;
+create trigger active_devices_last_seen_trigger
+before insert or update on public.active_devices
+for each row
+execute function public.set_last_seen_at();
+
 -- Drop and recreate stats_summary to return active devices and total profiles
 drop function if exists public.stats_summary(text);
 create or replace function public.stats_summary(period text default 'week')

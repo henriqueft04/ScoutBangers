@@ -71,7 +71,8 @@ interface FetchState<T> {
 function useRpc<T>(
   enabled: boolean,
   fetcher: () => Promise<{ data: T | null; error: { message: string } | null }>,
-  deps: React.DependencyList
+  deps: React.DependencyList,
+  pollIntervalMs?: number
 ): FetchState<T> {
   const [state, setState] = React.useState<FetchState<T>>({
     data: null,
@@ -90,8 +91,10 @@ function useRpc<T>(
       return
     }
     let cancelled = false
-    const run = async () => {
-      setState((prev) => ({ ...prev, loading: true, error: null }))
+    const run = async (showLoading = true) => {
+      if (showLoading) {
+        setState((prev) => ({ ...prev, loading: true, error: null }))
+      }
       const { data, error } = await fetcherRef.current()
       if (cancelled) return
       if (error) {
@@ -105,12 +108,23 @@ function useRpc<T>(
       if (document.visibilityState === "visible") void run()
     }
     document.addEventListener("visibilitychange", onVisibility)
+
+    let intervalId: NodeJS.Timeout | undefined
+    if (pollIntervalMs) {
+      intervalId = setInterval(() => {
+        if (document.visibilityState === "visible") {
+          void run(false)
+        }
+      }, pollIntervalMs)
+    }
+
     return () => {
       cancelled = true
       document.removeEventListener("visibilitychange", onVisibility)
+      if (intervalId) clearInterval(intervalId)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, ...deps])
+  }, [enabled, pollIntervalMs, ...deps])
 
   return state
 }
@@ -121,7 +135,7 @@ export function useStatsSummary(period: StatsPeriod) {
     const { data, error } = await supabase.rpc("stats_summary", { period })
     if (error) return { data: null, error }
     return { data: (data?.[0] ?? null) as SummaryRow | null, error: null }
-  }, [period])
+  }, [period], 10000)
 }
 
 export function useTopListeners(period: StatsPeriod, lim = 10) {

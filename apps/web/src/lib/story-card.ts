@@ -36,18 +36,96 @@ export async function renderStoryCard(input: StoryCardInput): Promise<Blob> {
   const ctx = canvas.getContext("2d")
   if (!ctx) throw new Error("Canvas 2D context unavailable")
 
-  // Background: vertical maroon gradient.
+  // Load album art first. If none, load the app icon as the fallback thumbnail.
+  let art = input.artUrl ? await loadImage(input.artUrl) : null
+  let isFallback = false
+  if (!art) {
+    isFallback = true
+    try {
+      art = await loadImage("/icon-512.png")
+    } catch (e) {
+      console.warn("Failed to load fallback app icon", e)
+    }
+  }
+
+  // 1. Core Background: vertical maroon gradient.
   const bg = ctx.createLinearGradient(0, 0, 0, H)
   bg.addColorStop(0, MAROON)
   bg.addColorStop(1, MAROON_DEEP)
   ctx.fillStyle = bg
   ctx.fillRect(0, 0, W, H)
 
+  // 2. Texture & Color depth
+  if (art && !isFallback) {
+    ctx.save()
+    if (typeof ctx.filter !== "undefined") {
+      ctx.filter = "blur(80px) saturate(140%)"
+    }
+    // cover-fit the canvas
+    const scale = Math.max(W / art.width, H / art.height)
+    const dw = art.width * scale
+    const dh = art.height * scale
+    ctx.globalAlpha = 0.38 // blend with deep maroon background
+    ctx.drawImage(art, (W - dw) / 2, (H - dh) / 2, dw, dh)
+    ctx.restore()
+  } else {
+    // Ambient glowing circles for songs without artwork (mesh gradient)
+    ctx.save()
+    if (typeof ctx.filter !== "undefined") {
+      ctx.filter = "blur(120px)"
+    }
+    ctx.globalAlpha = 0.25
+
+    // Crimson glow top-left
+    ctx.fillStyle = "#b33f35"
+    ctx.beginPath()
+    ctx.arc(200, 400, 400, 0, Math.PI * 2)
+    ctx.fill()
+
+    // Dark charcoal glow bottom-right
+    ctx.fillStyle = "#1e0908"
+    ctx.beginPath()
+    ctx.arc(W - 200, H - 400, 450, 0, Math.PI * 2)
+    ctx.fill()
+
+    // Soft warm gold glow center-right
+    ctx.fillStyle = "#d4af37"
+    ctx.beginPath()
+    ctx.arc(W - 100, 1000, 250, 0, Math.PI * 2)
+    ctx.fill()
+
+    ctx.restore()
+  }
+
+  // 3. Fine grain noise overlay (adds premium physical texture)
+  const noiseCanvas = document.createElement("canvas")
+  noiseCanvas.width = 128
+  noiseCanvas.height = 128
+  const noiseCtx = noiseCanvas.getContext("2d")
+  if (noiseCtx) {
+    const noiseData = noiseCtx.createImageData(128, 128)
+    const data = noiseData.data
+    for (let i = 0; i < data.length; i += 4) {
+      const val = Math.floor(Math.random() * 255)
+      data[i] = val
+      data[i + 1] = val
+      data[i + 2] = val
+      data[i + 3] = 12 // Alpha: very subtle (approx. 4.7%)
+    }
+    noiseCtx.putImageData(noiseData, 0, 0)
+    const pattern = ctx.createPattern(noiseCanvas, "repeat")
+    if (pattern) {
+      ctx.save()
+      ctx.fillStyle = pattern
+      ctx.fillRect(0, 0, W, H)
+      ctx.restore()
+    }
+  }
+
   // Album art (or fallback block), centered near the top third.
   const artSize = 620
   const artX = (W - artSize) / 2
   const artY = 360
-  const art = input.artUrl ? await loadImage(input.artUrl) : null
 
   roundRectPath(ctx, artX, artY, artSize, artSize, 48)
   ctx.save()
