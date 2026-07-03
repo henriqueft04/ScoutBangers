@@ -230,7 +230,7 @@ export interface Database {
         }[]
       }
       stats_top_songs_weekly: {
-        Args: { weeks_back?: number }
+        Args: { weeks_back?: number | null }
         Returns: {
           week_start: string
           song_id: string
