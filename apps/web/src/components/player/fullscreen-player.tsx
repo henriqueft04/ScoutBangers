@@ -5,6 +5,8 @@ import {
   ChevronDown,
   Download,
   FileText,
+  ImageUp,
+  Loader2,
   Share2,
 } from "lucide-react"
 import { useNavigate } from "react-router-dom"
@@ -18,7 +20,7 @@ import { SongArtwork } from "@/components/library/song-artwork"
 import { useTrackMetadata } from "@/hooks/useTrackMetadata"
 import { usePlayer } from "@/hooks/usePlayer"
 import { artistHref } from "@/lib/artists"
-import { shareUrl } from "@/lib/share"
+import { canShareImage, shareImage, shareUrl } from "@/lib/share"
 import { displayArtist, displayTitle } from "@/lib/song-display"
 
 import { BottomSheet } from "./bottom-sheet"
@@ -53,6 +55,7 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
   const song = currentIndex !== null ? songs[currentIndex] : undefined
   const meta = useTrackMetadata(song?.id, Boolean(song), song?.modifiedTime)
   const [copied, setCopied] = React.useState(false)
+  const [storyBusy, setStoryBusy] = React.useState(false)
   const [queueOpenRaw, setQueueOpenRaw] = React.useState(false)
   const [lyricsOpenRaw, setLyricsOpenRaw] = React.useState(false)
   // Live vertical offset while the user swipes the sheet down to dismiss.
@@ -205,6 +208,28 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
       setTimeout(() => setCopied(false), 2000)
     }
   }, [song])
+
+  const handleShareStory = React.useCallback(async () => {
+    if (!song || storyBusy) return
+    setStoryBusy(true)
+    try {
+      const url = `${window.location.origin}/?song=${song.id}`
+      // Lazy-loaded so the qrcode bundle stays out of the initial payload.
+      const { renderStoryCard } = await import("@/lib/story-card")
+      const blob = await renderStoryCard({
+        title: displayTitle(song, meta),
+        artist: displayArtist(song, meta),
+        artUrl: meta?.pictureUrl,
+        url,
+      })
+      await shareImage(displayTitle(song, meta), blob, `${song.id}.png`)
+    } catch {
+      // Rendering or sharing failed — fall back to the link share.
+      await handleShare()
+    } finally {
+      setStoryBusy(false)
+    }
+  }, [song, meta, storyBusy, handleShare])
 
   // Escape key closes (desktop).
   React.useEffect(() => {
@@ -438,6 +463,23 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
                   <Share2 className="size-5" />
                 )}
               </Button>
+              {canShareImage() ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Partilhar nas stories"
+                  onClick={handleShareStory}
+                  disabled={storyBusy}
+                  className="touch-manipulation size-11"
+                >
+                  {storyBusy ? (
+                    <Loader2 className="size-5 animate-spin" />
+                  ) : (
+                    <ImageUp className="size-5" />
+                  )}
+                </Button>
+              ) : null}
               <span data-tour-id="player-favorite" className="inline-flex">
                 <FavoriteButton
                   songId={song.id}

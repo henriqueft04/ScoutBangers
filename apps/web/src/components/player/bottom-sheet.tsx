@@ -63,6 +63,10 @@ export function BottomSheet({
       transition={{ duration: 0.2, ease: "easeOut" }}
       className="absolute inset-0 z-10 flex items-end justify-center md:items-center md:p-6"
       onClick={onClose}
+      onTouchStart={(event) => event.stopPropagation()}
+      onTouchMove={(event) => event.stopPropagation()}
+      onTouchEnd={(event) => event.stopPropagation()}
+      onWheel={(event) => event.stopPropagation()}
     >
       <div className="bg-background/60 absolute inset-0 backdrop-blur-sm" />
       <motion.div
