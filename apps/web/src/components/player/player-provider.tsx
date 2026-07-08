@@ -3,6 +3,7 @@ import * as React from "react"
 import { useSongs } from "@/hooks/useSongs"
 import { audioEngine, isIOS, type FadeHandle } from "@/lib/audio-engine"
 import { peekResolvedSrc, streamUrl } from "@/lib/audio-url"
+import { reportPlaybackDuration } from "@/lib/playback-duration"
 import { rememberSearch } from "@/lib/search-history"
 import { shufflePreservingCurrent } from "@/lib/shuffle"
 import { displayArtist, displayTitle } from "@/lib/song-display"
@@ -1382,6 +1383,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     () => ({ position: state.position, duration: state.duration }),
     [state.position, state.duration]
   )
+
+  // Publish the canonical duration to the non-reactive snapshot that
+  // usePlayTracking reads at record time (see lib/playback-duration.ts).
+  // An effect (not a render-time write) so it stays out of the render
+  // path; deps exclude position so it only fires on song/duration change.
+  const currentSongIdForSnapshot =
+    state.currentIndex !== null
+      ? state.songs[state.currentIndex]?.id ?? null
+      : null
+  React.useEffect(() => {
+    reportPlaybackDuration(currentSongIdForSnapshot, state.duration)
+  }, [currentSongIdForSnapshot, state.duration])
 
   return (
     <PlayerContext.Provider value={value}>

@@ -2,7 +2,8 @@ import * as React from "react"
 
 import { useAuth } from "./useAuth"
 import { usePlayer } from "./usePlayer"
-import { peekTrackMetadata } from "@/lib/track-metadata"
+import { peekPlaybackDuration } from "@/lib/playback-duration"
+import { ensureTrackMetadata, peekTrackMetadata } from "@/lib/track-metadata"
 import { supabase } from "@/lib/supabase"
 
 /**
@@ -69,30 +70,42 @@ export function usePlayTracking(): void {
       if (recordedRef.current) return
 
       recordedRef.current = true
-      const meta = peekTrackMetadata(trackId)
       const userId = user?.id ?? null
       const deviceId = getOrCreateDeviceId()
+      // Snapshot the player's duration estimate now, while the song is
+      // still the current one — awaiting metadata below may outlive it.
+      const playerDuration = peekPlaybackDuration(trackId)
 
-      void sb
-        .from("plays")
-        .insert({
+      void (async () => {
+        // Prefer the exact tag duration. If the parse hasn't landed by
+        // the 30 s mark, wait for it instead of recording NULL. When
+        // the file's tags carry no duration at all, fall back to the
+        // player's estimate — without it those songs never add to
+        // listening-time stats (see migration 0024's backfill).
+        let meta = peekTrackMetadata(trackId)
+        if (!meta) {
+          meta = await ensureTrackMetadata(trackId).catch(() => undefined)
+        }
+        const tagDuration =
+          typeof meta?.duration === "number" && meta.duration > 0
+            ? Math.round(meta.duration)
+            : null
+        const { error } = await sb.from("plays").insert({
           user_id: userId,
           song_id: trackId,
           artist: meta?.artist ?? null,
           duration_seconds:
-            typeof meta?.duration === "number" && meta.duration > 0
-              ? Math.round(meta.duration)
-              : null,
+            tagDuration ??
+            (playerDuration !== undefined ? Math.round(playerDuration) : null),
           device_id: deviceId,
         })
-        .then(({ error }) => {
-          if (error) {
-            console.warn("[plays] insert failed", error)
-            recordedRef.current = false
-          } else {
-            console.info("[plays] recorded", { songId: trackId, userId })
-          }
-        })
+        if (error) {
+          console.warn("[plays] insert failed", error)
+          recordedRef.current = false
+        } else {
+          console.info("[plays] recorded", { songId: trackId, userId })
+        }
+      })()
     }, 1000)
 
     return () => clearInterval(interval)
