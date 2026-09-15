@@ -2,7 +2,9 @@ import * as React from "react"
 
 import { useSongs } from "@/hooks/useSongs"
 import { audioEngine, isIOS, type FadeHandle } from "@/lib/audio-engine"
+import { evictSong } from "@/lib/audio-cache"
 import { peekResolvedSrc, streamUrl } from "@/lib/audio-url"
+import { playbackCursorIndex } from "@/lib/playback-cursor"
 import { reportPlaybackDuration } from "@/lib/playback-duration"
 import { rememberSearch } from "@/lib/search-history"
 import { shufflePreservingCurrent } from "@/lib/shuffle"
@@ -89,6 +91,49 @@ interface PersistedVolume {
 type DeckId = 0 | 1
 const otherDeck = (deck: DeckId): DeckId => (deck === 0 ? 1 : 0)
 
+/**
+ * iOS same-deck track changes call `.play()` on an element that was just
+ * re-pointed at a new `src` — often from inside the interval-driven
+ * background preempt (screen locked, no fresh user gesture). iOS
+ * sometimes rejects that first attempt even though the audio session is
+ * still valid (a transient "not ready yet" rather than a real policy
+ * block), and silently leaving it rejected stranded playback paused with
+ * no error and no automatic recovery — the user's only fix was
+ * force-closing and reopening the app. Retrying with backoff resolves
+ * the transient case; `onGiveUp` only fires once every attempt has
+ * failed, so the caller can surface a real, actionable error.
+ */
+const IOS_PLAY_RETRY_DELAYS_MS = [300, 800, 1500]
+
+function playWithRetry(
+  audio: HTMLAudioElement,
+  delays: readonly number[] = IOS_PLAY_RETRY_DELAYS_MS
+): Promise<void> {
+  return Promise.resolve(audio.play()).catch((err: unknown) => {
+    if (delays.length === 0) throw err
+    const [delay, ...rest] = delays
+    return new Promise<void>((resolve, reject) => {
+      setTimeout(() => {
+        playWithRetry(audio, rest).then(resolve, reject)
+      }, delay)
+    })
+  })
+}
+
+/**
+ * The currently-playing song's id, or null if nothing is loaded. Small
+ * helper because "look up the song at currentIndex" was independently
+ * re-derived at half a dozen call sites across this file.
+ */
+function activeSongIdFrom(state: {
+  currentIndex: number | null
+  songs: Array<{ id: string }>
+}): string | null {
+  return state.currentIndex !== null
+    ? (state.songs[state.currentIndex]?.id ?? null)
+    : null
+}
+
 /** Set of song ids whose audio body we've already kicked into the
  *  browser's HTTP cache. Module scope so it survives re-renders. */
 const warmedSongIds = new Set<string>()
@@ -103,13 +148,15 @@ const warmedSongIds = new Set<string>()
  * re-warm. Skips the active deck's currently-playing song.
  */
 function warmHttpCacheForUpcoming(
-  state: { songs: Array<{ id: string; modifiedTime: string }>; playbackList: string[]; currentIndex: number | null },
+  state: { playbackList: string[]; playbackCursorId: string | null },
   count: number
 ): void {
-  const currentId =
-    state.currentIndex !== null ? state.songs[state.currentIndex]?.id : null
-  if (!currentId) return
-  const here = state.playbackList.indexOf(currentId)
+  // Anchor on playbackCursorId, not the current song directly — while a
+  // queued (out-of-order) song is playing, currentIndex points at a song
+  // that may not even be in playbackList, which would make `here` come
+  // back -1 and wrap this into re-warming from the very start of the
+  // list. The cursor always reflects the natural-sequence position.
+  const here = playbackCursorIndex(state.playbackList, state.playbackCursorId)
   if (here === -1) return
   let warmed = 0
   for (
@@ -142,15 +189,18 @@ function warmHttpCacheForUpcoming(
  * the current playback position, the file is actually longer than
  * either source claims — fall through to currentTime + 1 so the bar
  * keeps progressing instead of pinning at 100%.
+ *
+ * `songId` must be passed in by the caller rather than parsed back out
+ * of `audio.src` — playback URLs are either the direct R2 host
+ * (`https://audio.scoutbangers.com/<id>`) or an opaque `blob:` URL for
+ * downloaded songs, neither of which encodes the id in a way that can
+ * be recovered from the string. (This used to match against a
+ * `/api/stream/<id>` shape that no longer exists anywhere in this app
+ * — the regex never matched, so this silently always fell back to the
+ * less accurate `audio.duration` estimate.)
  */
-function canonicalDuration(audio: HTMLAudioElement): number {
-  const src = audio.currentSrc || audio.src
-  const match = src.match(/\/api\/stream\/([^/?#]+)/)
-  let metaDuration = 0
-  if (match) {
-    const id = decodeURIComponent(match[1]!)
-    metaDuration = peekTrackMetadata(id)?.duration ?? 0
-  }
+function canonicalDuration(audio: HTMLAudioElement, songId: string | null): number {
+  const metaDuration = songId ? (peekTrackMetadata(songId)?.duration ?? 0) : 0
   const audioDuration = Number.isFinite(audio.duration) ? audio.duration : 0
   const best = Math.max(metaDuration, audioDuration)
   if (best > 0 && best > audio.currentTime) return best
@@ -209,6 +259,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
    * cycle between dispatching SET_INDEX and the state ref updating.
    */
   const iosPreemptedRef = React.useRef<string | null>(null)
+  /**
+   * Song ids for which we've already tried the evict-and-retry-from-
+   * network recovery (see handleError below) this session. Prevents a
+   * genuinely broken stream from looping the recovery forever — once a
+   * song is in here, a second failure falls straight through to the
+   * normal error message instead of retrying again.
+   */
+  const cacheRecoveryAttemptedRef = React.useRef<Set<string>>(new Set())
 
   const [state, dispatch] = React.useReducer(
     playerReducer,
@@ -414,9 +472,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         : s.songs.map((song) => song.id)
       if (list.length === 0) return null
 
-      const currentSongId =
-        s.currentIndex !== null ? s.songs[s.currentIndex]?.id ?? null : null
-      const here = currentSongId ? list.indexOf(currentSongId) : -1
+      // Anchor on the natural-sequence cursor, NOT the current song
+      // directly. They're the same thing after normal next()/prev()/
+      // auto-advance, but diverge the moment a queued song is playing —
+      // using currentSongId here would walk forward from the queued
+      // song's own (unrelated, or nonexistent) position in `list`
+      // instead of resuming where the natural sequence actually left off.
+      const here = playbackCursorIndex(list, s.playbackCursorId)
       let next = here + direction
       if (next >= list.length) {
         if (s.repeat === "all") next = 0
@@ -454,7 +516,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   // ---- Core playback ---------------------------------------------------
 
   const playIndex = React.useCallback(
-    (index: number, opts: { crossfade?: boolean } = {}) => {
+    (
+      index: number,
+      opts: { crossfade?: boolean; fromQueue?: boolean } = {}
+    ) => {
       const s = stateRef.current
       const song = s.songs[index]
       const activeId = activeDeckRef.current
@@ -533,16 +598,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           /* some iOS versions throw on seek before metadata loads */
         }
         audioEngine.setVolume(active, userTargetVolume())
-        const playPromise = active.play()
-        void Promise.resolve(playPromise)
-          .catch((err) => {
-            debugWarn("[player] ios same-deck play rejected", err)
-            dispatch({ type: "SET_PLAYING", isPlaying: false })
+        void playWithRetry(active)
+          .catch((err: unknown) => {
+            // Every retry failed — this is no longer a transient iOS
+            // hiccup. Surface it instead of leaving playback silently
+            // paused with no way for the user to tell what happened;
+            // PLAYBACK_ERROR implies isPlaying:false in the reducer.
+            debugWarn("[player] ios same-deck play rejected after retries", err)
+            dispatch({
+              type: "PLAYBACK_ERROR",
+              message: song
+                ? `Não foi possível retomar "${song.title}" automaticamente. Toca em play para continuar.`
+                : "A reprodução foi interrompida. Toca em play para continuar.",
+            })
           })
           .finally(() => {
             switchingSrcRef.current = false
           })
-        dispatch({ type: "SET_INDEX", index })
+        dispatch({ type: "SET_INDEX", index, fromQueue: Boolean(opts.fromQueue) })
         dispatch({ type: "TIME", position: 0 })
         dispatch({ type: "PLAYBACK_ERROR", message: null })
         return
@@ -588,7 +661,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             if (!active.paused) active.pause()
           }, 260)
           prefetchedIdRef.current = null
-          dispatch({ type: "SET_INDEX", index })
+          dispatch({ type: "SET_INDEX", index, fromQueue: Boolean(opts.fromQueue) })
           dispatch({ type: "TIME", position: 0 })
           // The idle deck loaded its metadata while it was inactive,
           // so handleDuration was skipped. Re-dispatch now that it's
@@ -597,8 +670,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           // doesn't, for a preloaded deck whose src didn't change).
           dispatch({
             type: "DURATION",
-            duration: Number.isFinite(canonicalDuration(idle))
-              ? canonicalDuration(idle)
+            duration: Number.isFinite(canonicalDuration(idle, song.id))
+              ? canonicalDuration(idle, song.id)
               : 0,
           })
           dispatch({ type: "PLAYBACK_ERROR", message: null })
@@ -625,7 +698,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         void Promise.resolve(playPromise).finally(() => {
           switchingSrcRef.current = false
         })
-        dispatch({ type: "SET_INDEX", index })
+        dispatch({ type: "SET_INDEX", index, fromQueue: Boolean(opts.fromQueue) })
         dispatch({ type: "TIME", position: 0 })
         dispatch({ type: "PLAYBACK_ERROR", message: null })
         return
@@ -671,14 +744,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         })
       }
 
-      dispatch({ type: "SET_INDEX", index })
+      dispatch({ type: "SET_INDEX", index, fromQueue: Boolean(opts.fromQueue) })
       dispatch({ type: "TIME", position: 0 })
       // Same reason as the non-crossfade fast path — the new active
       // deck loaded its metadata silently while it was idle.
       dispatch({
         type: "DURATION",
-        duration: Number.isFinite(canonicalDuration(idle))
-          ? canonicalDuration(idle)
+        duration: Number.isFinite(canonicalDuration(idle, song.id))
+          ? canonicalDuration(idle, song.id)
           : 0,
       })
       dispatch({ type: "PLAYBACK_ERROR", message: null })
@@ -698,8 +771,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       return
     }
     const s = stateRef.current
-    const currentSongId =
-      s.currentIndex !== null ? s.songs[s.currentIndex]?.id ?? null : null
+    const currentSongId = activeSongIdFrom(s)
     // iOS guard: if the interval-driven preempt already advanced past
     // this song, the natural `ended` arrives moments later as a ghost
     // event for the now-replaced source. Skip it so we don't
@@ -727,7 +799,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (IS_IOS && currentSongId !== null) {
         iosPreemptedRef.current = currentSongId
       }
-      playIndex(advance.index)
+      playIndex(advance.index, { fromQueue: advance.fromQueue })
     } else {
       dispatch({ type: "SET_PLAYING", isPlaying: false })
     }
@@ -748,7 +820,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       const isActive = () => activeDeckRef.current === deckId
 
       const handlePlay = () => {
-        if (isActive()) dispatch({ type: "SET_PLAYING", isPlaying: true })
+        if (!isActive()) return
+        dispatch({ type: "SET_PLAYING", isPlaying: true })
+        // Any successful play means whatever previously went wrong is no
+        // longer true — don't leave a stale error banner up once the
+        // user (or an automatic retry) has clearly recovered.
+        dispatch({ type: "PLAYBACK_ERROR", message: null })
       }
       const handlePause = () => {
         if (
@@ -767,12 +844,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         // Xing / mvhd) over audio.duration, which the browser
         // estimates from the first frame's bitrate and gets wrong by
         // tens of seconds for tagless VBR files.
-        const duration = canonicalDuration(audio)
+        const activeSongId =
+          stateRef.current.currentIndex !== null
+            ? (stateRef.current.songs[stateRef.current.currentIndex]?.id ?? null)
+            : null
+        const duration = canonicalDuration(audio, activeSongId)
         if (!Number.isFinite(duration) || duration <= 0) return
 
         // Prefetch next song onto idle deck when past PREFETCH_PROGRESS,
         // and ALSO warm the browser's HTTP cache for the next few songs
         // beyond that. Cheap on WiFi, makes auto-advance instant.
+        //
+        // iOS never uses the idle deck — playIndex's IS_IOS branch always
+        // swaps src on the SAME element and activeDeckRef never moves off
+        // deck 0 (see the comment there). Loading a second full audio
+        // file onto an element that will never play is pure wasted
+        // bandwidth/memory and extra decoder contention for no benefit,
+        // so skip the assignment (but still warm the HTTP cache below —
+        // that's a plain fetch, not tied to an audio element).
         if (
           !prefetchedIdRef.current &&
           audio.currentTime / duration >= PREFETCH_PROGRESS
@@ -781,10 +870,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           if (advance) {
             const nextSong = stateRef.current.songs[advance.index]
             if (nextSong) {
-              const idle = getDeck(otherDeck(activeDeckRef.current))
-              if (idle) {
-                idle.src = peekResolvedSrc(nextSong.id)
+              if (IS_IOS) {
+                // Nothing to buffer — just stop re-entering this block
+                // every tick until the song actually changes.
                 prefetchedIdRef.current = nextSong.id
+              } else {
+                const idle = getDeck(otherDeck(activeDeckRef.current))
+                if (idle) {
+                  idle.src = peekResolvedSrc(nextSong.id)
+                  prefetchedIdRef.current = nextSong.id
+                }
               }
               // Pre-resolve the picture data URL too, so the
               // MediaSession metadata update is synchronous when the
@@ -809,13 +904,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           const advance = computeAdvance(1, true)
           if (advance) {
             crossfadeArmedRef.current = true
-            playIndex(advance.index, { crossfade: true })
+            playIndex(advance.index, { crossfade: true, fromQueue: advance.fromQueue })
           }
         }
       }
       const handleDuration = () => {
         if (isActive()) {
-          const duration = canonicalDuration(audio)
+          const s = stateRef.current
+          const duration = canonicalDuration(audio, activeSongIdFrom(s))
           dispatch({
             type: "DURATION",
             duration: Number.isFinite(duration) ? duration : 0,
@@ -833,8 +929,59 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         if (!isActive()) return
         const err = audio.error
         const s = stateRef.current
-        const songName =
-          s.currentIndex !== null ? s.songs[s.currentIndex]?.title : null
+        const activeSong = s.currentIndex !== null ? s.songs[s.currentIndex] : undefined
+        const songId = activeSong?.id ?? null
+        const songName = activeSong?.title ?? null
+
+        // A song that plays fine streamed but fails once downloaded means
+        // the LOCAL cached copy is bad — most commonly it was cached with
+        // a wrong Content-Type (see workers/drive-sync's resolveContentType)
+        // so WebKit refuses to decode the Blob even though the exact same
+        // bytes stream fine over the network. Rather than show an error
+        // and expect the user to find Settings → clear downloads, do that
+        // automatically: drop the bad cache entry and retry once from the
+        // network. Guarded per-song so a genuinely broken stream falls
+        // through to the normal error message on the second failure
+        // instead of retrying forever.
+        if (
+          songId &&
+          (err?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED ||
+            err?.code === MediaError.MEDIA_ERR_DECODE) &&
+          audio.currentSrc.startsWith("blob:") &&
+          !cacheRecoveryAttemptedRef.current.has(songId)
+        ) {
+          cacheRecoveryAttemptedRef.current.add(songId)
+          debugWarn(
+            "[player] cached copy failed to decode — evicting and retrying from network",
+            { songId, code: err?.code }
+          )
+          void evictSong(songId).then(() => {
+            // Bail if the user has since moved on to a different song.
+            const cur = stateRef.current
+            if (
+              cur.currentIndex === null ||
+              cur.songs[cur.currentIndex]?.id !== songId
+            ) {
+              return
+            }
+            switchingSrcRef.current = true
+            audio.src = streamUrl(songId)
+            try {
+              audio.currentTime = 0
+            } catch {
+              /* some browsers throw on seek before metadata loads */
+            }
+            playWithRetry(audio)
+              .catch(() => {
+                /* genuine failure — the error event this triggers falls
+                 * through to the normal message below (guard is armed) */
+              })
+              .finally(() => {
+                switchingSrcRef.current = false
+              })
+          })
+          return
+        }
 
         // Offline + network error → give a clear actionable message.
         if (
@@ -942,7 +1089,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: "SET_PLAYING", isPlaying: actuallyPlaying })
       }
 
-      const duration = canonicalDuration(active)
+      const activeSongId = activeSongIdFrom(stateRef.current)
+      const duration = canonicalDuration(active, activeSongId)
       const endsSoon =
         Number.isFinite(duration) &&
         duration > 0 &&
@@ -959,8 +1107,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       // also stops a ghost `ended` event from re-advancing.
       if (IS_IOS) {
         const s = stateRef.current
-        const currentSongId =
-          s.currentIndex !== null ? s.songs[s.currentIndex]?.id ?? null : null
+        // Same song already looked up above as `activeSongId` — no need
+        // to re-derive it here.
+        const currentSongId = activeSongId
         // Skip preempt for songs shorter than 2× the lead so we don't
         // immediately advance past a 1-second clip. Short songs play to
         // their natural end and advance via `handleEnded`.
@@ -984,7 +1133,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                 typeof document !== "undefined" ? document.hidden : null,
             })
             iosPreemptedRef.current = currentSongId
-            playIndex(advance.index)
+            playIndex(advance.index, { fromQueue: advance.fromQueue })
           }
         }
         return
@@ -1011,7 +1160,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             hidden: typeof document !== "undefined" ? document.hidden : null,
           })
           crossfadeArmedRef.current = true
-          playIndex(advance.index, { crossfade: true })
+          playIndex(advance.index, { crossfade: true, fromQueue: advance.fromQueue })
         }
       }
     }, 1000)
@@ -1100,7 +1249,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const next = React.useCallback(() => {
     const advance = computeAdvance(1, false)
-    if (advance) playIndex(advance.index)
+    if (advance) playIndex(advance.index, { fromQueue: advance.fromQueue })
   }, [computeAdvance, playIndex])
 
   const prev = React.useCallback(() => {
@@ -1110,7 +1259,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       return
     }
     const advance = computeAdvance(-1, false)
-    if (advance) playIndex(advance.index)
+    if (advance) playIndex(advance.index, { fromQueue: advance.fromQueue })
   }, [computeAdvance, playIndex, getDeck])
 
   const seek = React.useCallback(
@@ -1155,9 +1304,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, [getDeck])
 
   const toggleShuffle = React.useCallback(() => {
-    const s = stateRef.current
-    const currentSongId =
-      s.currentIndex !== null ? s.songs[s.currentIndex]?.id ?? null : null
+    const currentSongId = activeSongIdFrom(stateRef.current)
     dispatch({ type: "TOGGLE_SHUFFLE", currentSongId })
   }, [])
 
@@ -1255,10 +1402,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const reorderUpcoming = React.useCallback((newUpcoming: string[]) => {
     const s = stateRef.current
     const list = s.playbackList
-    const currentSongId =
-      s.currentIndex !== null ? s.songs[s.currentIndex]?.id ?? null : null
-    if (!currentSongId) return
-    const here = list.indexOf(currentSongId)
+    // Anchor on playbackCursorId (see its doc comment) rather than
+    // whatever song is currently playing — if a queued song is active,
+    // its position in `list` is unrelated to "where we are" in the
+    // natural sequence being reordered here.
+    const here = playbackCursorIndex(list, s.playbackCursorId)
     if (here === -1) return
     const next = [...list.slice(0, here + 1), ...newUpcoming]
     dispatch({
@@ -1274,10 +1422,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const removeFromUpcoming = React.useCallback((songId: string) => {
     const s = stateRef.current
-    const currentSongId =
-      s.currentIndex !== null ? s.songs[s.currentIndex]?.id ?? null : null
+    const currentSongId = activeSongIdFrom(s)
     if (!currentSongId || songId === currentSongId) return
-    const here = s.playbackList.indexOf(currentSongId)
+    // Anchor on playbackCursorId, not currentSongId — see reorderUpcoming.
+    const here = playbackCursorIndex(s.playbackList, s.playbackCursorId)
     if (here === -1) return
     // Only drop occurrences AFTER the current song so the past stays
     // intact (matters if we ever expose history-based prev navigation).
@@ -1318,6 +1466,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       playbackError: state.playbackError,
       userQueue: state.userQueue,
       playbackList: state.playbackList,
+      playbackCursorId: state.playbackCursorId,
       play,
       toggle,
       next,
@@ -1355,6 +1504,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       state.playbackError,
       state.userQueue,
       state.playbackList,
+      state.playbackCursorId,
       play,
       toggle,
       next,

@@ -47,6 +47,18 @@ export interface PlayerState {
   userQueue: QueueItem[]
   /** Active playback order (sorted/shuffled) — what next() walks through. */
   playbackList: string[]
+  /**
+   * Song id of the natural-sequence "anchor" — the last song reached by
+   * walking `playbackList` normally (next/prev/auto-advance), as opposed
+   * to one played out of order from `userQueue`. `next()` and the "Up
+   * Next" list are both computed relative to THIS, not `currentIndex` —
+   * otherwise, the moment a queued song starts playing, its own
+   * (unrelated) position in `playbackList` would silently become the new
+   * "current position," skipping or duplicating whatever was actually
+   * upcoming. Stays put while queued songs play; only moves on natural
+   * advancement. `null` before anything has played from a list.
+   */
+  playbackCursorId: string | null
 }
 
 export interface QueueItem {

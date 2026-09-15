@@ -85,10 +85,13 @@ export function HomePage() {
     if (!song) return
     const indexInAll = songs.findIndex((s) => s.id === song.id)
     if (indexInAll === -1) return
-    // Context: the visible top in rank order, then the rest of the library
-    // (skipping any songs already counted in the top) so the queue
+    // Context: the FULL top-20 in rank order (not just whatever's
+    // currently visible under the "Mostrar mais" limit — a click while
+    // collapsed to Top 10 should still queue ranks 11-20 next, in rank
+    // order, rather than dropping them into the general library
+    // alphabetical order), then the rest of the library so the queue
     // continues naturally after the chart ends.
-    const topIds = display.map((s) => s.id)
+    const topIds = full.map((s) => s.id)
     const topSet = new Set(topIds)
     const rest = songs.filter((s) => !topSet.has(s.id)).map((s) => s.id)
     play(indexInAll, [...topIds, ...rest])

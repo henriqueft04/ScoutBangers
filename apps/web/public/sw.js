@@ -2,12 +2,13 @@
  * Service worker for ScoutBangers.
  *
  *  - Caches the static app shell so the UI loads instantly on warm visits.
- *  - Intercepts `/api/stream/<id>` requests:
+ *  - Intercepts requests to audio.scoutbangers.com (R2, cross-origin —
+ *    see AUDIO_HOST below):
  *      * If the song has been explicitly downloaded into `AUDIO_CACHE`,
  *        serve it from disk — including byte-range responses synthesised
  *        from the cached blob — so playback is instant and works offline.
- *      * Otherwise, pass through to the network so the Drive proxy
- *        handles the request normally.
+ *      * Otherwise, pass through to the network so R2 handles the
+ *        request normally.
  *  - The audio cache is populated only by `audio-cache.ts`'s download
  *    manager. We never auto-cache streamed bytes (that would silently
  *    fill storage with partial blobs).

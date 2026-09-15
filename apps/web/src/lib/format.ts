@@ -21,3 +21,11 @@ export function formatTime(totalSeconds: number): string {
 
   return `${minutes}:${pad(seconds)}`
 }
+
+/** Format a byte count as a human-readable KB/MB/GB string, e.g. "42 MB". */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 MB"
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+}

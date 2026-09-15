@@ -46,7 +46,7 @@ export interface InternalPlayerState extends PlayerState {
 
 export type PlayerAction =
   | { type: "SONGS"; songs: Song[]; loading: boolean; error: string | null }
-  | { type: "SET_INDEX"; index: number }
+  | { type: "SET_INDEX"; index: number; fromQueue?: boolean }
   | {
       type: "SET_PLAYBACK_LIST"
       list: string[]
@@ -80,6 +80,7 @@ export const initialPlayerState: InternalPlayerState = {
   playbackError: null,
   playbackList: [],
   playbackNatural: [],
+  playbackCursorId: null,
   userQueue: [],
 }
 
@@ -153,8 +154,23 @@ export function playerReducer(
         error: action.error,
       }
     }
-    case "SET_INDEX":
-      return { ...state, currentIndex: action.index }
+    case "SET_INDEX": {
+      if (action.fromQueue) {
+        // Playing an explicit-queue song is a deliberate detour — it
+        // must NOT move the natural-sequence anchor, otherwise the
+        // queued song's own (unrelated, or nonexistent) position in
+        // playbackList becomes the new "current position" and
+        // next()/"Up Next" silently skip or duplicate whatever was
+        // actually supposed to come next.
+        return { ...state, currentIndex: action.index }
+      }
+      const song = state.songs[action.index]
+      return {
+        ...state,
+        currentIndex: action.index,
+        playbackCursorId: song ? song.id : state.playbackCursorId,
+      }
+    }
     case "SET_PLAYBACK_LIST":
       return {
         ...state,
