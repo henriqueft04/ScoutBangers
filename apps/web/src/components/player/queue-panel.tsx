@@ -14,6 +14,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { TrackArtwork } from "@/components/library/track-artwork"
 import { useTrackVisuals } from "@/hooks/useTrackVisuals"
 import { usePlayer } from "@/hooks/usePlayer"
+import { playbackCursorIndex } from "@/lib/playback-cursor"
 import { displayArtist, displayTitle } from "@/lib/song-display"
 import type { QueueItem, Song } from "@/lib/types"
 
@@ -39,6 +40,7 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
     currentIndex,
     userQueue,
     playbackList,
+    playbackCursorId,
     queueRemove,
     queueSet,
     queueClear,
@@ -59,7 +61,16 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
       currentIndex !== null ? songs[currentIndex]?.id ?? null : null
     const skip = new Set<string>(userQueue.map((item) => item.songId))
     if (currentSongId) skip.add(currentSongId)
-    const here = currentSongId ? playbackList.indexOf(currentSongId) : -1
+    // Anchor on playbackCursorId, not the currently-playing song — while
+    // a queued (out-of-order) song is active, currentSongId's position
+    // in playbackList is unrelated to "what's actually next": it's
+    // either not in the list at all (giving -1, which used to wrap this
+    // around to show the list from the very top again) or sitting
+    // somewhere that has nothing to do with where the user actually was.
+    // The cursor always reflects the last song reached by natural
+    // advancement, so "up next" stays correct through any number of
+    // queue detours.
+    const here = playbackCursorIndex(playbackList, playbackCursorId)
     const out: { id: string }[] = []
     for (let i = here + 1; i < playbackList.length; i++) {
       const id = playbackList[i]!
@@ -69,7 +80,7 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
       if (out.length >= 50) break
     }
     return out
-  }, [playbackList, currentIndex, songs, userQueue])
+  }, [playbackList, playbackCursorId, currentIndex, songs, userQueue])
 
   const handlePlay = (songId: string) => {
     const idx = songs.findIndex((song) => song.id === songId)

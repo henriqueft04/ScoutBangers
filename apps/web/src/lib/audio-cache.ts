@@ -22,6 +22,7 @@
 
 import { invalidateResolvedSrc, resolveAudioSrc, streamUrl } from "./audio-url"
 import { AUDIO_CACHE } from "./audio-cache-name"
+import { firstBytes, sniffAudioMimeType } from "./audio-format"
 import { evictTrackMetadata } from "./track-metadata"
 
 export interface DownloadProgress {
@@ -96,7 +97,7 @@ export async function downloadSong(
   }
 
   const total = Number(response.headers.get("Content-Length") || 0)
-  const contentType =
+  const declaredContentType =
     response.headers.get("Content-Type") || "audio/mpeg"
 
   const reader = response.body.getReader()
@@ -111,6 +112,16 @@ export async function downloadSong(
       onProgress?.({ received, total })
     }
   }
+
+  // Trust the file's own magic bytes over the declared Content-Type.
+  // Drive's download endpoint (relayed through R2) sometimes serves a
+  // generic/wrong type; WebKit enforces a cached Blob's declared type
+  // strictly, so a wrong type here reliably surfaces later as "formato
+  // não suportado" even though the bytes are fine. Sniffing once at
+  // download time means a downloaded song's local copy is correct
+  // regardless of whether the server-side type ever gets fixed.
+  const contentType =
+    sniffAudioMimeType(firstBytes(chunks, 16)) ?? declaredContentType
 
   const blob = new Blob(chunks as BlobPart[], { type: contentType })
   // Build a fresh Response we control the headers of. Cache.put refuses

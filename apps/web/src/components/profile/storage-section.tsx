@@ -1,52 +1,17 @@
 import * as React from "react"
-import {
-  Download,
-  FolderOpen,
-  HardDrive,
-  Loader2,
-  Trash2,
-} from "lucide-react"
+import { Download, FolderOpen, HardDrive, Loader2, Trash2 } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 
+import { CellularDownloadDialog } from "@/components/library/cellular-download-dialog"
+import { OfflineDownloadProgressBar } from "@/components/library/offline-download-progress"
+import { useOfflineDownload } from "@/hooks/useOfflineDownload"
 import { usePlayer } from "@/hooks/usePlayer"
-import {
-  downloadSong,
-  evictAll,
-  evictSong,
-  inspectCache,
-  isLikelyCellular,
-  markOptedIntoOffline,
-  requestPersistence,
-  originUsage,
-} from "@/lib/audio-cache"
+import { evictAll, evictSong, originUsage } from "@/lib/audio-cache"
+import { formatBytes } from "@/lib/format"
 import { evictTrackMetadata } from "@/lib/track-metadata"
-import type { Song } from "@/lib/types"
 
-import { ConfirmDialog } from "./confirm-dialog"
 import { DownloadedSongsModal } from "./downloaded-songs-modal"
-
-interface DownloadState {
-  /** Index in `targets` we're currently downloading (0-based). */
-  index: number
-  /** Total songs to download in this run. */
-  total: number
-  /** Current song being downloaded. */
-  song: Song
-  /** Bytes received for the current song. */
-  receivedBytes: number
-  /** Bytes total for the current song. */
-  totalBytes: number
-  /** Cumulative bytes downloaded across all songs in this run. */
-  cumulativeBytes: number
-}
-
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 MB"
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
-}
 
 /**
  * "Storage" section: lets the user download every song in the library
@@ -61,45 +26,39 @@ function formatBytes(bytes: number): string {
  */
 export function StorageSection() {
   const { songs } = usePlayer()
-  const [cachedIds, setCachedIds] = React.useState<Set<string>>(new Set())
-  const [staleIds, setStaleIds] = React.useState<Map<string, string>>(new Map())
+  const {
+    cachedIds,
+    staleIds,
+    targets,
+    targetBytes,
+    downloading,
+    error,
+    requestStart,
+    confirmingCellular,
+    confirmCellularDownload,
+    cancelCellularConfirm,
+    cancel,
+    refresh,
+  } = useOfflineDownload(songs)
   const [usage, setUsage] = React.useState<{ usage: number; quota: number } | null>(
     null
   )
-  const [downloading, setDownloading] = React.useState<DownloadState | null>(
-    null
-  )
-  const [error, setError] = React.useState<string | null>(null)
   const [evicting, setEvicting] = React.useState(false)
   const [viewOpen, setViewOpen] = React.useState(false)
-  const [confirmCellular, setConfirmCellular] = React.useState(false)
-  const cancelledRef = React.useRef(false)
 
+  // Origin storage usage isn't tracked by the shared hook (it's not
+  // specific to "what's downloaded", just a diagnostic total) — refetch
+  // whenever the cache contents change, which covers both a download run
+  // completing and an external eviction via removeAll/DownloadedSongsModal.
   React.useEffect(() => {
     let cancelled = false
-    const manifest = new Map(songs.map((s) => [s.id, s.modifiedTime]))
-    void Promise.all([inspectCache(manifest), originUsage()]).then(
-      ([stats, est]) => {
-        if (cancelled) return
-        setCachedIds(stats.cachedIds)
-        setStaleIds(stats.staleIds)
-        setUsage(est)
-      }
-    )
+    void originUsage().then((est) => {
+      if (!cancelled) setUsage(est)
+    })
     return () => {
       cancelled = true
     }
-  }, [songs])
-
-  // Songs that need work: not cached at all, OR cached but stale.
-  const targets = React.useMemo(() => {
-    return songs.filter((s) => !cachedIds.has(s.id) || staleIds.has(s.id))
-  }, [songs, cachedIds, staleIds])
-
-  const targetBytes = React.useMemo(
-    () => targets.reduce((acc, s) => acc + (s.size || 0), 0),
-    [targets]
-  )
+  }, [cachedIds])
 
   const cachedBytes = React.useMemo(() => {
     let bytes = 0
@@ -109,91 +68,11 @@ export function StorageSection() {
     return bytes
   }, [songs, cachedIds])
 
-  const runDownload = async () => {
-    setError(null)
-    cancelledRef.current = false
-    await requestPersistence()
-
-    const total = targets.length
-    let cumulativeBytes = 0
-    const first = targets[0]
-    if (!first) return
-    setDownloading({
-      index: 0,
-      total,
-      song: first,
-      receivedBytes: 0,
-      totalBytes: first.size ?? 0,
-      cumulativeBytes,
-    })
-
-    for (let i = 0; i < targets.length; i++) {
-      if (cancelledRef.current) break
-      const song = targets[i]!
-      try {
-        await downloadSong(song.id, song.modifiedTime, (p) => {
-          setDownloading({
-            index: i,
-            total,
-            song,
-            receivedBytes: p.received,
-            totalBytes: p.total || song.size || 0,
-            cumulativeBytes,
-          })
-        })
-        cumulativeBytes += song.size || 0
-        markOptedIntoOffline()
-        setCachedIds((prev) => {
-          const next = new Set(prev)
-          next.add(song.id)
-          return next
-        })
-        setStaleIds((prev) => {
-          if (!prev.has(song.id)) return prev
-          const next = new Map(prev)
-          next.delete(song.id)
-          return next
-        })
-      } catch (err) {
-        setError(
-          `Falhou em "${song.title}": ${err instanceof Error ? err.message : String(err)}`
-        )
-        cancelledRef.current = true
-        break
-      }
-    }
-
-    setDownloading(null)
-    // Refresh totals (origin usage may have changed).
-    const manifest = new Map(songs.map((s) => [s.id, s.modifiedTime]))
-    const [stats, est] = await Promise.all([inspectCache(manifest), originUsage()])
-    setCachedIds(stats.cachedIds)
-    setStaleIds(stats.staleIds)
-    setUsage(est)
-  }
-
-  const startDownload = () => {
-    if (downloading) return
-    if (targets.length === 0) return
-    if (isLikelyCellular()) {
-      setConfirmCellular(true)
-      return
-    }
-    void runDownload()
-  }
-
-  const cancel = () => {
-    cancelledRef.current = true
-  }
-
   const removeAll = async () => {
     if (downloading) return
     setEvicting(true)
     await evictAll()
-    setCachedIds(new Set())
-    setStaleIds(new Map())
-    const est = await originUsage()
-    setUsage(est)
+    await refresh()
     setEvicting(false)
   }
 
@@ -236,43 +115,11 @@ export function StorageSection() {
       </div>
 
       {downloading ? (
-        <div className="flex flex-col gap-2">
-          <div className="text-foreground flex items-center gap-2 text-xs">
-            <Loader2 className="text-muted-foreground size-3.5 animate-spin shrink-0" />
-            <span className="min-w-0 truncate">
-              <span className="text-muted-foreground">
-                {downloading.index + 1} / {downloading.total} ·{" "}
-              </span>
-              {downloading.song.title}
-            </span>
-          </div>
-          <div className="text-muted-foreground tabular-nums text-xs">
-            {formatBytes(downloading.cumulativeBytes + downloading.receivedBytes)} /{" "}
-            {formatBytes(targetBytes)}
-          </div>
-          <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
-            <div
-              className="bg-primary h-full transition-all"
-              style={{
-                width: `${Math.min(
-                  100,
-                  ((downloading.cumulativeBytes + downloading.receivedBytes) /
-                    Math.max(1, targetBytes)) *
-                    100
-                )}%`,
-              }}
-            />
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={cancel}
-            className="text-muted-foreground hover:text-foreground self-start px-0"
-          >
-            Cancelar
-          </Button>
-        </div>
+        <OfflineDownloadProgressBar
+          progress={downloading}
+          targetBytes={targetBytes}
+          onCancel={cancel}
+        />
       ) : null}
 
       {error ? (
@@ -282,7 +129,7 @@ export function StorageSection() {
       <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
-          onClick={startDownload}
+          onClick={requestStart}
           disabled={Boolean(downloading) || targets.length === 0}
           className="gap-2"
         >
@@ -333,30 +180,14 @@ export function StorageSection() {
         onEvict={async (songId) => {
           await evictSong(songId)
           await evictTrackMetadata(songId)
-          setCachedIds((prev) => {
-            const next = new Set(prev)
-            next.delete(songId)
-            return next
-          })
+          await refresh()
         }}
       />
-      <ConfirmDialog
-        open={confirmCellular}
-        title="Pareces estar a usar dados móveis"
-        description={
-          <>
-            Isto vai transferir <span className="tabular-nums">{formatBytes(targetBytes)}</span> pela
-            tua ligação atual. Liga-te ao Wi-Fi se quiseres evitar gastos
-            do plano de dados.
-          </>
-        }
-        confirmLabel="Transferir mesmo assim"
-        cancelLabel="Esperar pelo Wi-Fi"
-        onConfirm={() => {
-          setConfirmCellular(false)
-          void runDownload()
-        }}
-        onCancel={() => setConfirmCellular(false)}
+      <CellularDownloadDialog
+        open={confirmingCellular}
+        targetBytes={targetBytes}
+        onConfirm={confirmCellularDownload}
+        onCancel={cancelCellularConfirm}
       />
     </section>
   )

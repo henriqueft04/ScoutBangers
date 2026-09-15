@@ -8,6 +8,7 @@ import { SignInDialog } from "@/components/auth/sign-in-dialog"
 import { EmptyState } from "@/components/library/empty-state"
 import { SavedPlaylistsSection } from "@/components/playlists/saved-playlists-section"
 import { useAuth } from "@/hooks/useAuth"
+import { getCached, getStaleCached, setCached } from "@/lib/storage"
 import { supabase } from "@/lib/supabase"
 
 interface PlaylistRow {
@@ -18,9 +19,17 @@ interface PlaylistRow {
   song_count: number
 }
 
+const CACHE_TTL_MS = 5 * 60 * 1000
+const playlistsCacheKey = (userId: string) => `scoutbangers:playlists:${userId}`
+
 /**
  * Lists the signed-in user's playlists. Sign-in CTA when anonymous.
  * Each row links to /playlists/:id where the songs live and can be played.
+ *
+ * Stale-while-revalidate, same pattern as useSongs(): the last-fetched list
+ * is cached in localStorage so re-opening the page (including offline)
+ * shows it immediately instead of an empty/loading state, while a fresh
+ * fetch runs in the background whenever there's a connection.
  */
 export function PlaylistsPage() {
   const { user, loading: authLoading } = useAuth()
@@ -31,18 +40,37 @@ export function PlaylistsPage() {
   const [creating, setCreating] = React.useState(false)
   const [newName, setNewName] = React.useState("")
 
+  // Hydrate from cache the moment we know who the user is — before the
+  // network fetch below even starts. Prefer fresh cache, fall back to
+  // stale (ignores TTL) so the list still appears when reopened offline
+  // well past the 5-minute window.
+  React.useEffect(() => {
+    if (!user) return
+    const key = playlistsCacheKey(user.id)
+    const cached = getCached<PlaylistRow[]>(key) ?? getStaleCached<PlaylistRow[]>(key)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (cached) setPlaylists(cached)
+  }, [user])
+
   const reload = React.useCallback(async () => {
     if (!supabase || !user) return
     setLoading(true)
     setError(null)
-    const { data, error } = await supabase
+    const { data, error: fetchError } = await supabase
       .from("playlists")
       .select("id, name, is_public, created_at")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
-    if (error) {
-      setError(error.message)
+    if (fetchError) {
       setLoading(false)
+      // Keep showing whatever's cached rather than blanking the page —
+      // only surface the error when there's truly nothing to fall back
+      // to (e.g. first-ever visit while offline).
+      const key = playlistsCacheKey(user.id)
+      const hasFallback = Boolean(
+        getCached<PlaylistRow[]>(key) ?? getStaleCached<PlaylistRow[]>(key)
+      )
+      setError(hasFallback ? null : fetchError.message)
       return
     }
     const rows: PlaylistRow[] = (data ?? []).map((row) => ({
@@ -71,6 +99,7 @@ export function PlaylistsPage() {
     }
 
     setPlaylists(rows)
+    setCached(playlistsCacheKey(user.id), rows, CACHE_TTL_MS)
     setLoading(false)
   }, [user])
 
@@ -96,7 +125,12 @@ export function PlaylistsPage() {
       setError(error.message)
       return
     }
-    setPlaylists((prev) => (prev ? prev.filter((p) => p.id !== id) : prev))
+    const next = playlists ? playlists.filter((p) => p.id !== id) : playlists
+    setPlaylists(next)
+    // Keep the cache in sync with the deletion — otherwise a stale cache
+    // read (e.g. the app goes offline right after this) would bring the
+    // just-deleted playlist back.
+    if (next) setCached(playlistsCacheKey(user.id), next, CACHE_TTL_MS)
   }
 
   const handleCreate = async (event: React.FormEvent) => {
@@ -192,12 +226,14 @@ export function PlaylistsPage() {
         </form>
       ) : null}
 
-      {error ? (
+      {error && playlists && playlists.length > 0 ? (
         <p className="text-destructive text-xs">{error}</p>
       ) : null}
 
       {loading && !playlists ? (
         <EmptyState variant="loading" />
+      ) : error && (!playlists || playlists.length === 0) ? (
+        <EmptyState variant="error" message={error} />
       ) : !playlists || playlists.length === 0 ? (
         <EmptyState
           variant="empty"

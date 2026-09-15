@@ -16,6 +16,34 @@ const FALLBACK_ARTWORK: MediaImage[] = [
 const SEEK_OFFSET_SECONDS = 10
 
 /**
+ * Cache of measured `${width}x${height}` per song id. Embedded album art
+ * comes in whatever resolution the tagger happened to encode — claiming
+ * "512x512" unconditionally (as this used to) is a lie for anything that
+ * isn't actually that size, and some platforms are known to be picky
+ * about a `MediaImage` whose declared `sizes` doesn't match reality.
+ * Measured once per song via `createImageBitmap`, then reused.
+ */
+const artworkSizeCache = new Map<string, string>()
+
+async function measureArtworkSizes(songId: string, blob: Blob): Promise<string> {
+  const cached = artworkSizeCache.get(songId)
+  if (cached) return cached
+  let sizes = "512x512"
+  try {
+    if (typeof createImageBitmap === "function") {
+      const bitmap = await createImageBitmap(blob)
+      sizes = `${bitmap.width}x${bitmap.height}`
+      bitmap.close()
+    }
+  } catch {
+    /* Unsupported / undecodable — keep the generic guess below rather
+     * than fail the whole metadata update over an artwork size hint. */
+  }
+  artworkSizeCache.set(songId, sizes)
+  return sizes
+}
+
+/**
  * Bridges the player to `navigator.mediaSession` so audio keeps playing when
  * the phone is on another app or locked, and the OS shows real lock-screen
  * controls (play/pause/next/prev, scrub, Bluetooth-headphone buttons).
@@ -150,15 +178,31 @@ export function useMediaSession(): void {
     }
 
     let cancelled = false
-    const apply = (dataUrl: string | undefined) => {
+    const apply = async (dataUrl: string | undefined) => {
+      // Measuring is cache-backed (see measureArtworkSizes) so this is a
+      // no-op await for any song whose art we've already sized — only a
+      // brand-new song's first-ever play pays for a real decode here,
+      // and it happens before the ONE metadata write below, so it can't
+      // introduce the fallback-then-real blink the single-write pattern
+      // exists to avoid.
+      const sizes =
+        dataUrl && meta?.pictureBlob
+          ? await measureArtworkSizes(song.id, meta.pictureBlob)
+          : "512x512"
       if (cancelled) return
+      // List the real artwork first (if any) followed by the fallback
+      // icons as additional size candidates — multiple declared sizes is
+      // the recommended pattern so the OS can pick its best fit, and it
+      // gives it something to fall back to if the data URL ever fails to
+      // load.
       const artwork: MediaImage[] = dataUrl
         ? [
             {
               src: dataUrl,
-              sizes: "512x512",
+              sizes,
               type: meta?.pictureType ?? "image/jpeg",
             },
+            ...FALLBACK_ARTWORK,
           ]
         : FALLBACK_ARTWORK
 
@@ -176,11 +220,11 @@ export function useMediaSession(): void {
     // single metadata update rather than fallback-then-real, which it
     // renders as a brief lock-screen blink.
     if (meta?.pictureDataUrl) {
-      apply(meta.pictureDataUrl)
+      void apply(meta.pictureDataUrl)
     } else if (meta?.pictureBlob) {
       void getPictureDataUrl(song.id).then(apply)
     } else {
-      apply(undefined)
+      void apply(undefined)
     }
 
     return () => {

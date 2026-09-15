@@ -10,16 +10,9 @@ import {
   inspectCache,
   refreshStaleDownloads,
 } from "@/lib/audio-cache"
+import { formatBytes } from "@/lib/format"
 
 const DISMISSED_KEY = "scoutbangers:offline:new-songs-dismissed-mtime"
-
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 MB"
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  if (bytes < 1024 * 1024 * 1024)
-    return `${(bytes / (1024 * 1024)).toFixed(0)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
-}
 
 /**
  * Shown once a user has opted into offline downloads (i.e. has any

@@ -4,6 +4,7 @@ import { HardDrive, Trash2, X } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 
+import { formatBytes } from "@/lib/format"
 import type { Song } from "@/lib/types"
 
 interface DownloadedSongsModalProps {
@@ -12,14 +13,6 @@ interface DownloadedSongsModalProps {
   cachedIds: Set<string>
   songs: Song[]
   onEvict?: (songId: string) => Promise<void>
-}
-
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 MB"
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  if (bytes < 1024 * 1024 * 1024)
-    return `${(bytes / (1024 * 1024)).toFixed(0)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
 /**

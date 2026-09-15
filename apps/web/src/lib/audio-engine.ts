@@ -29,8 +29,13 @@
  *   - `createMediaElementSource(audio)` can only be called once per
  *     element. We track attached elements and skip duplicate calls.
  *   - On Safari (notably older iOS), Web Audio + MediaElementSource
- *     requires the audio element to NOT be cross-origin. Same-origin
- *     `/api/stream/*` URLs are fine.
+ *     refuses to read from a cross-origin element unless CORS is
+ *     satisfied. Audio streams cross-origin from audio.scoutbangers.com
+ *     (R2), so the `<audio>` elements are created with
+ *     `crossOrigin="anonymous"` and R2 must answer with the matching
+ *     `Access-Control-Allow-Origin` — without both sides, the element
+ *     loads and plays fine but is "tainted" and createMediaElementSource
+ *     silently produces silence instead of throwing.
  */
 
 interface DeckState {

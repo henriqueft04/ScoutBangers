@@ -3,3 +3,17 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+
+# The service worker script itself must never be served from cache — if a
+# browser (or an intermediate cache) serves a stale /sw.js, it never even
+# learns a new version exists, no matter how well the rest of the update
+# pipeline works. This is the single most common reason a PWA gets stuck
+# on an old build indefinitely. no-cache (not no-store) still allows a
+# conditional GET, so an unchanged file is still a cheap 304.
+/sw.js
+  Cache-Control: no-cache
+
+# Same reasoning for the manifest — icon/name/display changes should
+# reach installed home-screen apps without waiting out a long TTL.
+/manifest.webmanifest
+  Cache-Control: no-cache

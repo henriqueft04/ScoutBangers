@@ -25,6 +25,57 @@ interface DriveListResponse {
 
 const PER_RUN_CAP = 20
 
+/**
+ * Canonical Content-Type per file extension, for the audio formats we
+ * actually expect. Extension is the most reliable signal we have:
+ *  - Drive's `alt=media` download response Content-Type header is
+ *    unreliable — it sometimes serves `application/octet-stream`
+ *    for a file whose Drive-listed mimeType is perfectly correct.
+ *  - `file.mimeType` (from `files.list`) is usually right, but can
+ *    also be whatever the uploading client happened to set.
+ * Both of those get baked into the R2 object's Content-Type header
+ * forever (until re-synced), and Safari/WebKit trusts a Blob's
+ * declared type strictly when deciding whether it can play a
+ * downloaded (cached) song — an incorrect type manifests as "formato
+ * não suportado" even though the very same bytes stream fine directly
+ * from R2 (where browsers are more willing to sniff). Extension is
+ * deterministic and immune to both upstream quirks.
+ */
+const EXTENSION_CONTENT_TYPE: Record<string, string> = {
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  m4b: "audio/mp4",
+  aac: "audio/aac",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  opus: "audio/opus",
+  flac: "audio/flac",
+  weba: "audio/webm",
+}
+
+function resolveContentType(
+  file: DriveFile,
+  upstreamContentType: string | null
+): string {
+  const ext = file.name.split(".").pop()?.toLowerCase()
+  if (ext && EXTENSION_CONTENT_TYPE[ext]) {
+    return EXTENSION_CONTENT_TYPE[ext]
+  }
+  return file.mimeType || upstreamContentType || "application/octet-stream"
+}
+
+/**
+ * Bumped whenever `resolveContentType` changes in a way that could fix
+ * previously-mis-typed objects. Stored as R2 customMetadata alongside
+ * `driveModifiedTime`; the skip-check in `runSync` requires BOTH to
+ * match, so bumping this forces every existing object to be silently
+ * re-copied (paced by PER_RUN_CAP across the 15-min cron) even though
+ * Drive's own modifiedTime hasn't changed — a self-healing backfill
+ * that needs no manual/admin action.
+ */
+const CONTENT_TYPE_VERSION = "2"
+
 async function listFolder(token: string, folderId: string): Promise<DriveFile[]> {
   const out: DriveFile[] = []
   let pageToken: string | undefined
@@ -56,12 +107,13 @@ async function copyOne(env: Env, token: string, file: DriveFile): Promise<void> 
   if (!upstream.ok || !upstream.body) {
     throw new Error(`Drive download failed for ${file.id}: ${upstream.status}`)
   }
-  const contentType = upstream.headers.get("content-type") ?? file.mimeType
+  const contentType = resolveContentType(file, upstream.headers.get("content-type"))
   await env.AUDIO_BUCKET.put(file.id, upstream.body, {
     httpMetadata: { contentType },
     customMetadata: {
       driveName: file.name,
       driveModifiedTime: file.modifiedTime,
+      contentTypeVersion: CONTENT_TYPE_VERSION,
     },
   })
 }
@@ -112,8 +164,17 @@ async function runSync(env: Env, debug = false): Promise<SyncResult> {
       // changed (new tags, embedded thumbnail, re-encoded audio, etc.)
       // and we need to overwrite. Without this check, edits made on
       // Drive after the first sync were silently invisible to the app.
+      //
+      // Also re-sync if the object predates the current
+      // CONTENT_TYPE_VERSION — see resolveContentType's comment. This
+      // makes a version bump self-heal every previously-mis-typed
+      // object over the next several cron ticks with no admin action.
       cachedMtime = existing.customMetadata?.driveModifiedTime
-      if (cachedMtime === file.modifiedTime) {
+      const cachedContentTypeVersion = existing.customMetadata?.contentTypeVersion
+      if (
+        cachedMtime === file.modifiedTime &&
+        cachedContentTypeVersion === CONTENT_TYPE_VERSION
+      ) {
         decision = "skip"
       } else {
         decision = "copy"
