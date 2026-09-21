@@ -84,8 +84,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     if (!user || !profile) return
     
     if (profile.tour_completed_at === null) {
-      autoStartedRef.current = true
       const timer = window.setTimeout(() => {
+        autoStartedRef.current = true
         setActiveTourId("main")
         setStepIndex(0)
       }, AUTO_START_DELAY_MS)
@@ -99,8 +99,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     } catch { /* ignore */ }
 
     if (!hasSeenUpdate && !cachedSeenUpdate) {
-      autoStartedRef.current = true
       const timer = window.setTimeout(() => {
+        autoStartedRef.current = true
         setActiveTourId("update")
         setStepIndex(0)
       }, AUTO_START_DELAY_MS)
