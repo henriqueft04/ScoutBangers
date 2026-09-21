@@ -1,5 +1,5 @@
 import * as React from "react"
-import { CloudDownload, Loader2, LogIn, Moon, RefreshCw, Sun } from "lucide-react"
+import { CloudDownload, Loader2, LogIn, Moon, RefreshCw, Sun, Plus, ShieldAlert } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
@@ -109,6 +109,16 @@ export function Header({ className }: HeaderProps) {
           >
             {theme === "dark" ? <Sun /> : <Moon />}
           </Button>
+          {user ? (
+            <Link
+              to="/submit"
+              data-tour-id="nav-submit"
+              className="inline-flex size-7 lg:size-8 shrink-0 items-center justify-center rounded-[min(var(--radius-md),12px)] text-sm font-medium transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 touch-manipulation"
+              aria-label="Submeter Música"
+            >
+              <Plus className="size-4" />
+            </Link>
+          ) : null}
           {isAdmin ? (
             <Button
               type="button"
@@ -121,6 +131,15 @@ export function Header({ className }: HeaderProps) {
             >
               {syncing ? <Loader2 className="animate-spin" /> : <CloudDownload />}
             </Button>
+          ) : null}
+          {isAdmin ? (
+            <Link
+              to="/admin"
+              className="inline-flex size-7 lg:size-8 shrink-0 items-center justify-center rounded-[min(var(--radius-md),12px)] text-sm font-medium transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 touch-manipulation text-primary"
+              aria-label="Painel de Admin"
+            >
+              <ShieldAlert className="size-4" />
+            </Link>
           ) : null}
           <Button
             type="button"

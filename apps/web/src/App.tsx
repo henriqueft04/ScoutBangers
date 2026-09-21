@@ -114,7 +114,16 @@ const StatsPage = lazyWithReload(() =>
     default: m.StatsPage,
   }))
 )
-
+const SubmitPage = lazyWithReload(() =>
+  import("@/components/pages/submit-page").then((m) => ({
+    default: m.SubmitPage,
+  }))
+)
+const AdminPage = lazyWithReload(() =>
+  import("@/components/pages/admin-page").then((m) => ({
+    default: m.AdminPage,
+  }))
+)
 // Eagerly fetch every lazy-loaded route chunk after first paint, so
 // each chunk lands in the service worker's asset cache and tab
 // switches work offline. Without this, an offline user who only
@@ -131,6 +140,8 @@ if (typeof window !== "undefined") {
       void import("@/components/pages/public-profile-page")
       void import("@/components/pages/artist-page")
       void import("@/components/pages/stats-page")
+      void import("@/components/pages/submit-page")
+      void import("@/components/pages/admin-page")
     }
     if ("requestIdleCallback" in window) {
       ;(window as Window & typeof globalThis).requestIdleCallback(prefetch)
@@ -171,6 +182,8 @@ export function App() {
                   <Route path="/u/:userId" element={<PublicProfilePage />} />
                   <Route path="/artist/:name" element={<ArtistPage />} />
                   <Route path="/estatisticas" element={<StatsPage />} />
+                  <Route path="/submit" element={<SubmitPage />} />
+                  <Route path="/admin" element={<AdminPage />} />
                   <Route path="*" element={<HomePage />} />
                 </Routes>
               </React.Suspense>

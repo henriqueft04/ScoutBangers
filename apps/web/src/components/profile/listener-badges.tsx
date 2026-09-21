@@ -1,6 +1,6 @@
 import * as React from "react"
 import { createPortal } from "react-dom"
-import { Loader2, Medal, Trophy, X } from "lucide-react"
+import { Loader2, Medal, Trophy, X, Music } from "lucide-react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -53,9 +53,25 @@ const formatWeek = (iso: string) => {
  */
 export function ListenerBadges({ userId, counts }: ListenerBadgesProps) {
   const [openTier, setOpenTier] = React.useState<Tier | null>(null)
+  const [uploadsModalOpen, setUploadsModalOpen] = React.useState(false)
+  const [uploadCount, setUploadCount] = React.useState(0)
+
+  React.useEffect(() => {
+    if (!userId || !supabase) return
+    let cancelled = false
+    void (async () => {
+      const { count } = await supabase
+        .from("song_submissions")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("status", "approved")
+      if (!cancelled && count !== null) setUploadCount(count)
+    })()
+    return () => { cancelled = true }
+  }, [userId])
 
   if (!counts || !userId) return null
-  const total = counts.gold + counts.silver + counts.bronze
+  const total = counts.gold + counts.silver + counts.bronze + uploadCount
   if (total === 0) return null
 
   const tiers: Tier[] = [
@@ -67,9 +83,27 @@ export function ListenerBadges({ userId, counts }: ListenerBadgesProps) {
   return (
     <section className="flex flex-col gap-2">
       <h3 className="text-muted-foreground text-xs uppercase tracking-wider">
-        Distinções semanais
+        Distinções
       </h3>
       <ul role="list" className="flex flex-wrap gap-2">
+        {uploadCount > 0 && (
+          <li>
+            <button
+              type="button"
+              onClick={() => setUploadsModalOpen(true)}
+              className="border-border bg-card hover:bg-accent/40 flex items-center gap-2 rounded-full border px-3 py-1.5 transition-colors"
+              aria-label="Ver informação sobre badge de uploads"
+            >
+              <Music className="size-4 text-emerald-500" />
+              <span className="text-foreground text-sm font-medium">
+                Uploads
+              </span>
+              <span className="text-muted-foreground text-xs">
+                ×{uploadCount}
+              </span>
+            </button>
+          </li>
+        )}
         {tiers
           .filter((tier) => tier.count > 0)
           .map((tier) => (
@@ -101,7 +135,59 @@ export function ListenerBadges({ userId, counts }: ListenerBadgesProps) {
         tier={openTier}
         onClose={() => setOpenTier(null)}
       />
+      {uploadsModalOpen && (
+        <UploadsInfoModal count={uploadCount} onClose={() => setUploadsModalOpen(false)} />
+      )}
     </section>
+  )
+}
+
+function UploadsInfoModal({ count, onClose }: { count: number; onClose: () => void }) {
+  React.useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose()
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [onClose])
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Informação de Uploads"
+      className="bg-background/80 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-card text-card-foreground border-border animate-in fade-in zoom-in-95 flex max-h-[80vh] w-full max-w-sm flex-col rounded-2xl border shadow-xl duration-200 ease-out"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="flex items-center justify-between gap-3 px-6 pt-5 pb-3">
+          <div className="flex items-center gap-2">
+            <Music className="size-5 text-emerald-500" />
+            <h2 className="text-foreground text-base font-semibold tracking-tight">
+              Uploads — {count} {count === 1 ? "música" : "músicas"}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-muted-foreground hover:text-foreground rounded-md p-1"
+            aria-label="Fechar"
+          >
+            <X className="size-4" />
+          </button>
+        </header>
+
+        <div className="px-6 pb-6 pt-2">
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            Esta distinção é atribuída pelo número de músicas que submeteste e que foram posteriormente aprovadas por um administrador para integrar o catálogo oficial da plataforma.
+          </p>
+        </div>
+      </div>
+    </div>,
+    document.body
   )
 }
 

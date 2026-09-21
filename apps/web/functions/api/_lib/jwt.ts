@@ -9,6 +9,7 @@
 export interface JwtEnv {
   SUPABASE_JWT_SECRET?: string
   SUPABASE_URL?: string
+  VITE_SUPABASE_URL?: string
 }
 
 interface JwtHeader {
@@ -93,9 +94,10 @@ export async function verifyJwt(
       )
       signatureValid = await crypto.subtle.verify("HMAC", key, signature, data)
     } else if (header.alg === "RS256" || header.alg === "ES256") {
-      if (!env.SUPABASE_URL)
+      const supabaseUrl = env.SUPABASE_URL || env.VITE_SUPABASE_URL
+      if (!supabaseUrl)
         return { ok: false, reason: `${header.alg} token but SUPABASE_URL unset` }
-      const jwks = await getJwks(env.SUPABASE_URL)
+      const jwks = await getJwks(supabaseUrl)
       if (jwks.length === 0) return { ok: false, reason: "JWKS empty" }
       const match =
         jwks.find((k) => (k as { kid?: string }).kid === header.kid) ?? jwks[0]

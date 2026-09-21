@@ -1,4 +1,34 @@
+import * as React from "react"
 import type { TourStep } from "./tour-context"
+
+function JokeMultipleChoice() {
+  const [selected, setSelected] = React.useState<number | null>(null)
+  
+  const options = [
+    { text: "Agora o ScoutBangers é pago 🤑 (vou ficar rico LET'S GOO)", reply: "Por acaso comprei agora uma mochila nova e as atividades andam caras, mas continua grátis 🏄" },
+  { text: "As músicas vão passar a ser covers do Chefe Nacional 🎤", reply: "Embora o Chefe Bento tenha com certeza o maior vozeirão do CNE, ainda não o consegui convencer a cantar os 7 minutos da Ronda :(" },
+    { text: "O Spotify comprou a app por duas Bifanas e um Fino 🌭", reply: "Embora adore essa combinação, seriam precisos mais alguns finos do que isso para eu vender o ScoutBangers hehe" },
+  ]
+  
+  return (
+    <div className="flex flex-col gap-3 mt-2">
+      {options.map((opt, i) => (
+        <button
+          key={i}
+          onClick={() => setSelected(i)}
+          className={`text-left text-xs p-2 rounded-md transition-colors border ${selected === i ? "border-primary bg-primary/10" : "border-border bg-card hover:bg-accent"}`}
+        >
+          {opt.text}
+        </button>
+      ))}
+      {selected !== null && (
+        <div className="text-sm font-medium text-red-800 mt-2">
+          {options[selected].reply}
+        </div>
+      )}
+    </div>
+  )
+}
 
 /**
  * Main first-run tour. Adding / removing steps only requires editing
@@ -119,8 +149,8 @@ export const MAIN_TOUR: TourStep[] = [
   {
     id: "welcome",
     target: null,
-    title: "Bem-vindo à ScoutBangers",
-    body: "Vou mostrar-te os essenciais em menos de um minuto. Podes saltar a qualquer momento.",
+    title: "Bem-vindo ao ScoutBangers",
+    body: "Vou mostrar-te os essenciais em menos de um minuto para não estares perdido, era mesmo importante veres isto, mas podes bazar daqui a qualquer momento.",
   },
   {
     id: "nav-home",
@@ -291,13 +321,41 @@ export const MAIN_TOUR: TourStep[] = [
     nextRoute: "/profile",
   },
   {
-    id: "profile-page",
+    id: "outro",
     target: null,
-    title: "Pronto!",
-    body: "Este é o teu perfil. Aqui podes editar dados, gerir downloads e voltar a ver este passeio quando quiseres.",
+    title: "E é tudo!",
+    body: "Tudo o resto vais descobrindo. Aproveita e partilha as tuas músicas favoritas com a malta!",
   },
+]
+
+export const UPDATE_TOUR: TourStep[] = [
+  {
+    id: "update-welcome",
+    target: null,
+    unskippable: true,
+    title: "Atenção!! Novidades no ScoutBangers! 👀",
+    body: "Há uma funcionalidade nova e um aviso importante. Em primeiro lugar: se tens tido problemas em tocar as músicas no telemóvel, por favor desinstala e volta a instalar a app, houve bastantes alterações na app e pode ser preciso reinstalar, my bad lol.",
+  },
+  {
+    id: "update-joke",
+    target: null,
+    unskippable: true,
+    title: "O que achas que é a nova feature? 🤔",
+    body: <JokeMultipleChoice />,
+  },
+  {
+    id: "update-upload",
+    target: '[data-tour-id="nav-submit"]',
+    route: "/",
+    unskippable: true,
+    advanceOn: "click",
+    title: "Nova Funcionalidade: Uploads!!!",
+    body: "Agora qualquer pessoa pode submeter novas músicas (incluindo áudio e imagem de capa) para integrar a plataforma (já não têm de lidar com a dor de cabeça que é me mandar mensagem ahaha). Carrega aqui em cima e começa a contribuir!",
+    side: "auto",
+  }
 ]
 
 export const TOURS: Record<string, TourStep[]> = {
   main: MAIN_TOUR,
+  update: UPDATE_TOUR,
 }

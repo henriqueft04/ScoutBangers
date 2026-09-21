@@ -82,13 +82,30 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (autoStartedRef.current) return
     if (!user || !profile) return
-    if (profile.tour_completed_at !== null) return
-    autoStartedRef.current = true
-    const timer = window.setTimeout(() => {
-      setActiveTourId("main")
-      setStepIndex(0)
-    }, AUTO_START_DELAY_MS)
-    return () => window.clearTimeout(timer)
+    
+    if (profile.tour_completed_at === null) {
+      autoStartedRef.current = true
+      const timer = window.setTimeout(() => {
+        setActiveTourId("main")
+        setStepIndex(0)
+      }, AUTO_START_DELAY_MS)
+      return () => window.clearTimeout(timer)
+    }
+
+    const hasSeenUpdate = profile.update_tour_seen === true
+    let cachedSeenUpdate = false
+    try {
+      cachedSeenUpdate = localStorage.getItem("scoutbangers:tour-update-seen-v1") === "1"
+    } catch { /* ignore */ }
+
+    if (!hasSeenUpdate && !cachedSeenUpdate) {
+      autoStartedRef.current = true
+      const timer = window.setTimeout(() => {
+        setActiveTourId("update")
+        setStepIndex(0)
+      }, AUTO_START_DELAY_MS)
+      return () => window.clearTimeout(timer)
+    }
   }, [user, profile])
 
   const steps: TourStep[] = React.useMemo(
@@ -154,16 +171,41 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, refreshProfile])
 
+  const recordUpdateCompletion = React.useCallback(async () => {
+    if (!user) return
+    try {
+      localStorage.setItem("scoutbangers:tour-update-seen-v1", "1")
+    } catch { /* ignore */ }
+    if (!supabase) return
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ update_tour_seen: true })
+        .eq("id", user.id)
+      if (!error) {
+        await refreshProfile()
+      }
+    } catch { /* ignore */ }
+  }, [user, refreshProfile])
+
   // Single "tour is over" path used by skip, complete, and the
   // last-step branch of next. All three end the same way (clear active
   // tour, reset index, mark seen, persist) so they share this helper
   // instead of repeating the four lines.
   const finishTour = React.useCallback(() => {
-    setActiveTourId(null)
-    setStepIndex(0)
-    setHasSeenTour(true)
-    void recordCompletion()
-  }, [recordCompletion])
+    if (activeTourId === "update") {
+      void recordUpdateCompletion()
+      setActiveTourId(null)
+      setStepIndex(0)
+    } else {
+      setHasSeenTour(true)
+      void recordCompletion()
+      
+      // Quando acabam ou dão skip ao MAIN_TOUR, passam para o UPDATE_TOUR
+      setActiveTourId("update")
+      setStepIndex(0)
+    }
+  }, [activeTourId, recordCompletion, recordUpdateCompletion])
 
   const start = React.useCallback((tourId: string) => {
     if (!TOURS[tourId]) return

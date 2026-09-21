@@ -47,7 +47,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
 
   let token: string
   try {
-    token = await getDriveAccessToken(env.GOOGLE_SERVICE_ACCOUNT_JSON)
+    token = await getDriveAccessToken(env)
   } catch (error) {
     return json(
       {

@@ -11,22 +11,11 @@
 import { useAuth } from "@/hooks/useAuth"
 import { supabase } from "./supabase"
 
-function adminEmails(): Set<string> {
-  const raw =
-    (import.meta.env.VITE_ADMIN_EMAILS as string | undefined) ?? ""
-  return new Set(
-    raw
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean)
-  )
-}
+
 
 export function useIsAdmin(): boolean {
-  const { user } = useAuth()
-  const email = user?.email?.toLowerCase()
-  if (!email) return false
-  return adminEmails().has(email)
+  const { profile } = useAuth()
+  return profile?.is_admin === true
 }
 
 export async function triggerDriveSync(): Promise<void> {

@@ -59,7 +59,7 @@ export function devApi(): Plugin {
             return
           }
 
-          const webRequest = toWebRequest(req, requestUrl)
+          const webRequest = await toWebRequest(req, requestUrl)
           const webResponse = await handler({
             request: webRequest,
             env: { ...process.env },
@@ -118,15 +118,32 @@ async function resolveHandlerPath(
   if (await exists(direct)) return { filePath: direct, params: {} }
 
   if (segments.length > 1) {
-    const dynamic = path.join(
+    // Try [id].ts at the end
+    const dynamicEnd = path.join(
       apiRoot,
       ...segments.slice(0, -1),
       "[id].ts"
     )
-    if (await exists(dynamic)) {
+    if (await exists(dynamicEnd)) {
       return {
-        filePath: dynamic,
+        filePath: dynamicEnd,
         params: { id: segments[segments.length - 1]! },
+      }
+    }
+
+    // Try [id] directory with a trailing file (e.g. submissions/[id]/approve.ts)
+    if (segments.length > 2) {
+      const dynamicMid = path.join(
+        apiRoot,
+        ...segments.slice(0, -2),
+        "[id]",
+        segments[segments.length - 1]! + ".ts"
+      )
+      if (await exists(dynamicMid)) {
+        return {
+          filePath: dynamicMid,
+          params: { id: segments[segments.length - 2]! },
+        }
       }
     }
   }
@@ -143,10 +160,10 @@ async function exists(filePath: string): Promise<boolean> {
   }
 }
 
-function toWebRequest(
+async function toWebRequest(
   req: import("node:http").IncomingMessage,
   url: URL
-): Request {
+): Promise<Request> {
   const headers = new Headers()
   for (const [key, value] of Object.entries(req.headers)) {
     if (Array.isArray(value)) {
@@ -161,7 +178,14 @@ function toWebRequest(
     headers,
   }
 
-  // Bodies aren't needed for our GET-only API; add support if it ever changes.
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    const buffers: Buffer[] = []
+    for await (const chunk of req) {
+      buffers.push(chunk)
+    }
+    init.body = Buffer.concat(buffers)
+  }
+
   return new Request(url.toString(), init)
 }
 
