@@ -95,7 +95,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     const hasSeenUpdate = profile.update_tour_seen === true
     let cachedSeenUpdate = false
     try {
-      cachedSeenUpdate = localStorage.getItem("scoutbangers:tour-update-seen-v1") === "1"
+      cachedSeenUpdate = localStorage.getItem(`scoutbangers:tour-update-seen-v1:${user.id}`) === "1"
     } catch { /* ignore */ }
 
     if (!hasSeenUpdate && !cachedSeenUpdate) {
@@ -174,7 +174,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const recordUpdateCompletion = React.useCallback(async () => {
     if (!user) return
     try {
-      localStorage.setItem("scoutbangers:tour-update-seen-v1", "1")
+      localStorage.setItem(`scoutbangers:tour-update-seen-v1:${user.id}`, "1")
     } catch { /* ignore */ }
     if (!supabase) return
     try {

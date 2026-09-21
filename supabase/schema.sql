@@ -18,6 +18,7 @@ create table if not exists public.profiles (
   -- login. Replaying is always allowed via the Profile menu.
   tour_completed_at timestamptz,
   is_admin boolean not null default false,
+  update_tour_seen boolean default false,
   created_at timestamptz not null default now()
 );
 
@@ -438,7 +439,7 @@ create policy "users_read_own_submissions" on public.song_submissions
 -- Users can insert their own submissions
 drop policy if exists "users_insert_own_submissions" on public.song_submissions;
 create policy "users_insert_own_submissions" on public.song_submissions
-  for insert with check (auth.uid() = user_id);
+  for insert with check (auth.uid() = user_id and status = 'pending');
 
 -- Admins can read all submissions
 drop policy if exists "admins_read_all_submissions" on public.song_submissions;
@@ -465,11 +466,34 @@ insert into storage.buckets (id, name, public)
 values ('submissions', 'submissions', false)
 on conflict do nothing;
 
+drop policy if exists "Users can upload submissions" on storage.objects;
 create policy "Users can upload submissions" on storage.objects
   for insert with check (bucket_id = 'submissions' and auth.uid()::text = (storage.foldername(name))[1]);
 
+drop policy if exists "Admins can read submissions" on storage.objects;
 create policy "Admins can read submissions" on storage.objects
   for select using (bucket_id = 'submissions' and exists (select 1 from public.profiles where id = auth.uid() and is_admin = true));
 
+drop policy if exists "Admins can delete submissions" on storage.objects;
 create policy "Admins can delete submissions" on storage.objects
   for delete using (bucket_id = 'submissions' and exists (select 1 from public.profiles where id = auth.uid() and is_admin = true));
+
+-- Protect is_admin from being updated by regular users
+CREATE OR REPLACE FUNCTION public.protect_is_admin()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.is_admin IS DISTINCT FROM OLD.is_admin THEN
+    -- Only allow the service_role (or superuser) to change this flag
+    IF current_setting('role') != 'service_role' THEN
+      NEW.is_admin = OLD.is_admin;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS protect_is_admin_trigger ON public.profiles;
+CREATE TRIGGER protect_is_admin_trigger
+BEFORE UPDATE ON public.profiles
+FOR EACH ROW
+EXECUTE FUNCTION public.protect_is_admin();

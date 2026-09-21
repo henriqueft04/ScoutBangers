@@ -42,20 +42,21 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   if (!jwt.ok) return json({ error: "Invalid token" }, 401)
 
   const supabaseUrl = env.VITE_SUPABASE_URL
-  const getSubReq = await fetch(`${supabaseUrl}/rest/v1/song_submissions?id=eq.${submissionId}&select=*`, {
+  const getSubReq = await fetch(`${supabaseUrl}/rest/v1/song_submissions?id=eq.${submissionId}&status=in.(pending,rejected)`, {
+    method: "PATCH",
     headers: {
       "apikey": env.VITE_SUPABASE_ANON_KEY,
-      "Authorization": `Bearer ${token}`
-    }
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "Prefer": "return=representation"
+    },
+    body: JSON.stringify({ status: "processing" })
   })
-  if (!getSubReq.ok) return json({ error: "Failed to fetch submission" }, 500)
+  if (!getSubReq.ok) return json({ error: "Failed to fetch or claim submission" }, 500)
   const submissions = await getSubReq.json() as any[]
-  if (!submissions || submissions.length === 0) return json({ error: "Submission not found or unauthorized" }, 404)
+  if (!submissions || submissions.length === 0) return json({ error: "Submission not found, unauthorized, or already being processed" }, 404)
   
   const sub = submissions[0]
-  if (sub.status !== "pending" && sub.status !== "rejected") {
-    return json({ error: "Submission is not pending or rejected" }, 400)
-  }
 
   const mp3Req = await fetch(`${supabaseUrl}/storage/v1/object/authenticated/submissions/${sub.audio_path}`, {
     headers: { "Authorization": `Bearer ${token}` }
@@ -156,8 +157,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   })
   if (!updateReq.ok) return json({ error: "Failed to update submission status" }, 500)
 
-  await fetch(`${supabaseUrl}/storage/v1/object/submissions`, {
-    method: "DELETE",
+  await fetch(`${supabaseUrl}/storage/v1/object/submissions/remove`, {
+    method: "POST",
     headers: {
       "apikey": env.VITE_SUPABASE_ANON_KEY,
       "Authorization": `Bearer ${token}`,
@@ -174,6 +175,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   return json({ success: true })
   } catch (err) {
-    return json({ error: "Caught exception in approve.ts", details: err instanceof Error ? err.stack : String(err) }, 500)
+    console.error("Caught exception in approve.ts:", err)
+    return json({ error: "Failed to approve submission" }, 500)
   }
 }
