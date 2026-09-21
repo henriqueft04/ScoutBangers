@@ -59,6 +59,7 @@ function SubmissionRow({
           <Button 
             variant="secondary" 
             size="icon" 
+            aria-label={playingId === sub.id ? "Pausar pré-visualização" : "Reproduzir pré-visualização"}
             className="shrink-0 rounded-full size-12"
             onClick={() => onPlay(sub)}
           >

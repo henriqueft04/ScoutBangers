@@ -23,29 +23,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }
   if (!jwt.ok) return json({ error: "Invalid token" }, 401)
 
   const supabaseUrl = env.VITE_SUPABASE_URL
-  const getSubReq = await fetch(`${supabaseUrl}/rest/v1/song_submissions?id=eq.${submissionId}&select=*`, {
-    headers: {
-      "apikey": env.VITE_SUPABASE_ANON_KEY,
-      "Authorization": `Bearer ${token}`
-    }
-  })
-  if (!getSubReq.ok) return json({ error: "Failed to fetch submission" }, 500)
-  const submissions = await getSubReq.json() as any[]
-  if (!submissions || submissions.length === 0) return json({ error: "Submission not found or unauthorized" }, 404)
-  
-  const sub = submissions[0]
-  if (sub.status !== "pending") return json({ error: "Submission is not pending" }, 400)
-
-  const updateReq = await fetch(`${supabaseUrl}/rest/v1/song_submissions?id=eq.${submissionId}`, {
+  const updateReq = await fetch(`${supabaseUrl}/rest/v1/song_submissions?id=eq.${submissionId}&status=eq.pending`, {
     method: "PATCH",
     headers: {
       "apikey": env.VITE_SUPABASE_ANON_KEY,
       "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "Prefer": "return=representation"
     },
     body: JSON.stringify({ status: "rejected" })
   })
-  if (!updateReq.ok) return json({ error: "Failed to update submission status" }, 500)
+  if (!updateReq.ok) return json({ error: "Failed to reject submission" }, 500)
+  const rejected = await updateReq.json() as any[]
+  if (!rejected || rejected.length === 0) return json({ error: "Submission not found, unauthorized, or not pending" }, 404)
 
   return json({ success: true })
 }
