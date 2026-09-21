@@ -16,11 +16,13 @@ export interface Database {
           share_activity: boolean
           show_badges: boolean
           tour_completed_at: string | null
+          update_tour_seen: boolean | null
           created_at: string
           regiao: string | null
           nucleo: string | null
           agrupamento_numero: number | null
           agrupamento_nome: string | null
+          is_admin: boolean
         }
         Insert: {
           id: string
@@ -30,11 +32,13 @@ export interface Database {
           share_activity?: boolean
           show_badges?: boolean
           tour_completed_at?: string | null
+          update_tour_seen?: boolean | null
           created_at?: string
           regiao?: string | null
           nucleo?: string | null
           agrupamento_numero?: number | null
           agrupamento_nome?: string | null
+          is_admin?: boolean
         }
         Update: {
           id?: string
@@ -44,11 +48,13 @@ export interface Database {
           share_activity?: boolean
           show_badges?: boolean
           tour_completed_at?: string | null
+          update_tour_seen?: boolean | null
           created_at?: string
           regiao?: string | null
           nucleo?: string | null
           agrupamento_numero?: number | null
           agrupamento_nome?: string | null
+          is_admin?: boolean
         }
         Relationships: []
       }
@@ -180,6 +186,56 @@ export interface Database {
           saved_at?: string
         }
         Relationships: []
+      }
+      song_submissions: {
+        Row: {
+          id: string
+          user_id: string
+          status: string
+          title: string
+          artist: string
+          album: string | null
+          year: string | null
+          genre: string | null
+          audio_path: string
+          thumbnail_path: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          status?: string
+          title: string
+          artist: string
+          album?: string | null
+          year?: string | null
+          genre?: string | null
+          audio_path: string
+          thumbnail_path?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          status?: string
+          title?: string
+          artist?: string
+          album?: string | null
+          year?: string | null
+          genre?: string | null
+          audio_path?: string
+          thumbnail_path?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "song_submissions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
       }
     }
     Views: Record<string, never>

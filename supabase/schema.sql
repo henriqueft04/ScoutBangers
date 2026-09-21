@@ -17,6 +17,7 @@ create table if not exists public.profiles (
   -- means "never seen the tour" — used to auto-start it on first
   -- login. Replaying is always allowed via the Profile menu.
   tour_completed_at timestamptz,
+  is_admin boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -410,3 +411,65 @@ as $$
 $$;
 
 grant execute on function public.saved_playlists_for_user(uuid) to anon, authenticated;
+
+-- ===== song_submissions ========================================
+
+create table if not exists public.song_submissions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  status text not null default 'pending', -- 'pending', 'approved', 'rejected'
+  title text not null,
+  artist text not null,
+  album text,
+  year text,
+  genre text,
+  audio_path text not null,
+  thumbnail_path text,
+  created_at timestamptz not null default now()
+);
+
+alter table public.song_submissions enable row level security;
+
+-- Users can read their own submissions
+drop policy if exists "users_read_own_submissions" on public.song_submissions;
+create policy "users_read_own_submissions" on public.song_submissions
+  for select using (auth.uid() = user_id);
+
+-- Users can insert their own submissions
+drop policy if exists "users_insert_own_submissions" on public.song_submissions;
+create policy "users_insert_own_submissions" on public.song_submissions
+  for insert with check (auth.uid() = user_id);
+
+-- Admins can read all submissions
+drop policy if exists "admins_read_all_submissions" on public.song_submissions;
+create policy "admins_read_all_submissions" on public.song_submissions
+  for select using (
+    exists (
+      select 1 from public.profiles
+      where id = auth.uid() and is_admin = true
+    )
+  );
+
+-- Admins can update all submissions
+drop policy if exists "admins_update_all_submissions" on public.song_submissions;
+create policy "admins_update_all_submissions" on public.song_submissions
+  for update using (
+    exists (
+      select 1 from public.profiles
+      where id = auth.uid() and is_admin = true
+    )
+  );
+
+-- Insert submissions bucket
+insert into storage.buckets (id, name, public) 
+values ('submissions', 'submissions', false)
+on conflict do nothing;
+
+create policy "Users can upload submissions" on storage.objects
+  for insert with check (bucket_id = 'submissions' and auth.uid()::text = (storage.foldername(name))[1]);
+
+create policy "Admins can read submissions" on storage.objects
+  for select using (bucket_id = 'submissions' and exists (select 1 from public.profiles where id = auth.uid() and is_admin = true));
+
+create policy "Admins can delete submissions" on storage.objects
+  for delete using (bucket_id = 'submissions' and exists (select 1 from public.profiles where id = auth.uid() and is_admin = true));

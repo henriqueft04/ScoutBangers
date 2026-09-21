@@ -25,7 +25,7 @@ export interface TourStep {
   target: string | null
   route?: string
   title: string
-  body: string
+  body: React.ReactNode
   side?: TourSide
   advanceOn?: "next" | "click"
   /**
@@ -58,6 +58,7 @@ export interface TourStep {
    * isn't visually obscured by the still-open lyrics sheet.
    */
   onEnter?: () => void
+  unskippable?: boolean
 }
 
 export interface TourContextValue {

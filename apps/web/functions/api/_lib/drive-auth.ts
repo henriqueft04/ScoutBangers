@@ -1,4 +1,4 @@
-const SCOPE = "https://www.googleapis.com/auth/drive.readonly"
+const SCOPE = "https://www.googleapis.com/auth/drive"
 const TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 interface ServiceAccountCreds {
@@ -54,10 +54,24 @@ function jsonToBase64url(obj: unknown): string {
   return toBase64url(strToBuffer(JSON.stringify(obj)))
 }
 
-export async function getDriveAccessToken(
-  rawCreds: string | undefined
-): Promise<string> {
-  const { client_email, private_key } = parseServiceAccount(rawCreds)
+export async function getDriveAccessToken(env: any): Promise<string> {
+  if (env.GOOGLE_REFRESH_TOKEN && env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
+    const res = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: env.GOOGLE_CLIENT_ID,
+        client_secret: env.GOOGLE_CLIENT_SECRET,
+        refresh_token: env.GOOGLE_REFRESH_TOKEN,
+        grant_type: "refresh_token"
+      })
+    })
+    const data = await res.json() as any
+    if (data.access_token) return data.access_token
+    throw new Error("Failed to get access token from refresh token: " + JSON.stringify(data))
+  }
+
+  const { client_email, private_key } = parseServiceAccount(env.GOOGLE_SERVICE_ACCOUNT_JSON)
 
   const cryptoKey = await crypto.subtle.importKey(
     "pkcs8",
@@ -67,14 +81,18 @@ export async function getDriveAccessToken(
     ["sign"]
   )
 
-  const now = Math.floor(Date.now() / 1000)
+  // Fetch real time from Google to avoid local clock skew issues
+  const dateRes = await fetch("https://www.googleapis.com", { method: "HEAD" }).catch(() => null);
+  const serverDate = dateRes?.headers.get("date");
+  const now = serverDate ? Math.floor(new Date(serverDate).getTime() / 1000) : Math.floor(Date.now() / 1000);
+
   const header = jsonToBase64url({ alg: "RS256", typ: "JWT" })
   const payload = jsonToBase64url({
     iss: client_email,
     scope: SCOPE,
     aud: TOKEN_URL,
-    iat: now,
-    exp: now + 3600,
+    iat: now - 60, // 60s buffer
+    exp: now + 3540,
   })
 
   const sigBuf = await crypto.subtle.sign(

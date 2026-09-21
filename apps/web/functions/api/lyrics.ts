@@ -237,7 +237,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
 
   let token: string
   try {
-    token = await getDriveAccessToken(env.GOOGLE_SERVICE_ACCOUNT_JSON)
+    token = await getDriveAccessToken(env)
   } catch (error) {
     return new Response(
       `Drive auth failed: ${error instanceof Error ? error.message : String(error)}`,

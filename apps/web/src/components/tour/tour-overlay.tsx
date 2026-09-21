@@ -335,18 +335,20 @@ export function TourOverlay({ step }: OverlayProps) {
               <span className="text-muted-foreground text-[11px] font-medium tabular-nums">
                 {stepIndex + 1} / {totalSteps}
               </span>
-              <button
-                type="button"
-                onClick={skip}
-                className="text-muted-foreground hover:text-foreground text-[11px] font-medium transition-colors"
-              >
-                Saltar
-              </button>
+              {!step.unskippable && (
+                <button
+                  type="button"
+                  onClick={skip}
+                  className="text-muted-foreground hover:text-foreground text-[11px] font-medium transition-colors"
+                >
+                  Saltar
+                </button>
+              )}
             </div>
             <h3 className="text-sm font-semibold leading-tight">{step.title}</h3>
-            <p className="text-muted-foreground mt-1.5 text-[13px] leading-snug">
+            <div className="text-muted-foreground mt-1.5 text-[13px] leading-snug">
               {step.body}
-            </p>
+            </div>
             <div className="mt-3 flex items-center justify-between gap-2">
               <button
                 type="button"
