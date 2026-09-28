@@ -1,0 +1,27 @@
+name = "scoutbangers-chat"
+main = "src/index.ts"
+compatibility_date = "2025-11-01"
+
+[[durable_objects.bindings]]
+name = "CHAT_ROOM"
+class_name = "ChatRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ChatRoom"]
+
+[vars]
+# Both set to the same values as apps/web's VITE_SUPABASE_URL /
+# VITE_SUPABASE_ANON_KEY (apps/web/.env.example). The anon key is public by
+# design (RLS guards access), so it's safe as a plain var, not a secret.
+SUPABASE_URL = "https://ofksdksyicndihxxxbto.supabase.co"
+SUPABASE_ANON_KEY = "sb_publishable_u8CisZvaV2h0rkzYyuyAig_oAdo9Lzn"
+
+[[routes]]
+pattern = "chat.scoutbangers.com"
+custom_domain = true
+
+# Secrets to set via `wrangler secret put` (only needed if this Supabase
+# project uses legacy HS256 JWT signing instead of the default JWKS —
+# see src/verify-token.ts):
+#   SUPABASE_JWT_SECRET

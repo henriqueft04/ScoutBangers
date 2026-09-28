@@ -124,6 +124,11 @@ const AdminPage = lazyWithReload(() =>
     default: m.AdminPage,
   }))
 )
+const ChatPage = lazyWithReload(() =>
+  import("@/components/pages/chat-page").then((m) => ({
+    default: m.ChatPage,
+  }))
+)
 // Eagerly fetch every lazy-loaded route chunk after first paint, so
 // each chunk lands in the service worker's asset cache and tab
 // switches work offline. Without this, an offline user who only
@@ -142,6 +147,7 @@ if (typeof window !== "undefined") {
       void import("@/components/pages/stats-page")
       void import("@/components/pages/submit-page")
       void import("@/components/pages/admin-page")
+      void import("@/components/pages/chat-page")
     }
     if ("requestIdleCallback" in window) {
       ;(window as Window & typeof globalThis).requestIdleCallback(prefetch)
@@ -160,6 +166,7 @@ if (typeof window !== "undefined") {
  *   /profile             → profile + stats
  *   /sobre               → about page (PT)
  *   /artist/:name        → artist profile
+ *   /chat                → global chat
  */
 export function App() {
   return (
@@ -184,6 +191,7 @@ export function App() {
                   <Route path="/estatisticas" element={<StatsPage />} />
                   <Route path="/submit" element={<SubmitPage />} />
                   <Route path="/admin" element={<AdminPage />} />
+                  <Route path="/chat" element={<ChatPage />} />
                   <Route path="*" element={<HomePage />} />
                 </Routes>
               </React.Suspense>

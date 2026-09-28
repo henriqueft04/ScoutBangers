@@ -1,4 +1,11 @@
-import { Home, Info, ListMusic, Music2, User } from "lucide-react"
+import {
+  Home,
+  Info,
+  ListMusic,
+  MessageCircle,
+  Music2,
+  User,
+} from "lucide-react"
 
 /**
  * The primary navigation entries shared by the mobile bottom nav and
@@ -19,7 +26,13 @@ export interface NavItem {
 export const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { to: "/", label: "Início", Icon: Home, tourId: "nav-home" },
   { to: "/music", label: "Músicas", Icon: Music2, tourId: "nav-music" },
-  { to: "/playlists", label: "Playlists", Icon: ListMusic, tourId: "nav-playlists" },
+  {
+    to: "/playlists",
+    label: "Playlists",
+    Icon: ListMusic,
+    tourId: "nav-playlists",
+  },
+  { to: "/chat", label: "Chat", Icon: MessageCircle, tourId: "nav-chat" },
   { to: "/profile", label: "Perfil", Icon: User, tourId: "nav-profile" },
   { to: "/sobre", label: "Sobre", Icon: Info, tourId: "nav-about" },
 ]

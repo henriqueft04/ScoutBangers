@@ -1,16 +1,19 @@
-name: Deploy drive-sync worker
+name: Deploy workers
 
 on:
   push:
     branches: [main]
     paths:
-      - "workers/drive-sync/**"
+      - "workers/**"
       - ".github/workflows/deploy-worker.yml"
   workflow_dispatch: {}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        worker: [drive-sync, chat]
     steps:
       - uses: actions/checkout@v4
 
@@ -27,5 +30,5 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: workers/drive-sync
+          workingDirectory: workers/${{ matrix.worker }}
           command: deploy

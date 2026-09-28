@@ -5,8 +5,9 @@ import { cn } from "@workspace/ui/lib/utils"
 import { NAV_ITEMS } from "./nav-items"
 
 /**
- * Sticky bottom nav with 5 tabs. Sits below the PlayerBar in the layout
- * stack. Each tab icon swaps to its filled state via aria-current styling.
+ * Sticky bottom nav, tabs driven by NAV_ITEMS. Sits below the PlayerBar in
+ * the layout stack. Each tab icon swaps to its filled state via
+ * aria-current styling.
  */
 export function BottomNav() {
   return (

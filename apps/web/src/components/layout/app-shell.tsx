@@ -61,7 +61,6 @@ export function AppShell({ children }: AppShellProps) {
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [toggle])
 
-
   const [fullscreen, setFullscreen] = React.useState(false)
   const [initialPanel, setInitialPanel] = React.useState<
     "queue" | "lyrics" | null
@@ -129,7 +128,7 @@ export function AppShell({ children }: AppShellProps) {
         </div>
         <FriendsRail />
       </div>
-      <div className="sticky inset-x-0 bottom-0 z-20">
+      <div data-app-bottom-bar className="sticky inset-x-0 bottom-0 z-20">
         <PlayerBar
           onExpand={open}
           onOpenQueue={openQueue}

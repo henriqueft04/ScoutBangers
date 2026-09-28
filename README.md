@@ -1,143 +1,159 @@
-# ScoutBangers
+# 🎸 ScoutBangers
 
-A minimalist, mobile-first web music player. Built with React 19, Vite 7, Tailwind v4 and shadcn/ui. Hosted free on Cloudflare Pages with audio served direct from Cloudflare R2 (zero egress fees). Installable as a PWA on phones.
+A minimalist, mobile-first web music player and community platform. Built with React 19, Vite 7, Tailwind v4, and shadcn/ui. 
+Hosted free on Cloudflare Pages with audio served directly from Cloudflare R2 (zero egress fees), and powered by Supabase for authentication and database. Installable as a PWA on iOS/Android.
 
 | | |
 |---|---|
-| **Palette** | Red `#7B2D26` and white `#F0F3F5` |
-| **Catalog source** | Public Google Drive folder, mirrored hourly into R2 by a Cron Worker |
-| **Audio storage** | Cloudflare R2 (custom domain `audio.scoutbangers.com`) |
-| **Hosting** | Cloudflare Pages (SPA + `/api/songs` + `/api/lyrics`) |
-| **Install** | PWA — add to home screen on iOS/Android |
+| **🎨 Palette** | Red `#7B2D26` and white `#F0F3F5` |
+| **📁 Catalog source** | Public Google Drive folder, mirrored hourly into R2 by a Cron Worker |
+| **🎵 Audio storage** | Cloudflare R2 (custom domain `audio.scoutbangers.com`) |
+| **☁️ Hosting** | Cloudflare Pages (SPA + `/api/*` edge functions) |
+| **🗄️ Database & Auth** | Supabase (PostgreSQL + Google OAuth) |
+| **💬 Global chat** | Cloudflare Durable Object (`workers/chat`) — own storage, zero Supabase load |
+| **📱 Install** | PWA — add to home screen |
 
-## Quick start
+## ✨ Features
+- **Seamless Playback**: Background audio streaming powered by Howler.js.
+- **Offline Support**: Songs can be saved offline using the Cache API.
+- **Community Submissions**: Users can upload new songs and thumbnails directly in the app.
+- **Admin Dashboard**: Approvals workflow for community submissions, pushing accepted tracks seamlessly to Google Drive and R2.
+- **User Profiles & Playlists**: Authenticated users can build public/private playlists, track play counts, and view listening stats.
+- **Live Lyrics**: Parses a Google Doc ("Cancioneiro") into timestamped lyrics.
+- **Global Chat**: Real-time community chat, backed by a Cloudflare Durable Object rather than Supabase — keeps the database's connection/RAM budget untouched as the app grows.
+
+## 🚀 Quick Start
 
 ```bash
 npm install
 cd apps/web
-cp .env.example .env.local      # fill DRIVE_API_KEY and DRIVE_FOLDER_ID
+cp .env.example .env.local      # Fill in the required Supabase & Google keys
 cd ../..
-npm run dev                     # boots Vite dev server
+npm run dev                     # Boots Vite dev server (frontend only)
 ```
 
-The dev server only runs the SPA. To exercise `/api/songs` and `/api/lyrics` locally use Wrangler against the Pages Functions:
+> **Note**: The dev server only runs the SPA. To test the backend API functions (`/api/songs`, `/api/submissions/*`, etc.) locally, use Wrangler:
 
 ```bash
 npm install -g wrangler
 cd apps/web
 npm run build
-npx wrangler pages dev dist     # serves SPA + functions on :8788
+npx wrangler pages dev dist     # Serves SPA + API functions on :8788
 ```
 
-## Project structure
+## 🏗️ Architecture
 
-```
-ScoutBangers/
-├── apps/
-│   └── web/                       # The Vite SPA + Cloudflare Pages Functions
-│       ├── functions/api/
-│       │   ├── songs.ts           # GET /api/songs   — Drive folder manifest
-│       │   ├── lyrics.ts          # GET /api/lyrics  — Cancioneiro doc → JSON
-│       │   └── _lib/drive-auth.ts # Service-account JWT for Drive API
-│       ├── public/
-│       │   ├── _headers           # Cloudflare Pages security headers (CSP etc.)
-│       │   ├── _redirects         # SPA fallback routing
-│       ├── public/
-│       │   ├── SB.png             # Source logo (red, 1402×1122)
-│       │   ├── icon-*.png         # Generated PWA icons (do not edit by hand)
-│       │   ├── manifest.webmanifest
-│       │   └── sw.js              # Minimal service worker (PWA installability)
-│       └── src/                   # React app (PlayerProvider, components, hooks, lib)
-├── workers/
-│   └── drive-sync/                # Cron Worker: mirrors Drive folder into R2
-│       ├── src/index.ts           # scheduled() + manual ?token=… trigger
-│       └── wrangler.toml          # cron schedule + R2 binding
-└── packages/
-    └── ui/                        # Shared shadcn/ui components
-```
-
-## Architecture
-
-```
+```text
         Browser (SPA on scoutbangers.com)
             │
-            │ fetch /api/songs, /api/lyrics      <audio src="audio.scoutbangers.com/<drive-id>">
-            │                                      │
-            ▼                                      ▼
-   ┌─────────────────────┐                   ┌────────────────────────┐
-   │ Cloudflare Pages    │                   │ Cloudflare R2          │
-   │ Functions (Drive)   │                   │ public bucket on       │
-   │                     │                   │ audio.scoutbangers.com │
-   └─────────────────────┘                   └────────────────────────┘
-                                                      ▲
-                                                      │ R2 put (new files)
-                                             ┌────────────────────────┐
-                                             │ Cron Worker (15 min)   │
-                                             │ Drive list → R2 mirror │
-                                             └────────────────────────┘
+            ├─► fetch /api/songs, /api/lyrics      <audio src="audio.scoutbangers.com/...">
+            ├─► upload to Supabase Storage           │
+            │                                        │
+            ▼                                        ▼
+    ┌──────────────────────┐             ┌────────────────────────┐
+    │ Cloudflare Pages     │             │ Cloudflare R2          │
+    │ Functions (API)      │             │ audio.scoutbangers.com │
+    └──────────┬───────────┘             └───────────▲────────────┘
+               │                                     │ R2 put (new files)
+               │ (Admins approve)            ┌───────┴────────────────┐
+               ▼                             │ Cron Worker (15 min)   │
+    ┌──────────────────────┐                 │ Drive list → R2 mirror │
+    │ Google Drive API     │                 └───────▲────────────────┘
+    │ (Master Source)      │                         │
+    └──────────────────────┘                         │
+                                                     │
+    ┌──────────────────────┐                         │
+    │ Supabase             │                         │
+    │ DB (Auth, Profiles)  │─────────────────────────┘
+    │ Storage (Pending)    │
+    └──────────────────────┘
 ```
 
-- Audio bytes never touch any compute path: R2 → user direct, $0 egress regardless of volume.
-- `Song.id` = Drive file ID = R2 object key. Historical Supabase data (plays, stats, lyrics) keeps working unchanged.
-- `/api/songs` is cached at the edge for 5 min so Drive isn't hammered.
-- The Drive service-account credentials live only in Pages + Worker env, never in the client bundle.
+- **Zero Egress**: Audio bytes stream directly from Cloudflare R2 to users, costing $0 in egress fees regardless of volume.
+- **Single Source of Truth**: `Song.id` = Google Drive file ID = R2 object key = Supabase references.
+- **Caching**: `/api/songs` is cached at the edge to prevent rate limits from Google Drive.
+- **Secure Credentials**: Google Service Account JSON lives only in Cloudflare Pages/Worker environment variables, never reaching the client.
+- **Chat off the database**: The SPA opens a WebSocket straight to a Cloudflare Durable Object (`workers/chat`, `chat.scoutbangers.com`) for global chat. Message history lives in the Durable Object's own SQLite storage — Supabase is only consulted for auth (JWT, verified locally) and a one-off profile lookup per connection, so chat traffic never adds Postgres connection/RAM load.
 
-## Adding songs (weekly workflow)
+## 📥 Adding Songs
 
-1. Drop new MP3s into the public Drive folder.
-2. Wait up to 5 min for the edge cache to expire — or hit the refresh button in the header to bypass the cache.
-3. Friends see the new tracks on their next visit.
+### Community Workflow (Recommended)
+1. Users navigate to the **Submit** page inside the app.
+2. They upload an MP3 and an optional cover image.
+3. The files are securely stored in the `submissions` Supabase bucket.
+4. An Admin visits the **Admin Dashboard** and reviews the submission (approves or rejects).
+5. Upon approval, the edge function transfers the file to Google Drive, deletes the temporary file in Supabase, and triggers the R2 Sync Worker to immediately publish it.
 
-Filenames map to titles. `Artist - Title.mp3` is parsed into `{ artist: "Artist", title: "Title" }`. Plain `Title.mp3` is shown without an artist.
+### Manual Workflow
+1. Drop new MP3s directly into the designated Google Drive folder.
+2. Wait up to 15 min for the Cron Worker to mirror it to R2, or hit the refresh button in the app header (if Admin).
 
-## Deploying to Cloudflare (free)
+*Filenames map to titles. `Artist - Title.mp3` is parsed into `{ artist: "Artist", title: "Title" }`. Plain `Title.mp3` is shown without an artist.*
 
-Three pieces: an R2 bucket, a Pages project, and a Worker. Domain `scoutbangers.com` should already be on Cloudflare.
+## ☁️ Deploying to Cloudflare (Free)
+
+Requires an R2 bucket, a Pages project, and a Sync Worker.
 
 ### 1. R2 bucket
-
 In the Cloudflare dashboard → **R2** → *Create bucket*:
 - Name: `scoutbangers-audio`
-- Once created, **Settings → Custom domains → Connect domain** → `audio.scoutbangers.com`. Cloudflare creates the DNS record automatically and serves the bucket publicly with Range support.
+- Once created, go to **Settings → Custom domains → Connect domain** → `audio.scoutbangers.com`.
 
-### 2. Drive→R2 sync Worker
-
+### 2. Drive→R2 Sync Worker
 ```bash
 cd workers/drive-sync
 npm install
 npx wrangler login                                   # one-time
 npx wrangler secret put GOOGLE_SERVICE_ACCOUNT_JSON  # paste the full service-account JSON
-npx wrangler secret put SYNC_TOKEN                   # any random string
+npx wrangler secret put SYNC_TOKEN                   # any random secure string
 # Edit wrangler.toml: set DRIVE_FOLDER_ID under [vars]
 npx wrangler deploy
-# Kick off the initial backfill (cron will handle incremental from here):
+# Kick off the initial backfill (or let cron run):
 curl "https://scoutbangers-drive-sync.<your-account>.workers.dev/?token=<SYNC_TOKEN>"
 ```
 
-The Worker copies up to 20 new files per run; cron fires every 15 min, so an initial folder of ~hundreds of songs may take a few hours to fully mirror, or trigger the manual endpoint repeatedly.
+### 3. Chat Worker
+```bash
+cd workers/chat
+npm install
+npx wrangler login                                   # one-time, if not already
+```
+Edit `wrangler.toml`: set `SUPABASE_URL` and `SUPABASE_ANON_KEY` under `[vars]`
+to the same values as your `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`.
+```bash
+npx wrangler deploy
+```
+Then in the Cloudflare dashboard → **Workers & Pages** → `scoutbangers-chat` →
+**Settings → Domains & Routes → Custom Domains**, connect `chat.scoutbangers.com`.
+After this one-time setup, pushes to `workers/chat/**` on `main` redeploy it
+automatically via `.github/workflows/deploy-worker.yml` (same workflow that
+deploys the Drive→R2 Sync Worker above).
 
-### 3. Pages project
+### 4. Supabase Setup
+- Run the SQL migrations inside `supabase/migrations/` sequentially in your Supabase project's SQL Editor.
+- Ensure the `submissions` Storage Bucket is created and RLS policies from `supabase/schema.sql` are applied.
+- Setup Google OAuth in Supabase Auth providers.
 
-Cloudflare dashboard → **Pages → Create → Connect to Git → ** select repo. Build settings:
-
+### 5. Pages Project
+Cloudflare dashboard → **Pages → Create → Connect to Git** → select this repo.
 - **Framework preset**: None
 - **Build command**: `npm install && npm run build --filter=scoutbangers-web`
 - **Build output directory**: `apps/web/dist`
-- **Root directory** (advanced): leave at `/`
-- **Environment variables** (Production + Preview):
+- **Environment variables**:
   - `DRIVE_FOLDER_ID`
   - `LYRICS_DRIVE_FILE_ID`
-  - `GOOGLE_SERVICE_ACCOUNT_JSON` (paste full JSON; mark as encrypted)
+  - `GOOGLE_SERVICE_ACCOUNT_JSON` (encrypted)
+  - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` (for Drive uploads)
   - `VITE_AUDIO_BASE_URL=https://audio.scoutbangers.com`
   - `VITE_SUPABASE_URL`
   - `VITE_SUPABASE_ANON_KEY`
+  - `SYNC_WORKER_URL` (e.g. `https://scoutbangers-drive-sync...`)
+  - `SYNC_WORKER_TOKEN` (same as the Worker secret)
+  - `VITE_CHAT_WORKER_URL` (e.g. `https://chat.scoutbangers.com`)
 
-After the first deploy, attach the custom domain: Pages project → **Custom domains** → add `scoutbangers.com` and `www.scoutbangers.com`.
-
-## Customisation
-
-- **Palette**: edit `packages/ui/src/styles/globals.css` — only the `:root` block. Every component reads from CSS tokens (`bg-primary`, `text-foreground`, etc.), so a single-file change re-skins the app.
-- **Logo**: replace `apps/web/public/SB.png`, then regenerate icons:
+## 🎨 Customisation
+- **Palette**: Edit `packages/ui/src/styles/globals.css` (only the `:root` block). The entire app's theme relies on these tokens.
+- **Logo**: Replace `apps/web/public/SB.png`, then run the ImageMagick regeneration script:
   ```bash
   cd apps/web/public
   BG=$(magick SB.png -resize 1x1\! -format "%[hex:p{0,0}]" info:)
@@ -152,18 +168,16 @@ After the first deploy, attach the custom domain: Pages project → **Custom dom
   magick SB.png -resize 96x icon-header.png
   ```
 
-## Scripts
+## 🛠️ Scripts
+Run from the repository root:
 
-Run from the repo root (Turbo orchestrates across workspaces):
-
-| Command | Does |
+| Command | Description |
 |---|---|
-| `npm run dev` | Vite dev server for the web app |
-| `npm run build` | Type-check + Vite production build |
-| `npm run typecheck` | `tsc --noEmit` across all workspaces |
+| `npm run dev` | Boots the Vite dev server for the web app |
+| `npm run build` | Type-checks and builds for production |
+| `npm run typecheck` | Validates TypeScript (`tsc --noEmit`) across workspaces |
 | `npm run lint` | ESLint across all workspaces |
 | `npm run format` | Prettier (no-semi, 2-space, double quotes) |
 
-## License
-
+## 📜 License
 Private — no license granted. Built for personal/friend use.
