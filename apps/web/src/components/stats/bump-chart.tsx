@@ -66,7 +66,7 @@ function pivot(
       }
       weekMap.set(row.week_start, entry)
     }
-    entry[row.song_id] = row.rank
+    entry[row.song_id] = Number(row.rank) || 0
   }
 
   const data = Array.from(weekMap.values()).sort((a, b) =>

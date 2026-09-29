@@ -70,9 +70,11 @@ export function SubmitPage() {
       if (dbError) throw dbError
 
       // Done
+      window.alert("Música enviada com sucesso!")
       navigate("/", { replace: true })
     } catch (err) {
       console.error(err)
+      window.alert("Ocorreu um erro ao enviar a música. Tenta novamente.")
       setError("Ocorreu um erro ao enviar a música. Tenta novamente.")
     } finally {
       setIsSubmitting(false)
