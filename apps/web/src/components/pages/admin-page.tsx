@@ -47,6 +47,17 @@ function SubmissionRow({
     year: sub.year || "",
     genre: sub.genre || ""
   })
+  
+  const [thumbnailUrl, setThumbnailUrl] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    if (sub.thumbnail_path) {
+      supabase!.storage.from("submissions").createSignedUrl(sub.thumbnail_path, 3600)
+        .then(({ data }) => {
+          if (data) setThumbnailUrl(data.signedUrl)
+        })
+    }
+  }, [sub.thumbnail_path])
 
   const handleApprove = () => {
     onApprove(sub.id, edits)
@@ -56,15 +67,30 @@ function SubmissionRow({
     <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-sm min-w-0">
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between min-w-0 w-full">
         <div className="flex items-center gap-4 flex-1 overflow-hidden min-w-0">
-          <Button 
-            variant="secondary" 
-            size="icon" 
-            aria-label={playingId === sub.id ? "Pausar pré-visualização" : "Reproduzir pré-visualização"}
-            className="shrink-0 rounded-full size-12"
-            onClick={() => onPlay(sub)}
-          >
-            {playingId === sub.id ? <Pause className="size-5" /> : <Play className="size-5 ml-1" />}
-          </Button>
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="shrink-0">
+              {thumbnailUrl ? (
+                <img 
+                  src={thumbnailUrl} 
+                  alt="Thumbnail" 
+                  className="size-14 rounded-md object-cover bg-muted border border-border/50 shadow-sm" 
+                />
+              ) : (
+                <div className="size-14 rounded-md bg-muted flex items-center justify-center border border-border/50">
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Sem img</span>
+                </div>
+              )}
+            </div>
+            <Button 
+              variant="secondary" 
+              size="icon" 
+              aria-label={playingId === sub.id ? "Pausar pré-visualização" : "Reproduzir pré-visualização"}
+              className="shrink-0 rounded-full size-10 shadow-sm"
+              onClick={() => onPlay(sub)}
+            >
+              {playingId === sub.id ? <Pause className="size-4" /> : <Play className="size-4 ml-0.5" />}
+            </Button>
+          </div>
           <div className="min-w-0 flex-1">
             <h4 className="text-base font-semibold text-foreground break-words">
               {sub.title}
