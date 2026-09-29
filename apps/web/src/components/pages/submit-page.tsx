@@ -1,9 +1,10 @@
 import * as React from "react"
 import { useNavigate } from "react-router-dom"
-import { Upload, X, FileAudio, ImageIcon } from "lucide-react"
+import { Upload, X, FileAudio, ImageIcon, Check } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
+import { cn } from "@workspace/ui/lib/utils"
 import { useAuth } from "@/hooks/useAuth"
 import { supabase } from "@/lib/supabase"
 
@@ -22,6 +23,8 @@ export function SubmitPage() {
   
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+
+  const [feedback, setFeedback] = React.useState<{isOpen: boolean, isSuccess: boolean, title: string, message: string} | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -70,12 +73,10 @@ export function SubmitPage() {
       if (dbError) throw dbError
 
       // Done
-      window.alert("Música enviada com sucesso!")
-      navigate("/", { replace: true })
+      setFeedback({ isOpen: true, isSuccess: true, title: "Submetida com sucesso!", message: "A tua música foi enviada e será analisada pela equipa." })
     } catch (err) {
       console.error(err)
-      window.alert("Ocorreu um erro ao enviar a música. Tenta novamente.")
-      setError("Ocorreu um erro ao enviar a música. Tenta novamente.")
+      setFeedback({ isOpen: true, isSuccess: false, title: "Erro no envio", message: "Ocorreu um erro ao enviar a música. Tenta novamente." })
     } finally {
       setIsSubmitting(false)
     }
@@ -249,6 +250,26 @@ export function SubmitPage() {
           </div>
         </form>
       </div>
+
+      {feedback && feedback.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm bg-card rounded-xl shadow-lg border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-6 text-center flex flex-col items-center">
+              <div className={cn("size-12 rounded-full flex items-center justify-center mb-4", feedback.isSuccess ? "bg-green-500/10 text-green-500" : "bg-destructive/10 text-destructive")}>
+                {feedback.isSuccess ? <Check className="size-6" /> : <X className="size-6" />}
+              </div>
+              <h2 className="text-xl font-bold mb-2">{feedback.title}</h2>
+              <p className="text-muted-foreground text-sm mb-6">{feedback.message}</p>
+              <Button onClick={() => {
+                setFeedback(null)
+                if (feedback.isSuccess) navigate("/", { replace: true })
+              }} className="w-full" variant={feedback.isSuccess ? "default" : "destructive"}>
+                Entendido
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

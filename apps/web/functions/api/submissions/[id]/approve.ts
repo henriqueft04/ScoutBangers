@@ -23,173 +23,181 @@ function json(body: unknown, status = 200): Response {
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
-  try {
-    const { request, env, params } = context
-    const submissionId = params.id as string
+  const { request, env, params } = context
+  const submissionId = params.id as string
   if (!submissionId) return json({ error: "Missing ID" }, 400)
-
-  let overrides: Record<string, string> = {}
-  try {
-    overrides = await request.json()
-  } catch (e) {
-    // optional body
-  }
 
   const token = bearerToken(request)
   if (!token) return json({ error: "Unauthorized" }, 401)
-
-  const jwt = await verifyJwt(token, env)
-  if (!jwt.ok) return json({ error: "Invalid token" }, 401)
-
+  
   const supabaseUrl = env.VITE_SUPABASE_URL
-  const getSubReq = await fetch(`${supabaseUrl}/rest/v1/song_submissions?id=eq.${submissionId}&status=in.(pending,rejected)`, {
-    method: "PATCH",
-    headers: {
-      "apikey": env.VITE_SUPABASE_ANON_KEY,
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "Prefer": "return=representation"
-    },
-    body: JSON.stringify({ status: "processing" })
-  })
-  if (!getSubReq.ok) return json({ error: "Failed to fetch or claim submission" }, 500)
-  const submissions = await getSubReq.json() as any[]
-  if (!submissions || submissions.length === 0) return json({ error: "Submission not found, unauthorized, or already being processed" }, 404)
-  
-  const sub = submissions[0]
+  const anonKey = env.VITE_SUPABASE_ANON_KEY
 
-  const mp3Req = await fetch(`${supabaseUrl}/storage/v1/object/authenticated/submissions/${sub.audio_path}`, {
-    headers: { "Authorization": `Bearer ${token}` }
-  })
-  if (!mp3Req.ok) return json({ error: "Failed to download MP3" }, 500)
-  const mp3Buffer = await mp3Req.arrayBuffer()
-
-  let coverBuffer: ArrayBuffer | null = null
-  if (sub.thumbnail_path) {
-    const coverReq = await fetch(`${supabaseUrl}/storage/v1/object/authenticated/submissions/${sub.thumbnail_path}`, {
-      headers: { "Authorization": `Bearer ${token}` }
-    })
-    if (coverReq.ok) {
-      coverBuffer = await coverReq.arrayBuffer()
+  try {
+    let overrides: Record<string, string> = {}
+    try {
+      overrides = await request.json()
+    } catch (e) {
+      // optional body
     }
-  }
 
-  const finalTitle = overrides.title || sub.title
-  const finalArtist = overrides.artist || sub.artist
-  const finalAlbum = overrides.album !== undefined ? overrides.album : sub.album
-  const finalYear = overrides.year !== undefined ? overrides.year : sub.year
-  const finalGenre = overrides.genre !== undefined ? overrides.genre : sub.genre
+    const jwt = await verifyJwt(token, env)
+    if (!jwt.ok) return json({ error: "Invalid token" }, 401)
 
-  const writer = new (ID3Writer as any)(mp3Buffer)
-  writer.setFrame("TIT2", finalTitle)
-  writer.setFrame("TPE1", [finalArtist])
-  if (finalAlbum) writer.setFrame("TALB", finalAlbum)
-  if (finalYear) writer.setFrame("TYER", parseInt(finalYear, 10))
-  if (finalGenre) writer.setFrame("TCON", [finalGenre])
-  if (coverBuffer) {
-    const isPng = sub.thumbnail_path?.toLowerCase().endsWith(".png")
-    writer.setFrame("APIC", {
-      type: 3,
-      data: coverBuffer,
-      description: "Cover",
-      mimeType: isPng ? "image/png" : "image/jpeg",
-      useUnicodeEncoding: false
-    })
-  }
-  writer.addTag()
-  const taggedMp3 = writer.arrayBuffer
-
-  const driveToken = await getDriveAccessToken(env)
-  
-  const metadata = {
-    name: `${finalArtist} - ${finalTitle}.mp3`,
-    parents: [env.DRIVE_FOLDER_ID],
-    mimeType: "audio/mpeg"
-  }
-  
-  const boundary = "-------314159265358979323846"
-  const startBoundary = `--${boundary}\r\n`
-  const midBoundary = `\r\n--${boundary}\r\n`
-  const endBoundary = `\r\n--${boundary}--`
-
-  const metaDataPart = 
-    startBoundary +
-    `Content-Type: application/json; charset=UTF-8\r\n\r\n` + 
-    JSON.stringify(metadata)
-  
-  const fileDataPart = midBoundary + `Content-Type: audio/mpeg\r\n\r\n`
-
-  const metaBuffer = new TextEncoder().encode(metaDataPart + fileDataPart)
-  const closeBuffer = new TextEncoder().encode(endBoundary)
-
-  const body = new Uint8Array(metaBuffer.byteLength + taggedMp3.byteLength + closeBuffer.byteLength)
-  body.set(metaBuffer, 0)
-  body.set(new Uint8Array(taggedMp3), metaBuffer.byteLength)
-  body.set(closeBuffer, metaBuffer.byteLength + taggedMp3.byteLength)
-
-  const uploadRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${driveToken}`,
-      "Content-Type": `multipart/related; boundary=${boundary}`
-    },
-    body
-  })
-
-  if (!uploadRes.ok) {
-    const details = await uploadRes.text()
-    
-    // Revert status to pending so it doesn't get stuck in processing
-    await fetch(`${supabaseUrl}/rest/v1/song_submissions?id=eq.${submissionId}`, {
+    const getSubReq = await fetch(`${supabaseUrl}/rest/v1/song_submissions?id=eq.${submissionId}&status=in.(pending,rejected)`, {
       method: "PATCH",
       headers: {
-        "apikey": env.VITE_SUPABASE_ANON_KEY,
+        "apikey": anonKey,
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+      },
+      body: JSON.stringify({ status: "processing" })
+    })
+    if (!getSubReq.ok) return json({ error: "Failed to fetch or claim submission" }, 500)
+    const submissions = await getSubReq.json() as any[]
+    if (!submissions || submissions.length === 0) return json({ error: "Submission not found, unauthorized, or already being processed" }, 404)
+    
+    const sub = submissions[0]
+
+    const mp3Req = await fetch(`${supabaseUrl}/storage/v1/object/authenticated/submissions/${sub.audio_path}`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    })
+    if (!mp3Req.ok) return json({ error: "Failed to download MP3" }, 500)
+    const mp3Buffer = await mp3Req.arrayBuffer()
+
+    let coverBuffer: ArrayBuffer | null = null
+    if (sub.thumbnail_path) {
+      const coverReq = await fetch(`${supabaseUrl}/storage/v1/object/authenticated/submissions/${sub.thumbnail_path}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      })
+      if (coverReq.ok) {
+        coverBuffer = await coverReq.arrayBuffer()
+      }
+    }
+
+    const finalTitle = overrides.title || sub.title
+    const finalArtist = overrides.artist || sub.artist
+    const finalAlbum = overrides.album !== undefined ? overrides.album : sub.album
+    const finalYear = overrides.year !== undefined ? overrides.year : sub.year
+    const finalGenre = overrides.genre !== undefined ? overrides.genre : sub.genre
+
+    const writer = new (ID3Writer as any)(mp3Buffer)
+    writer.setFrame("TIT2", finalTitle)
+    writer.setFrame("TPE1", [finalArtist])
+    if (finalAlbum) writer.setFrame("TALB", finalAlbum)
+    if (finalYear) writer.setFrame("TYER", parseInt(finalYear, 10))
+    if (finalGenre) writer.setFrame("TCON", [finalGenre])
+    if (coverBuffer) {
+      const isPng = sub.thumbnail_path?.toLowerCase().endsWith(".png")
+      try {
+        writer.setFrame("APIC", {
+          type: 3,
+          data: coverBuffer,
+          description: "Cover",
+          mimeType: isPng ? "image/png" : "image/jpeg",
+          useUnicodeEncoding: false
+        })
+      } catch (e) {
+        console.warn("Skipping cover image due to invalid/unsupported format:", e)
+      }
+    }
+    writer.addTag()
+    const taggedMp3 = writer.arrayBuffer
+
+    const driveToken = await getDriveAccessToken(env)
+    
+    const metadata = {
+      name: `${finalArtist} - ${finalTitle}.mp3`,
+      parents: [env.DRIVE_FOLDER_ID],
+      mimeType: "audio/mpeg"
+    }
+    
+    const boundary = "-------314159265358979323846"
+    const startBoundary = `--${boundary}\r\n`
+    const midBoundary = `\r\n--${boundary}\r\n`
+    const endBoundary = `\r\n--${boundary}--`
+
+    const metaDataPart = 
+      startBoundary +
+      `Content-Type: application/json; charset=UTF-8\r\n\r\n` + 
+      JSON.stringify(metadata)
+    
+    const fileDataPart = midBoundary + `Content-Type: audio/mpeg\r\n\r\n`
+
+    const metaBuffer = new TextEncoder().encode(metaDataPart + fileDataPart)
+    const closeBuffer = new TextEncoder().encode(endBoundary)
+
+    const body = new Uint8Array(metaBuffer.byteLength + taggedMp3.byteLength + closeBuffer.byteLength)
+    body.set(metaBuffer, 0)
+    body.set(new Uint8Array(taggedMp3), metaBuffer.byteLength)
+    body.set(closeBuffer, metaBuffer.byteLength + taggedMp3.byteLength)
+
+    const uploadRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${driveToken}`,
+        "Content-Type": `multipart/related; boundary=${boundary}`
+      },
+      body
+    })
+
+    if (!uploadRes.ok) {
+      const details = await uploadRes.text()
+      throw new Error(`Drive upload failed: ${details}`)
+    }
+
+    const updateReq = await fetch(`${supabaseUrl}/rest/v1/song_submissions?id=eq.${submissionId}`, {
+      method: "PATCH",
+      headers: {
+        "apikey": anonKey,
         "Authorization": `Bearer ${token}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ status: "pending" })
+      body: JSON.stringify({ 
+        status: "approved",
+        title: finalTitle,
+        artist: finalArtist,
+        album: finalAlbum,
+        year: finalYear,
+        genre: finalGenre
+      })
+    })
+    if (!updateReq.ok) return json({ error: "Failed to update submission status" }, 500)
+
+    await fetch(`${supabaseUrl}/storage/v1/object/submissions/remove`, {
+      method: "POST",
+      headers: {
+        "apikey": anonKey,
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ prefixes: [sub.audio_path, sub.thumbnail_path].filter(Boolean) })
     })
 
-    return json({ error: `Drive upload failed: ${details}` }, 500)
-  }
+    if (env.SYNC_WORKER_URL && env.SYNC_WORKER_TOKEN) {
+      const syncUrl = new URL(env.SYNC_WORKER_URL)
+      syncUrl.searchParams.set("token", env.SYNC_WORKER_TOKEN)
+      await fetch(syncUrl.toString(), { method: "GET" }).catch(console.error)
+    }
 
-  const updateReq = await fetch(`${supabaseUrl}/rest/v1/song_submissions?id=eq.${submissionId}`, {
-    method: "PATCH",
-    headers: {
-      "apikey": env.VITE_SUPABASE_ANON_KEY,
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ 
-      status: "approved",
-      title: finalTitle,
-      artist: finalArtist,
-      album: finalAlbum,
-      year: finalYear,
-      genre: finalGenre
-    })
-  })
-  if (!updateReq.ok) return json({ error: "Failed to update submission status" }, 500)
-
-  await fetch(`${supabaseUrl}/storage/v1/object/submissions/remove`, {
-    method: "POST",
-    headers: {
-      "apikey": env.VITE_SUPABASE_ANON_KEY,
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ prefixes: [sub.audio_path, sub.thumbnail_path].filter(Boolean) })
-  })
-
-  if (env.SYNC_WORKER_URL && env.SYNC_WORKER_TOKEN) {
-    const syncUrl = new URL(env.SYNC_WORKER_URL)
-    syncUrl.searchParams.set("token", env.SYNC_WORKER_TOKEN)
-    await fetch(syncUrl.toString(), { method: "GET" }).catch(console.error)
-  }
-
-  return json({ success: true })
+    return json({ success: true })
   } catch (err) {
     console.error("Caught exception in approve.ts:", err)
-    return json({ error: "Failed to approve submission" }, 500)
+    
+    // Attempt to rollback if we crashed mid-flight
+    if (supabaseUrl && token && anonKey && submissionId) {
+      await fetch(`${supabaseUrl}/rest/v1/song_submissions?id=eq.${submissionId}`, {
+        method: "PATCH",
+        headers: {
+          "apikey": anonKey,
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ status: "pending" })
+      }).catch(() => {})
+    }
+
+    return json({ error: err instanceof Error ? err.message : "Failed to approve submission" }, 500)
   }
 }

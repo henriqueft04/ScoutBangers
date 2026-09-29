@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
+import { cn } from "@workspace/ui/lib/utils"
 import { useAuth } from "@/hooks/useAuth"
 import { supabase } from "@/lib/supabase"
 
@@ -210,6 +211,8 @@ export function AdminPage() {
     }
   }, [profile, navigate, tab])
 
+  const [feedback, setFeedback] = React.useState<{isOpen: boolean, isSuccess: boolean, title: string, message: string} | null>(null)
+
   const fetchSubmissions = async () => {
     setLoading(true)
     let query = supabase!
@@ -262,12 +265,13 @@ export function AdminPage() {
 
       if (!res.ok) {
         const err = await res.json()
-        throw new Error(err.error || "Erro ao aprovar")
+        throw new Error(err.error || "Erro ao aprovar a música")
       }
 
       setSubmissions(s => s.filter(x => x.id !== id))
+      setFeedback({ isOpen: true, isSuccess: true, title: "Sucesso!", message: "A música foi adicionada à plataforma com sucesso." })
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Erro desconhecido")
+      setFeedback({ isOpen: true, isSuccess: false, title: "Erro na Aprovação", message: err instanceof Error ? err.message : "Ocorreu um erro desconhecido." })
     } finally {
       setActionLoading(null)
     }
@@ -288,12 +292,13 @@ export function AdminPage() {
       })
 
       if (!res.ok) {
-        throw new Error("Erro ao rejeitar")
+        throw new Error("Erro ao rejeitar a música")
       }
 
       setSubmissions(s => s.filter(x => x.id !== id))
+      setFeedback({ isOpen: true, isSuccess: true, title: "Rejeitada", message: "A música foi movida para os rejeitados." })
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Erro desconhecido")
+      setFeedback({ isOpen: true, isSuccess: false, title: "Erro na Rejeição", message: err instanceof Error ? err.message : "Ocorreu um erro desconhecido." })
     } finally {
       setActionLoading(null)
     }
@@ -393,6 +398,23 @@ export function AdminPage() {
           </div>
         )}
       </div>
+
+      {feedback && feedback.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm bg-card rounded-xl shadow-lg border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-6 text-center flex flex-col items-center">
+              <div className={cn("size-12 rounded-full flex items-center justify-center mb-4", feedback.isSuccess ? "bg-green-500/10 text-green-500" : "bg-destructive/10 text-destructive")}>
+                {feedback.isSuccess ? <Check className="size-6" /> : <X className="size-6" />}
+              </div>
+              <h2 className="text-xl font-bold mb-2">{feedback.title}</h2>
+              <p className="text-muted-foreground text-sm mb-6">{feedback.message}</p>
+              <Button onClick={() => setFeedback(null)} className="w-full" variant={feedback.isSuccess ? "default" : "destructive"}>
+                Entendido
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
