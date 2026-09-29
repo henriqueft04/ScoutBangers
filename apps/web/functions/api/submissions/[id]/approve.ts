@@ -87,10 +87,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   if (finalYear) writer.setFrame("TYER", parseInt(finalYear, 10))
   if (finalGenre) writer.setFrame("TCON", [finalGenre])
   if (coverBuffer) {
+    const isPng = sub.thumbnail_path?.toLowerCase().endsWith(".png")
     writer.setFrame("APIC", {
       type: 3,
       data: coverBuffer,
       description: "Cover",
+      mimeType: isPng ? "image/png" : "image/jpeg",
       useUnicodeEncoding: false
     })
   }
