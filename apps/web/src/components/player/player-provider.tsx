@@ -1,4 +1,5 @@
 import * as React from "react"
+import { useLocation, useNavigate } from "react-router-dom"
 
 import { useSongs } from "@/hooks/useSongs"
 import { audioEngine, isIOS, type FadeHandle } from "@/lib/audio-engine"
@@ -310,7 +311,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: "SONGS", songs, loading, error })
   }, [songs, loading, error])
 
-  const sharedSongHandled = React.useRef(false)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const lastHandledSearch = React.useRef<string | null>(null)
 
   // ---- Persistence -----------------------------------------------------
 
@@ -1211,19 +1214,29 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     [playIndex]
   )
 
-  // Auto-play a song shared via ?song=<id> in the URL.
+  // Auto-play a song shared via ?song=<id> in the URL. Reacts to
+  // `location.search` (not just a one-time mount check) so this fires
+  // every time — e.g. tapping a song card shared in chat while the app
+  // is already running, not just on a fresh page load. `lastHandledSearch`
+  // guards against handling the same `location.search` value twice (React
+  // Strict Mode's double-invoke in dev), while still letting a genuinely
+  // new `?song=` navigation through.
   React.useEffect(() => {
-    if (sharedSongHandled.current || loading || songs.length === 0) return
-    const params = new URLSearchParams(window.location.search)
+    if (loading || songs.length === 0) return
+    if (lastHandledSearch.current === location.search) return
+    const params = new URLSearchParams(location.search)
     const id = params.get("song")
     if (!id) return
-    sharedSongHandled.current = true
+    lastHandledSearch.current = location.search
     const index = songs.findIndex((s) => s.id === id)
     if (index !== -1) play(index)
-    const url = new URL(window.location.href)
-    url.searchParams.delete("song")
-    window.history.replaceState(null, "", url.pathname + (url.search || ""))
-  }, [songs, loading, play])
+    params.delete("song")
+    const nextSearch = params.toString()
+    navigate(
+      { pathname: location.pathname, search: nextSearch ? `?${nextSearch}` : "" },
+      { replace: true }
+    )
+  }, [location.pathname, location.search, songs, loading, play, navigate])
 
   const toggle = React.useCallback(() => {
     audioEngine.start()

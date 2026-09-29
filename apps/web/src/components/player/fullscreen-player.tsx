@@ -8,6 +8,7 @@ import {
   FileText,
   ImageUp,
   Loader2,
+  MessageCircle,
   Share2,
 } from "lucide-react"
 import { useNavigate } from "react-router-dom"
@@ -23,6 +24,7 @@ import { useOfflineDownload } from "@/hooks/useOfflineDownload"
 import { useTrackMetadata } from "@/hooks/useTrackMetadata"
 import { usePlayer } from "@/hooks/usePlayer"
 import { artistHref } from "@/lib/artists"
+import { setPendingShare } from "@/lib/chat-share"
 import { canShareImage, shareImage, shareUrl } from "@/lib/share"
 import { displayArtist, displayTitle } from "@/lib/song-display"
 
@@ -211,6 +213,20 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
       setTimeout(() => setCopied(false), 2000)
     }
   }, [song])
+
+  const handleShareToChat = React.useCallback(() => {
+    if (!song) return
+    setPendingShare({
+      kind: "song",
+      payload: {
+        songId: song.id,
+        title: displayTitle(song, meta),
+        artist: displayArtist(song, meta),
+      },
+    })
+    onClose()
+    navigate("/chat")
+  }, [song, meta, navigate, onClose])
 
   const handleShareStory = React.useCallback(async () => {
     if (!song || storyBusy) return
@@ -420,6 +436,16 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
               type="button"
               variant="ghost"
               size="icon"
+              aria-label="Partilhar no chat"
+              onClick={handleShareToChat}
+              className="touch-manipulation hidden size-10 md:inline-flex"
+            >
+              <MessageCircle className="size-5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               aria-label={
                 downloadError
                   ? "Falha ao transferir — toca para tentar de novo"
@@ -503,9 +529,12 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
           <div data-tour-id="fullscreen-controls-wrap">
             <MainControls size="lg" />
           </div>
-          {/* Mobile actions row: share | heart | queue */}
+          {/* Mobile actions row: share | chat | heart | queue. flex-wrap
+              (not the plain justify-between it used to be) so an extra
+              icon — or a narrow phone — wraps to a second line instead
+              of overflowing off-screen. */}
           {song ? (
-            <div className="flex items-center justify-between px-2 md:hidden">
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 px-2 md:hidden">
               <Button
                 type="button"
                 variant="ghost"
@@ -520,6 +549,16 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
                 ) : (
                   <Share2 className="size-5" />
                 )}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Partilhar no chat"
+                onClick={handleShareToChat}
+                className="touch-manipulation size-11"
+              >
+                <MessageCircle className="size-5" />
               </Button>
               {canShareImage() ? (
                 <Button
@@ -619,7 +658,10 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
             onClose={() => setLyricsOpen(false)}
             ariaLabel="Letra"
           >
-            <LyricsPanel onClose={() => setLyricsOpen(false)} />
+            <LyricsPanel
+              onClose={() => setLyricsOpen(false)}
+              onBeforeShareNavigate={onClose}
+            />
           </BottomSheet>
         ) : null}
       </AnimatePresence>

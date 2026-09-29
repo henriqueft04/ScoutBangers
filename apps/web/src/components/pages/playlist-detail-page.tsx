@@ -7,9 +7,10 @@ import {
   ListPlus,
   Loader2,
   Lock,
+  MessageCircle,
   Trash2,
 } from "lucide-react"
-import { Link, useParams } from "react-router-dom"
+import { Link, useNavigate, useParams } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
@@ -23,6 +24,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { useOfflineDownload } from "@/hooks/useOfflineDownload"
 import { usePlayFromList } from "@/hooks/usePlayFromList"
 import { usePlayer } from "@/hooks/usePlayer"
+import { setPendingShare } from "@/lib/chat-share"
 import { formatBytes } from "@/lib/format"
 import { shareUrl } from "@/lib/share"
 import { getCached, getStaleCached, setCached } from "@/lib/storage"
@@ -56,6 +58,7 @@ const playlistDetailCacheKey = (id: string) => `scoutbangers:playlist:${id}`
 
 export function PlaylistDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const { user, loading: authLoading } = useAuth()
   const { songs, currentIndex, isPlaying, queueAddMany } = usePlayer()
   const playFromList = usePlayFromList()
@@ -138,6 +141,19 @@ export function PlaylistDetailPage() {
     }
   }
 
+  const handleShareToChat = () => {
+    if (!playlist) return
+    setPendingShare({
+      kind: "playlist",
+      payload: {
+        playlistId: playlist.id,
+        name: playlist.name,
+        songCount: playlist.song_ids.length,
+      },
+    })
+    navigate("/chat")
+  }
+
   // Allow owner to flip is_public.
   const togglePublic = async () => {
     if (!supabase || !playlist || !playlist.is_owner) return
@@ -214,19 +230,19 @@ export function PlaylistDetailPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-3 pt-3 pb-4 md:px-6 md:pt-4">
-      <header className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
+      <header className="flex flex-col gap-2">
+        <div className="min-w-0">
           <Link
             to="/playlists"
             className="text-muted-foreground hover:text-foreground text-xs"
           >
             ← Playlists
           </Link>
-          <h2 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">
+          <h2 className="text-foreground truncate text-xl font-semibold tracking-tight md:text-2xl">
             {playlist?.name ?? "Playlist"}
           </h2>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {playlist && playlistSongs.length > 0 ? (
             <Button
               type="button"
@@ -280,6 +296,19 @@ export function PlaylistDetailPage() {
             >
               <Link2 className="size-4" />
               {linkCopied ? "Copiado" : "Partilhar"}
+            </Button>
+          ) : null}
+          {playlist?.is_public && playlistSongs.length > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label="Partilhar no chat"
+              onClick={handleShareToChat}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <MessageCircle className="size-4" />
+              Chat
             </Button>
           ) : null}
           {playlist ? (

@@ -1,5 +1,7 @@
 import * as React from "react"
 
+import type { SharePayload } from "@/lib/chat-share"
+
 import { useAuth } from "./useAuth"
 
 export interface ChatMessage {
@@ -9,6 +11,7 @@ export interface ChatMessage {
   avatarUrl: string | null
   body: string
   createdAt: string
+  share: SharePayload | null
 }
 
 type ServerEvent =
@@ -37,6 +40,7 @@ interface UseGlobalChatResult {
   disabled: boolean
   sendMessage: (body: string) => void
   deleteMessage: (id: string) => void
+  sendShare: (share: SharePayload, caption?: string) => void
 }
 
 /**
@@ -68,6 +72,21 @@ export function useGlobalChat(): UseGlobalChatResult {
 
     const connect = () => {
       if (cancelled || !WORKER_URL || !token) return
+      const existing = socketRef.current
+      if (
+        existing &&
+        (existing.readyState === WebSocket.CONNECTING ||
+          existing.readyState === WebSocket.OPEN)
+      ) {
+        // Already connected/connecting — bail instead of opening a second
+        // socket on top of it. Without this guard, a spurious extra
+        // connect() call (e.g. some mobile browsers fire visibilitychange
+        // when the on-screen keyboard opens/closes, right when you'd be
+        // tapping into the message input) leaves the old socket orphaned
+        // rather than closed, so the room ends up broadcasting every
+        // message to two live sockets — doubling it in the UI.
+        return
+      }
       setConnectionState("connecting")
       const socket = new WebSocket(toWebSocketUrl(WORKER_URL, token))
       socketRef.current = socket
@@ -146,6 +165,13 @@ export function useGlobalChat(): UseGlobalChatResult {
     [send]
   )
 
+  const sendShare = React.useCallback(
+    (share: SharePayload, caption?: string) => {
+      send({ type: "share", kind: share.kind, payload: share.payload, caption })
+    },
+    [send]
+  )
+
   return {
     messages,
     connectionState,
@@ -153,5 +179,6 @@ export function useGlobalChat(): UseGlobalChatResult {
     disabled,
     sendMessage,
     deleteMessage,
+    sendShare,
   }
 }

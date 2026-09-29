@@ -29,8 +29,15 @@ interface Song {
   modifiedTime: string
 }
 
+// Filenames aren't reliably "Artist - Title" — some submissions use " - "
+// as part of the title itself (e.g. "Alvorada - Live"), which a naive
+// split would wrongly chop into artist="Alvorada", title="Live", silently
+// dropping "Alvorada" everywhere the artist field isn't displayed (see
+// displayArtist in lib/song-display.ts, which deliberately ignores this
+// field for the same reason). The full filename is kept as the title.
 function parseSongName(filename: string): { title: string; artist?: string } {
-  return { title: filename.replace(/\.[a-z0-9]+$/i, "").trim() }
+  const name = filename.replace(/\.[a-z0-9]+$/i, "").trim()
+  return { title: name }
 }
 
 function json(body: unknown, status = 200, extra?: HeadersInit): Response {
