@@ -225,6 +225,7 @@ export function StatsPage() {
         <ActivityChart rows={activity.data} loading={activity.loading} />
       </Section>
 
+      {/*
       <Section
         title="Top 10 ao longo do tempo"
         subtitle={
@@ -247,6 +248,7 @@ export function StatsPage() {
           songsById={songsById}
         />
       </Section>
+      */}
     </div>
   )
 }

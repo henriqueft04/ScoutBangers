@@ -136,6 +136,18 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   if (!uploadRes.ok) {
     const details = await uploadRes.text()
+    
+    // Revert status to pending so it doesn't get stuck in processing
+    await fetch(`${supabaseUrl}/rest/v1/song_submissions?id=eq.${submissionId}`, {
+      method: "PATCH",
+      headers: {
+        "apikey": env.VITE_SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ status: "pending" })
+    })
+
     return json({ error: `Drive upload failed: ${details}` }, 500)
   }
 

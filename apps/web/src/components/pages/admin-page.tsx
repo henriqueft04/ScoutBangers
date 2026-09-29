@@ -53,9 +53,9 @@ function SubmissionRow({
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-sm">
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div className="flex items-center gap-4 flex-1 overflow-hidden">
+    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-sm min-w-0">
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between min-w-0 w-full">
+        <div className="flex items-center gap-4 flex-1 overflow-hidden min-w-0">
           <Button 
             variant="secondary" 
             size="icon" 
@@ -66,24 +66,24 @@ function SubmissionRow({
             {playingId === sub.id ? <Pause className="size-5" /> : <Play className="size-5 ml-1" />}
           </Button>
           <div className="min-w-0 flex-1">
-            <h4 className="truncate text-base font-semibold text-foreground">
+            <h4 className="text-base font-semibold text-foreground break-words">
               {sub.title}
             </h4>
-            <p className="truncate text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground break-words">
               {sub.artist} {sub.album && `• ${sub.album}`} {sub.year && `• ${sub.year}`}
             </p>
             {sub.genre && (
-              <span className="mt-1 inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+              <span className="mt-1 inline-block align-top rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary break-words max-w-full">
                 {sub.genre}
               </span>
             )}
-            <p className="mt-1 text-xs text-muted-foreground/80">
+            <p className="mt-1 text-xs text-muted-foreground/80 break-words">
               Enviado por: {sub.profiles?.display_name || "Utilizador desconhecido"}
             </p>
           </div>
         </div>
         
-        <div className="flex w-full sm:w-auto items-center gap-2 pt-4 sm:pt-0 border-t sm:border-0 border-border">
+        <div className="flex w-full sm:w-auto items-center flex-wrap gap-2 pt-4 sm:pt-0 border-t sm:border-0 border-border shrink-0">
           <Button 
             variant="ghost"
             onClick={() => setIsEditing(!isEditing)}

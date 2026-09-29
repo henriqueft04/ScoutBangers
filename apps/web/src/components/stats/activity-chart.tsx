@@ -46,7 +46,7 @@ export function ActivityChart({ rows, loading, className }: ActivityChartProps) 
         day: r.day,
         label: Number.isNaN(d.getTime()) ? r.day : monthDayFmt.format(d),
         fullLabel: Number.isNaN(d.getTime()) ? r.day : fullDateFmt.format(d),
-        count: r.play_count,
+        count: Number(r.play_count) || 0,
       }
     })
   }, [rows])
@@ -80,7 +80,7 @@ export function ActivityChart({ rows, loading, className }: ActivityChartProps) 
       <ResponsiveContainer width="100%" height={224}>
         <AreaChart
           data={data}
-          margin={{ top: 8, right: 12, bottom: 4, left: -16 }}
+          margin={{ top: 8, right: 12, bottom: 4, left: 0 }}
         >
           <defs>
             <linearGradient id="activityFill" x1="0" y1="0" x2="0" y2="1">
@@ -108,7 +108,8 @@ export function ActivityChart({ rows, loading, className }: ActivityChartProps) 
             tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
             tickLine={false}
             axisLine={{ stroke: "var(--border)" }}
-            width={32}
+            width={45}
+            tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value}
           />
           <Tooltip
             cursor={{ stroke: "var(--border)", strokeDasharray: "3 3" }}
