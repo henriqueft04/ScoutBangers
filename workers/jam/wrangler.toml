@@ -1,0 +1,20 @@
+name = "scoutbangers-jam"
+main = "src/index.ts"
+compatibility_date = "2025-11-01"
+
+# Custom domain the app connects to (wss://jam.scoutbangers.com). Requires
+# scoutbangers.com to be a zone on this Cloudflare account.
+routes = [{ pattern = "jam.scoutbangers.com", custom_domain = true }]
+
+[vars]
+# Hostnames (and their subdomains) allowed to open a jam socket.
+ALLOWED_ORIGINS = "scoutbangers.com,localhost"
+
+# One JamRoom object per jam. SQLite-backed so it works on the free plan.
+[[durable_objects.bindings]]
+name = "JAM_ROOM"
+class_name = "JamRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["JamRoom"]

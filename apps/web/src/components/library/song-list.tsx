@@ -45,7 +45,7 @@ export function SongList({
           // embedded lyrics from track #2 onwards in the catalog, and
           // the lyrics step downstream depends on the playing song
           // having a lyrics payload to show.
-          data-tour-id={index === 1 ? "song-list-demo" : undefined}
+          data-tour-id={index === 7 ? "song-list-demo" : undefined}
         >
           <SongRow
             song={song}

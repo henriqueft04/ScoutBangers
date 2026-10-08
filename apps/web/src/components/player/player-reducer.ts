@@ -58,6 +58,13 @@ export type PlayerAction =
   | { type: "VOLUME"; volume: number; muted: boolean }
   | { type: "TOGGLE_SHUFFLE"; currentSongId: string | null }
   | { type: "CYCLE_REPEAT" }
+  | { type: "SET_REPEAT"; repeat: RepeatMode }
+  | {
+      type: "ADOPT_PLAYBACK"
+      list: string[]
+      cursorId: string | null
+      shuffle: boolean
+    }
   | { type: "SEARCH"; query: string }
   | { type: "SET_SORT"; sort: SortMode }
   | { type: "PLAYBACK_ERROR"; message: string | null }
@@ -207,6 +214,19 @@ export function playerReducer(
     }
     case "CYCLE_REPEAT":
       return { ...state, repeat: REPEAT_CYCLE[state.repeat] }
+    case "SET_REPEAT":
+      return { ...state, repeat: action.repeat }
+    case "ADOPT_PLAYBACK":
+      // Take another listener's exact order as-is: unlike SET_PLAYBACK_LIST
+      // plus TOGGLE_SHUFFLE, nothing here reshuffles. The list is already
+      // in the order being played, so it is also the "natural" one.
+      return {
+        ...state,
+        playbackList: action.list,
+        playbackNatural: action.list,
+        playbackCursorId: action.cursorId,
+        shuffle: action.shuffle,
+      }
     case "SEARCH":
       return { ...state, search: action.query }
     case "SET_SORT":

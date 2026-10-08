@@ -66,7 +66,15 @@ export interface QueueItem {
   key: string
   /** The song to play. */
   songId: string
+  /** Who queued it, by display name. Only set for songs queued in a jam. */
+  addedBy?: string
 }
+
+/**
+ * What `queueSet` accepts per entry: a bare song id, or an item — whose
+ * `key` is generated when absent.
+ */
+export type QueueInput = string | (Omit<QueueItem, "key"> & { key?: string })
 
 /** Imperative actions available on the player. */
 export interface PlayerActions {
@@ -85,6 +93,17 @@ export interface PlayerActions {
   toggleMute: () => void
   toggleShuffle: () => void
   cycleRepeat: () => void
+  /** Jump straight to a repeat mode (a jam applies the room's mode). */
+  setRepeat: (repeat: RepeatMode) => void
+  /**
+   * Replace the playback order, its cursor and the shuffle flag in one go,
+   * without reshuffling (a jam applies the room's exact order).
+   */
+  adoptPlayback: (plan: {
+    list: string[]
+    cursorId: string | null
+    shuffle: boolean
+  }) => void
   setSearch: (search: string) => void
   setSort: (sort: import("./sort").SortMode) => void
   reload: () => void
@@ -101,7 +120,7 @@ export interface PlayerActions {
    * fresh insertion gets a generated key) or existing QueueItems with
    * their stable keys (used by drag reorder so keys stay attached).
    */
-  queueSet: (input: string[] | QueueItem[]) => void
+  queueSet: (input: QueueInput[]) => void
   /** Empty the user queue. */
   queueClear: () => void
   /**

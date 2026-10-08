@@ -1,6 +1,7 @@
 import * as React from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 
+import type { Profile } from "@/hooks/auth-context"
 import { useAuth } from "@/hooks/useAuth"
 import { supabase } from "@/lib/supabase"
 
@@ -9,10 +10,39 @@ import {
   type TourContextValue,
   type TourStep,
 } from "./tour-context"
-import { TOURS } from "./tour-steps"
+import { TOURS, UPDATE_TOURS, type UpdateTourColumn } from "./tour-steps"
 import { TourOverlay } from "./tour-overlay"
 
 const CACHE_KEY = (userId: string) => `scoutbangers:tour-seen:${userId}`
+
+type UpdateTour = (typeof UPDATE_TOURS)[number]
+
+/** Per-device memory of a seen update tour, so a refresh doesn't replay it. */
+const updateCacheKey = (tour: UpdateTour, userId: string) =>
+  `scoutbangers:tour-${tour.id}-seen-v1:${userId}`
+
+function hasSeenUpdateTour(tour: UpdateTour, profile: Profile, userId: string) {
+  if (profile[tour.seenColumn] === true) return true
+  try {
+    return localStorage.getItem(updateCacheKey(tour, userId)) === "1"
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The oldest update tour this user hasn't seen. `justFinished` is skipped
+ * because its completion may not have reached the profile yet.
+ */
+function nextUnseenUpdateTour(
+  profile: Profile,
+  userId: string,
+  justFinished?: string
+): UpdateTour | undefined {
+  return UPDATE_TOURS.find(
+    (tour) => tour.id !== justFinished && !hasSeenUpdateTour(tour, profile, userId)
+  )
+}
 /**
  * Delay before the auto-start tour begins after the user lands on the
  * app. Gives lazy chunks + the initial fetch a chance to settle so the
@@ -92,16 +122,11 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       return () => window.clearTimeout(timer)
     }
 
-    const hasSeenUpdate = profile.update_tour_seen === true
-    let cachedSeenUpdate = false
-    try {
-      cachedSeenUpdate = localStorage.getItem(`scoutbangers:tour-update-seen-v1:${user.id}`) === "1"
-    } catch { /* ignore */ }
-
-    if (!hasSeenUpdate && !cachedSeenUpdate) {
+    const pending = nextUnseenUpdateTour(profile, user.id)
+    if (pending) {
       const timer = window.setTimeout(() => {
         autoStartedRef.current = true
-        setActiveTourId("update")
+        setActiveTourId(pending.id)
         setStepIndex(0)
       }, AUTO_START_DELAY_MS)
       return () => window.clearTimeout(timer)
@@ -171,41 +196,49 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, refreshProfile])
 
-  const recordUpdateCompletion = React.useCallback(async () => {
-    if (!user) return
-    try {
-      localStorage.setItem(`scoutbangers:tour-update-seen-v1:${user.id}`, "1")
-    } catch { /* ignore */ }
-    if (!supabase) return
-    try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ update_tour_seen: true })
-        .eq("id", user.id)
-      if (!error) {
-        await refreshProfile()
-      }
-    } catch { /* ignore */ }
-  }, [user, refreshProfile])
+  const recordUpdateCompletion = React.useCallback(
+    async (tour: UpdateTour) => {
+      if (!user) return
+      try {
+        localStorage.setItem(updateCacheKey(tour, user.id), "1")
+      } catch { /* ignore */ }
+      if (!supabase) return
+      try {
+        const seen: Partial<Record<UpdateTourColumn, boolean>> = {
+          [tour.seenColumn]: true,
+        }
+        const { error } = await supabase
+          .from("profiles")
+          .update(seen)
+          .eq("id", user.id)
+        if (!error) {
+          await refreshProfile()
+        }
+      } catch { /* ignore */ }
+    },
+    [user, refreshProfile]
+  )
 
   // Single "tour is over" path used by skip, complete, and the
-  // last-step branch of next. All three end the same way (clear active
-  // tour, reset index, mark seen, persist) so they share this helper
-  // instead of repeating the four lines.
+  // last-step branch of next. All three end the same way: record the
+  // tour as seen, then carry on to the next update tour the user hasn't
+  // seen (if any) so a new user flows main → every update, and an
+  // existing one only gets what is new to them.
   const finishTour = React.useCallback(() => {
-    if (activeTourId === "update") {
-      void recordUpdateCompletion()
-      setActiveTourId(null)
-      setStepIndex(0)
+    const finishedUpdate = UPDATE_TOURS.find((tour) => tour.id === activeTourId)
+    if (finishedUpdate) {
+      void recordUpdateCompletion(finishedUpdate)
     } else {
       setHasSeenTour(true)
       void recordCompletion()
-      
-      // Quando acabam ou dão skip ao MAIN_TOUR, passam para o UPDATE_TOUR
-      setActiveTourId("update")
-      setStepIndex(0)
     }
-  }, [activeTourId, recordCompletion, recordUpdateCompletion])
+    const following =
+      user && profile
+        ? nextUnseenUpdateTour(profile, user.id, finishedUpdate?.id)
+        : undefined
+    setActiveTourId(following?.id ?? null)
+    setStepIndex(0)
+  }, [activeTourId, user, profile, recordCompletion, recordUpdateCompletion])
 
   const start = React.useCallback((tourId: string) => {
     if (!TOURS[tourId]) return

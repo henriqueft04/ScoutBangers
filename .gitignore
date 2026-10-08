@@ -67,3 +67,6 @@ Desktop.ini
 # Lyrics source — local copy of the Cancioneiro for testing the parser.
 # In production, /api/lyrics fetches the live Doc from Drive.
 *.docx
+
+# Wrangler local dev state
+.wrangler/

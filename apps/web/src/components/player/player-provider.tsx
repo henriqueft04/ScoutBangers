@@ -15,7 +15,12 @@ import {
   getPictureDataUrl,
   peekTrackMetadata,
 } from "@/lib/track-metadata"
-import type { PlayerContextValue, SortMode } from "@/lib/types"
+import type {
+  PlayerContextValue,
+  QueueInput,
+  RepeatMode,
+  SortMode,
+} from "@/lib/types"
 
 import {
   PlayerContext,
@@ -363,16 +368,40 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     )
   }, [state.currentIndex, state.position, state.songs])
 
+  // Seeks once the element knows its duration. Setting `currentTime`
+  // right after assigning a new `src` is unreliable — no metadata has
+  // loaded yet, so most browsers silently drop the seek. Used to restore
+  // the previous session and to follow a jam's seeks.
+  const seekWhenReady = React.useCallback(
+    (audio: HTMLAudioElement, target: number) => {
+      const seekNow = () => {
+        // Clamp to a hair below duration so we don't accidentally land
+        // on `ended`.
+        const safe = Number.isFinite(audio.duration)
+          ? Math.min(target, audio.duration - 0.1)
+          : target
+        try {
+          audio.currentTime = safe
+        } catch {
+          /* some browsers throw on seek before play(); ignore */
+        }
+        dispatch({ type: "TIME", position: safe })
+      }
+      if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
+        seekNow()
+      } else {
+        audio.addEventListener("loadedmetadata", seekNow, { once: true })
+        // Show the target in the UI immediately — the actual audio seek
+        // lands when loadedmetadata fires.
+        dispatch({ type: "TIME", position: target })
+      }
+    },
+    []
+  )
+
   // Restore previous song + position once songs have loaded. Doesn't
   // auto-play (browser autoplay policy needs a fresh user gesture);
   // user clicks play and resumes from where they left off.
-  //
-  // Setting `audio.currentTime` immediately after assigning a new
-  // `audio.src` is unreliable — the audio element hasn't loaded any
-  // metadata yet, so most browsers silently drop the seek. The fix is
-  // to wait for `loadedmetadata` and seek then. We also set a `seeked`
-  // listener as a final guard against the very rare case where the
-  // first seek attempt is rejected by the buffer (we re-issue once).
   const playbackRestoredRef = React.useRef(false)
   React.useEffect(() => {
     if (playbackRestoredRef.current) return
@@ -386,31 +415,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
     const audio = deckARef.current
     if (!audio) return
-    const target = Math.max(0, stored.position)
-
-    const onLoaded = () => {
-      audio.removeEventListener("loadedmetadata", onLoaded)
-      // Seek now that the audio knows its duration. Clamp to a
-      // hair below duration so we don't accidentally land on `ended`.
-      const safe = Number.isFinite(audio.duration)
-        ? Math.min(target, audio.duration - 0.1)
-        : target
-      try {
-        audio.currentTime = safe
-      } catch {
-        /* some browsers throw on seek before play(); ignore */
-      }
-      dispatch({ type: "TIME", position: safe })
-    }
-    audio.addEventListener("loadedmetadata", onLoaded)
+    seekWhenReady(audio, Math.max(0, stored.position))
     audio.src = peekResolvedSrc(stored.songId)
     audio.load()
     activeDeckRef.current = 0
     dispatch({ type: "SET_INDEX", index })
-    // Show the saved position in the UI immediately — the actual
-    // audio seek lands when loadedmetadata fires above.
-    dispatch({ type: "TIME", position: target })
-  }, [songs, loading])
+  }, [songs, loading, seekWhenReady])
 
   // Eager prefetch was hammering the proxy on cold load and competing
   // with the active stream's range requests on the same origin pool —
@@ -1266,12 +1276,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     (seconds: number) => {
       const active = getDeck(activeDeckRef.current)
       if (!active) return
-      active.currentTime = seconds
+      // Waits for metadata when the song is still loading (a jam can seek
+      // a song it has only just started).
+      seekWhenReady(active, seconds)
       // A user-initiated seek invalidates the auto-crossfade arming so we
       // re-evaluate at the new position.
       crossfadeArmedRef.current = false
     },
-    [getDeck]
+    [getDeck, seekWhenReady]
   )
 
   const setVolume = React.useCallback(
@@ -1311,6 +1323,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const cycleRepeat = React.useCallback(() => {
     dispatch({ type: "CYCLE_REPEAT" })
   }, [])
+
+  const setRepeat = React.useCallback((repeat: RepeatMode) => {
+    dispatch({ type: "SET_REPEAT", repeat })
+  }, [])
+
+  const adoptPlayback = React.useCallback(
+    (plan: { list: string[]; cursorId: string | null; shuffle: boolean }) => {
+      dispatch({ type: "ADOPT_PLAYBACK", ...plan })
+    },
+    []
+  )
 
   const setSearch = React.useCallback((query: string) => {
     dispatch({ type: "SEARCH", query })
@@ -1383,13 +1406,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   // existing items (e.g. drag reorder) we keep their stable keys so
   // the in-flight drag stays bound to the correct row.
   const queueSet = React.useCallback(
-    (input: string[] | import("@/lib/types").QueueItem[]) => {
-      const queue = (input as Array<string | { key: string; songId: string }>)
-        .map((entry) =>
-          typeof entry === "string"
-            ? { key: newKey(), songId: entry }
-            : entry
-        )
+    (input: QueueInput[]) => {
+      const queue = input.map((entry) =>
+        typeof entry === "string"
+          ? { key: newKey(), songId: entry }
+          : { ...entry, key: entry.key ?? newKey() }
+      )
       dispatch({ type: "QUEUE_SET", queue })
     },
     []
@@ -1476,6 +1498,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       toggleMute,
       toggleShuffle,
       cycleRepeat,
+      setRepeat,
+      adoptPlayback,
       setSearch,
       setSort,
       reload,
@@ -1514,6 +1538,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       toggleMute,
       toggleShuffle,
       cycleRepeat,
+      setRepeat,
+      adoptPlayback,
       setSearch,
       setSort,
       reload,
