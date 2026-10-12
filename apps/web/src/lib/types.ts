@@ -10,7 +10,14 @@ export interface Song {
   artist?: string
   mimeType: string
   size: number
+  /** Last edit (retag, new cover, re-upload). Not when it was added. */
   modifiedTime: string
+  /**
+   * When the song was added to the Drive folder. Optional because a
+   * manifest cached before this field existed doesn't carry it — use
+   * `addedAt()` rather than reading it directly.
+   */
+  createdTime?: string
 }
 
 export type RepeatMode = "off" | "all" | "one"

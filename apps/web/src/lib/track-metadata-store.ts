@@ -24,6 +24,8 @@ export interface PersistedMetadata {
   title?: string
   duration?: number
   pictureBlob?: Blob
+  /** Small copy of the cover for lists; see `image-thumbnail.ts`. */
+  thumbBlob?: Blob
   pictureType?: string
   cachedAt: number
 }
