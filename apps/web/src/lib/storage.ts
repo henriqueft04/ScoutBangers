@@ -46,3 +46,13 @@ export function setCached<T>(key: string, value: T, ttlMs: number): void {
     /* quota exceeded or storage disabled — fail silently */
   }
 }
+
+/** Forget `key`. */
+export function removeCached(key: string): void {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.removeItem(key)
+  } catch {
+    /* storage disabled — nothing to remove */
+  }
+}

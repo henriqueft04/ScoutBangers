@@ -13,6 +13,7 @@ interface DriveFile {
   mimeType: string
   size?: string
   modifiedTime: string
+  createdTime: string
 }
 
 interface DriveListResponse {
@@ -27,6 +28,8 @@ interface Song {
   mimeType: string
   size: number
   modifiedTime: string
+  /** When the file was added to the Drive folder. */
+  createdTime: string
 }
 
 function parseSongName(filename: string): { title: string; artist?: string } {
@@ -66,7 +69,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     do {
       const params = new URLSearchParams({
         q: `'${env.DRIVE_FOLDER_ID}' in parents and mimeType contains 'audio/' and trashed = false`,
-        fields: "nextPageToken,files(id,name,mimeType,size,modifiedTime)",
+        fields: "nextPageToken,files(id,name,mimeType,size,modifiedTime,createdTime)",
         pageSize: "1000",
       })
       if (pageToken) params.set("pageToken", pageToken)
@@ -105,6 +108,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
         mimeType: file.mimeType,
         size: file.size ? Number.parseInt(file.size, 10) : 0,
         modifiedTime: file.modifiedTime,
+        createdTime: file.createdTime,
       }
     })
     .sort((a, b) => {

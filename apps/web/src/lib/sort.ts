@@ -3,6 +3,25 @@ import type { Song } from "./types"
 
 export type SortMode = "default" | "title" | "artist"
 
+/**
+ * When a song was added to the catalog. Falls back to `modifiedTime` for a
+ * manifest cached before `createdTime` existed, so the newest-first order
+ * degrades to "recently touched" instead of breaking.
+ */
+export function addedAt(song: Song): string {
+  return song.createdTime ?? song.modifiedTime
+}
+
+/** A copy of `songs`, most recently added first. */
+export function newestFirst(songs: readonly Song[]): Song[] {
+  // ISO-8601 timestamps sort chronologically as plain strings.
+  return [...songs].sort((a, b) => {
+    const aAt = addedAt(a)
+    const bAt = addedAt(b)
+    return aAt < bAt ? 1 : aAt > bAt ? -1 : 0
+  })
+}
+
 export const SORT_LABEL: Record<SortMode, string> = {
   default: "Predefinido",
   title: "Título A–Z",

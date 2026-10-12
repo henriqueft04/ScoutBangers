@@ -19,6 +19,7 @@ create table if not exists public.profiles (
   tour_completed_at timestamptz,
   is_admin boolean not null default false,
   update_tour_seen boolean default false,
+  jam_tour_seen boolean default false,
   created_at timestamptz not null default now()
 );
 

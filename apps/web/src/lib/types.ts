@@ -10,7 +10,14 @@ export interface Song {
   artist?: string
   mimeType: string
   size: number
+  /** Last edit (retag, new cover, re-upload). Not when it was added. */
   modifiedTime: string
+  /**
+   * When the song was added to the Drive folder. Optional because a
+   * manifest cached before this field existed doesn't carry it — use
+   * `addedAt()` rather than reading it directly.
+   */
+  createdTime?: string
 }
 
 export type RepeatMode = "off" | "all" | "one"
@@ -66,7 +73,15 @@ export interface QueueItem {
   key: string
   /** The song to play. */
   songId: string
+  /** Who queued it, by display name. Only set for songs queued in a jam. */
+  addedBy?: string
 }
+
+/**
+ * What `queueSet` accepts per entry: a bare song id, or an item — whose
+ * `key` is generated when absent.
+ */
+export type QueueInput = string | (Omit<QueueItem, "key"> & { key?: string })
 
 /** Imperative actions available on the player. */
 export interface PlayerActions {
@@ -77,6 +92,13 @@ export interface PlayerActions {
    * walk through your tab's order instead of the library's.
    */
   play: (index: number, contextSongIds?: string[]) => void
+  /**
+   * Jump to a song already in the queue — a user-queued one (`queueIndex`
+   * is its position there) or an upcoming one — without rebuilding or
+   * reshuffling the playback list. Songs in between are skipped; the ones
+   * after it stay as they were.
+   */
+  skipTo: (songId: string, queueIndex?: number) => void
   toggle: () => void
   next: () => void
   prev: () => void
@@ -85,6 +107,17 @@ export interface PlayerActions {
   toggleMute: () => void
   toggleShuffle: () => void
   cycleRepeat: () => void
+  /** Jump straight to a repeat mode (a jam applies the room's mode). */
+  setRepeat: (repeat: RepeatMode) => void
+  /**
+   * Replace the playback order, its cursor and the shuffle flag in one go,
+   * without reshuffling (a jam applies the room's exact order).
+   */
+  adoptPlayback: (plan: {
+    list: string[]
+    cursorId: string | null
+    shuffle: boolean
+  }) => void
   setSearch: (search: string) => void
   setSort: (sort: import("./sort").SortMode) => void
   reload: () => void
@@ -101,7 +134,7 @@ export interface PlayerActions {
    * fresh insertion gets a generated key) or existing QueueItems with
    * their stable keys (used by drag reorder so keys stay attached).
    */
-  queueSet: (input: string[] | QueueItem[]) => void
+  queueSet: (input: QueueInput[]) => void
   /** Empty the user queue. */
   queueClear: () => void
   /**

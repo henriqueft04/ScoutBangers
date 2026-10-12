@@ -16,8 +16,9 @@ interface TrackArtworkProps {
 
 /**
  * Picture-or-fallback artwork tile, used by every row that shows a song
- * thumbnail. Resolves the embedded picture URL when present, otherwise
- * falls back to the brand placeholder. The wrapper is `relative` so
+ * thumbnail. Uses the small thumbnail (never the full-size cover: a list of
+ * those decodes to hundreds of MB and gets the page killed on a phone), and
+ * otherwise falls back to the brand placeholder. The wrapper is `relative` so
  * callers can drop an `overlay` (e.g. play/pause icon) on top.
  */
 export function TrackArtwork({
@@ -28,9 +29,9 @@ export function TrackArtwork({
 }: TrackArtworkProps) {
   return (
     <div className={cn("relative shrink-0", className)}>
-      {meta?.pictureUrl ? (
+      {meta?.thumbUrl ? (
         <img
-          src={meta.pictureUrl}
+          src={meta.thumbUrl}
           alt={alt}
           loading="lazy"
           decoding="async"

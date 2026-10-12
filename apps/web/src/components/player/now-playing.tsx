@@ -44,9 +44,9 @@ export function NowPlaying({ className, onExpand }: NowPlayingProps) {
         disabled={!song}
         className="size-10 shrink-0 overflow-hidden rounded-md p-0 md:size-12"
       >
-        {meta?.pictureUrl ? (
+        {meta?.thumbUrl ?? meta?.pictureUrl ? (
           <img
-            src={meta.pictureUrl}
+            src={meta.thumbUrl ?? meta.pictureUrl}
             alt=""
             decoding="async"
             className="size-full object-cover"

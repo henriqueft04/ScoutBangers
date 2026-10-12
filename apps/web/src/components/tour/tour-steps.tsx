@@ -1,15 +1,27 @@
 import * as React from "react"
+import type { Profile } from "@/hooks/auth-context"
+
 import type { TourStep } from "./tour-context"
 
-function JokeMultipleChoice() {
+interface JokeOption {
+  text: string
+  reply: string
+  /** A reaction image from `public/`, shown next to the reply. */
+  image?: string
+}
+
+/** A playful "guess the new feature" card: every option gets its own reply. */
+function JokeMultipleChoice({ options }: { options: JokeOption[] }) {
   const [selected, setSelected] = React.useState<number | null>(null)
-  
-  const options = [
-    { text: "Agora o ScoutBangers é pago 🤑 (vou ficar rico LET'S GOO)", reply: "Por acaso comprei agora uma mochila nova e as atividades andam caras, mas continua grátis 🏄" },
-  { text: "As músicas vão passar a ser covers do Chefe Nacional 🎤", reply: "Embora o Chefe Bento tenha com certeza o maior vozeirão do CNE, ainda não o consegui convencer a cantar os 7 minutos da Ronda :(" },
-    { text: "O Spotify comprou a app por duas Bifanas e um Fino 🌭", reply: "Embora adore essa combinação, seriam precisos mais alguns finos do que isso para eu vender o ScoutBangers hehe" },
-  ]
-  
+
+  // Fetch the reaction images up front so they are there the instant an
+  // option is tapped, not a beat later.
+  React.useEffect(() => {
+    for (const { image } of options) {
+      if (image) new Image().src = image
+    }
+  }, [options])
+
   return (
     <div className="flex flex-col gap-3 mt-2">
       {options.map((opt, i) => (
@@ -22,13 +34,62 @@ function JokeMultipleChoice() {
         </button>
       ))}
       {selected !== null && (
-        <div className="text-sm font-medium text-red-800 mt-2">
-          {options[selected].reply}
+        <div className="mt-2 flex items-center gap-3">
+          {options[selected].image ? (
+            <img
+              src={options[selected].image}
+              alt=""
+              className="size-16 shrink-0 object-contain"
+            />
+          ) : null}
+          {/* min-w-0 lets the text shrink inside the flex row; anywhere-wrapping
+              breaks a long unbroken word (a hashtag) instead of overflowing. */}
+          <p className="min-w-0 text-sm font-medium text-red-800 wrap-anywhere">
+            {options[selected].reply}
+          </p>
         </div>
       )}
     </div>
   )
 }
+
+const SUBMISSION_JOKES: JokeOption[] = [
+  { text: "Agora o ScoutBangers é pago 🤑 (vou ficar rico LET'S GOO)", reply: "Por acaso comprei agora uma mochila nova e as atividades andam caras, mas continua grátis 🏄" },
+  { text: "As músicas vão passar a ser covers do Chefe Nacional 🎤", reply: "Embora o Chefe Bento tenha com certeza o maior vozeirão do CNE, ainda não o consegui convencer a cantar os 7 minutos da Ronda :(" },
+  { text: "O Spotify comprou a app por duas Bifanas e um Fino 🌭", reply: "Embora adore essa combinação, seriam precisos mais alguns finos do que isso para eu vender o ScoutBangers hehe" },
+]
+
+const JAM_RIC_JOKES: JokeOption[] = [
+  {
+    text: "SIMMMM, estes updates têm mesmo muita piada!!!",
+    reply: "Ó pá assim até fico tímido",
+    image: "/timido.webp",
+  },
+  {
+    text: "Não, és ganda chato",
+    reply: "Yha esta opção bane a tua conta instantaneamente do scoutbangers, mas juro que não levei a peito",
+    image: "/sideeye.webp",
+  },
+  {
+    text: "Dou sempre skip às tuas piadas",
+    reply: "ok... vou repensar o meu compromisso com o ScoutBangers, se calhar vou migrar para o TikTok...",
+    image: "/sad.webp",
+  },
+]
+const JAM_JOKES: JokeOption[] = [
+  {
+    text: "ScoutBangers Wrapped!!!",
+    reply: "Vocês devem mesmo achar que isto é o Spotify e que eu não tenho mais nada para fazer ahaha",
+  },
+  {
+    text: "O Fescut vai ser transmitido em direto na app! 📺",
+    reply: "Não, ainda não sou pago pelo CNE, talvez um dia ✊🏼 #CNEpaga-meporfavortenhofomeeprecisodeunscalçoesdafardanovos",
+  },
+  {
+    text: "A app agora usa Inteligência Artificial para adivinhar qual é a próxima música que queres ouvir 🧠",
+    reply: "A IA achava sempre que era Ronda a seguir, ainda precisa de trabalho",
+  },
+]
 
 /**
  * Main first-run tour. Adding / removing steps only requires editing
@@ -74,6 +135,19 @@ function playFirstSong(): void {
     '[data-tour-id="song-list-demo"] [role="button"], [data-tour-id="song-list-demo"] button'
   )
   if (row instanceof HTMLElement) row.click()
+}
+
+/**
+ * Start the first song unless one is already loaded (the expand-to-fullscreen
+ * button is only enabled once something is), so a tour that needs the player
+ * never interrupts what the user is already listening to.
+ */
+function playFirstSongIfIdle(): void {
+  const expand = document.querySelector(
+    'button[aria-label="Abrir leitor em ecrã inteiro"]'
+  )
+  if (expand instanceof HTMLButtonElement && !expand.disabled) return
+  playFirstSong()
 }
 
 /**
@@ -341,7 +415,7 @@ export const UPDATE_TOUR: TourStep[] = [
     target: null,
     unskippable: true,
     title: "O que achas que é a nova feature? 🤔",
-    body: <JokeMultipleChoice />,
+    body: <JokeMultipleChoice options={SUBMISSION_JOKES} />,
   },
   {
     id: "update-upload",
@@ -355,7 +429,96 @@ export const UPDATE_TOUR: TourStep[] = [
   }
 ]
 
+/** Shown once: the Jam (listen together) feature. */
+export const JAM_TOUR: TourStep[] = [
+  {
+    id: "jam-pre",
+    target: null,
+    title: "WOWWWW Mais novidades na APP!",
+    body: "Ai ai qui loucura 😝. Esta é certamente a app do ano, breve ninguém usa Spotify, Apple Music ou YouTube Music, só ScoutBangers mesmo yhaaaa.",
+  },
+  {
+    id: "jam-ric-joke",
+    target: null,
+    title: "Tinham saudades minhas?",
+    body: <JokeMultipleChoice options={JAM_RIC_JOKES} />,
+  },
+  {
+    id: "jam-joke",
+    target: null,
+    title: "Qual é a nova funcionalidade?",
+    body: <JokeMultipleChoice options={JAM_JOKES} />,
+  },
+  {
+    id: "jam-welcome",
+    target: null,
+    title: "Novidade: Jam! 🎧 (Tou-vos a dizer que isto vai ficar igual ao Spotify ahaha)",
+    body: "Agora podes ouvir música ao mesmo tempo que os teus amigos, mesmo estando a quilómetros de distância. Vou mostrar-te onde fica, e bem fast KACHOWWW.",
+  },
+  {
+    id: "jam-play",
+    target: '[data-tour-id="song-list-demo"]',
+    route: "/music",
+    title: "Primeiro, uma música",
+    body: "Para criares uma Jam precisas de ter uma música a tocar. Carrega em Seguinte e eu ponho uma a tocar (se já estiver alguma, fica como está).",
+    side: "top",
+    onAdvance: playFirstSongIfIdle,
+  },
+  {
+    id: "jam-player-bar",
+    target: '[data-tour-id="player-bar"]',
+    title: "Barra do leitor",
+    body: "Carrega em Seguinte para abrires o leitor completo.",
+    side: "top",
+    onAdvance: openFullscreenPlayer,
+  },
+  {
+    id: "jam-button",
+    target: '[data-tour-id="player-jam"]',
+    title: "O botão da Jam",
+    body: "Toca aqui para criares uma Jam e partilhares o link no WhatsApp, Instagram, onde quiseres. Quem abrir o link entra e ouve exatamente o mesmo que tu, ao mesmo tempo. Qualquer pessoa na Jam pode pausar, avançar ou pôr músicas na fila.",
+    side: "top",
+  },
+  {
+    id: "jam-status",
+    target: '[data-tour-id="jam-status"]',
+    title: "Quem está a ouvir",
+    body: "Quando estás numa Jam, este título mostra quem está contigo. Toca nele para veres a malta e, se quiseres, saíres da Jam.",
+    side: "bottom",
+  },
+  {
+    id: "jam-close",
+    target: '[data-tour-id="fullscreen-close"]',
+    title: "Top xuxa!",
+    body: "Toca na seta para fechares o leitor. Agora é só chamar a malta e fazer ganda party yhaaaaaaaaa meuu",
+    side: "bottom",
+  },
+  {
+    id: "jam-disclaimer",
+    target: '[data-tour-id="fullscreen-close"]',
+    title: "Disclaimer",
+    body: "Isto pode muito bem estar tudo partido e não funcionar direito, como é algo que é preciso várias pessoas para testar não foi muito testado, portanto, se estiver terrível avisem-me yha 🤟",
+    side: "bottom",
+    advanceOn: "click",
+  },
+]
+
 export const TOURS: Record<string, TourStep[]> = {
   main: MAIN_TOUR,
   update: UPDATE_TOUR,
+  jam: JAM_TOUR,
 }
+
+/** A profile flag recording that an update tour has been seen. */
+export type UpdateTourColumn = Extract<keyof Profile, `${string}_tour_seen`>
+
+/**
+ * The one-off "what's new" tours, oldest first. Each is shown once per user —
+ * after the main tour — and remembered by its profile column. To announce a
+ * new feature: add its steps above, a `*_tour_seen` column (migration, schema
+ * and types), and a line here. `id` must match its key in `TOURS`.
+ */
+export const UPDATE_TOURS: readonly { id: string; seenColumn: UpdateTourColumn }[] = [
+  { id: "update", seenColumn: "update_tour_seen" },
+  { id: "jam", seenColumn: "jam_tour_seen" },
+]

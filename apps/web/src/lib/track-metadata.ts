@@ -2,10 +2,12 @@ import { parseBlob } from "music-metadata"
 
 import { AUDIO_CACHE as AUDIO_CACHE_NAME } from "./audio-cache-name"
 import { streamUrl } from "./audio-url"
+import { makeThumbnail, thumbnailType } from "./image-thumbnail"
 import {
   deletePersisted,
   getAllPersisted,
   putPersisted,
+  type PersistedMetadata,
 } from "./track-metadata-store"
 
 /**
@@ -26,8 +28,13 @@ export interface TrackMetadata {
    * file lacks the relevant tag.
    */
   duration?: number
-  /** Object URL for `<img src>`. Cached for the app's lifetime. */
+  /** Object URL of the full-size cover. Only for the one big image on
+   *  screen (full-screen player, story card) — lists use `thumbUrl`,
+   *  because a browser decodes an image at its full size however small
+   *  it is drawn. Cached for the app's lifetime. */
   pictureUrl?: string
+  /** Object URL of a small (~192 px) copy of the cover, for list rows. */
+  thumbUrl?: string
   /** Data URL (base64). Used for cross-process consumers like
    *  `mediaSession.metadata.artwork`, which some platforms can't load from
    *  same-origin Blob URLs. */
@@ -35,6 +42,8 @@ export interface TrackMetadata {
   pictureType?: string
   /** Original picture as a Blob, retained so we can persist to IDB. */
   pictureBlob?: Blob
+  /** The thumbnail as a Blob, persisted next to the original. */
+  thumbBlob?: Blob
 }
 
 /**
@@ -143,6 +152,19 @@ async function loadPersistedCache(): Promise<void> {
       duration: entry.duration,
       pictureType: entry.pictureType,
       pictureBlob: entry.pictureBlob,
+      thumbBlob: entry.thumbBlob,
+    }
+    // A thumbnail in the wrong format for its cover is a flattened copy from
+    // before thumbnails kept PNG transparency: drop it so the backfill
+    // regenerates it, rather than showing a cover on a white background.
+    if (
+      entry.thumbBlob &&
+      entry.thumbBlob.type !== thumbnailType(entry.pictureType ?? "")
+    ) {
+      delete metadata.thumbBlob
+    }
+    if (metadata.thumbBlob) {
+      metadata.thumbUrl = URL.createObjectURL(metadata.thumbBlob)
     }
     if (entry.pictureBlob) {
       metadata.pictureUrl = URL.createObjectURL(entry.pictureBlob)
@@ -238,6 +260,8 @@ export function ensureTrackMetadata(
           cached.artist || cached.album || cached.title || cached.pictureBlob
         ))
     if (mtimeOk && !looksUpgradable) {
+      // Cached before thumbnails existed: make one now (see below).
+      if (cached.pictureBlob && !cached.thumbBlob) backfillThumbnail(songId)
       return Promise.resolve(cached)
     }
     // Stale or pre-duration entry: evict and re-fetch.
@@ -268,19 +292,7 @@ export function ensureTrackMetadata(
         value.title ||
         value.duration !== undefined ||
         value.pictureBlob
-      if (hasData) {
-        void putPersisted({
-          songId,
-          modifiedTime,
-          artist: value.artist,
-          album: value.album,
-          title: value.title,
-          duration: value.duration,
-          pictureBlob: value.pictureBlob,
-          pictureType: value.pictureType,
-          cachedAt: Date.now(),
-        })
-      }
+      if (hasData) void putPersisted(toPersisted(songId, value))
       subscribers.get(songId)?.forEach((fn) => fn())
       globalSubscribers.forEach((fn) => fn())
       return value
@@ -300,6 +312,64 @@ export function ensureTrackMetadata(
     })
   inflight.set(songId, promise)
   return promise
+}
+
+/** The on-disk shape of a resolved entry. */
+function toPersisted(songId: string, meta: TrackMetadata): PersistedMetadata {
+  return {
+    songId,
+    modifiedTime: cachedModifiedTime.get(songId),
+    artist: meta.artist,
+    album: meta.album,
+    title: meta.title,
+    duration: meta.duration,
+    pictureBlob: meta.pictureBlob,
+    thumbBlob: meta.thumbBlob,
+    pictureType: meta.pictureType,
+    cachedAt: Date.now(),
+  }
+}
+
+const thumbJobs = new Set<string>()
+/** Covers that could not be thumbnailed: not retried this session. */
+const thumbFailed = new Set<string>()
+let thumbQueue: Promise<unknown> = Promise.resolve()
+
+/**
+ * Entries cached before thumbnails existed only have the full-size cover.
+ * Give them a thumbnail the first time a row asks for them — one at a time,
+ * because each job briefly decodes a full-size image — and persist it so it
+ * is a one-off. Until it lands the row shows the placeholder, never the
+ * full-size image.
+ */
+function backfillThumbnail(songId: string): void {
+  if (thumbJobs.has(songId) || thumbFailed.has(songId)) return
+  thumbJobs.add(songId)
+  thumbQueue = thumbQueue
+    .then(async () => {
+      const before = resolved.get(songId)
+      if (!before?.pictureBlob || before.thumbBlob) return
+      const gen = evictGen.get(songId) ?? 0
+      const thumbBlob = await makeThumbnail(before.pictureBlob)
+      if (!thumbBlob) {
+        thumbFailed.add(songId)
+        return
+      }
+      // Evicted or replaced while we were decoding: drop the result.
+      if ((evictGen.get(songId) ?? 0) !== gen) return
+      if (resolved.get(songId) !== before) return
+      // A new object, not a mutation: rows re-render on a changed reference.
+      const after: TrackMetadata = {
+        ...before,
+        thumbBlob,
+        thumbUrl: URL.createObjectURL(thumbBlob),
+      }
+      resolved.set(songId, after)
+      void putPersisted(toPersisted(songId, after))
+      subscribers.get(songId)?.forEach((fn) => fn())
+    })
+    .catch(() => undefined)
+    .finally(() => thumbJobs.delete(songId))
 }
 
 async function fetchAndParse(songId: string): Promise<TrackMetadata> {
@@ -402,7 +472,14 @@ async function toTrackMetadata(
     result.pictureUrl = URL.createObjectURL(pictureBlob)
     result.pictureType = picture.format
     result.pictureBlob = pictureBlob
-    result.pictureDataUrl = await blobToDataUrl(pictureBlob)
+    // No base64 copy here: it is only needed for the lock screen, and
+    // `getPictureDataUrl` makes it on demand. Keeping one per song for the
+    // whole session was ~1.3× every cover's size in memory.
+    const thumbBlob = await makeThumbnail(pictureBlob)
+    if (thumbBlob) {
+      result.thumbBlob = thumbBlob
+      result.thumbUrl = URL.createObjectURL(thumbBlob)
+    }
   }
   return result
 }
@@ -450,6 +527,7 @@ export async function evictTrackMetadata(
 ): Promise<void> {
   const meta = resolved.get(songId)
   if (meta?.pictureUrl) URL.revokeObjectURL(meta.pictureUrl)
+  if (meta?.thumbUrl) URL.revokeObjectURL(meta.thumbUrl)
   resolved.delete(songId)
   cachedModifiedTime.delete(songId)
   // Bump generation so any in-flight fetch discards its stale result.

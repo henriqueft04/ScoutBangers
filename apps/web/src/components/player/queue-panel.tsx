@@ -14,7 +14,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { TrackArtwork } from "@/components/library/track-artwork"
 import { useTrackVisuals } from "@/hooks/useTrackVisuals"
 import { usePlayer } from "@/hooks/usePlayer"
-import { playbackCursorIndex } from "@/lib/playback-cursor"
+import { upcomingSongIds } from "@/lib/jam"
 import { displayArtist, displayTitle } from "@/lib/song-display"
 import type { QueueItem, Song } from "@/lib/types"
 
@@ -46,7 +46,7 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
     queueClear,
     reorderUpcoming,
     removeFromUpcoming,
-    play,
+    skipTo,
   } = usePlayer()
 
   const songsById = React.useMemo(
@@ -56,36 +56,20 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
 
   // Render data for the "Up next" section: each visible upcoming song,
   // wrapped so it has a stable identity for Reorder.
-  const upcomingItems = React.useMemo(() => {
-    const currentSongId =
-      currentIndex !== null ? songs[currentIndex]?.id ?? null : null
-    const skip = new Set<string>(userQueue.map((item) => item.songId))
-    if (currentSongId) skip.add(currentSongId)
-    // Anchor on playbackCursorId, not the currently-playing song — while
-    // a queued (out-of-order) song is active, currentSongId's position
-    // in playbackList is unrelated to "what's actually next": it's
-    // either not in the list at all (giving -1, which used to wrap this
-    // around to show the list from the very top again) or sitting
-    // somewhere that has nothing to do with where the user actually was.
-    // The cursor always reflects the last song reached by natural
-    // advancement, so "up next" stays correct through any number of
-    // queue detours.
-    const here = playbackCursorIndex(playbackList, playbackCursorId)
-    const out: { id: string }[] = []
-    for (let i = here + 1; i < playbackList.length; i++) {
-      const id = playbackList[i]!
-      if (skip.has(id)) continue
-      skip.add(id)
-      out.push({ id })
-      if (out.length >= 50) break
-    }
-    return out
-  }, [playbackList, playbackCursorId, currentIndex, songs, userQueue])
-
-  const handlePlay = (songId: string) => {
-    const idx = songs.findIndex((song) => song.id === songId)
-    if (idx !== -1) play(idx)
-  }
+  const upcomingItems = React.useMemo(
+    () =>
+      upcomingSongIds(
+        {
+          currentSongId:
+            currentIndex !== null ? songs[currentIndex]?.id ?? null : null,
+          userQueue,
+          playbackList,
+          playbackCursorId,
+        },
+        50
+      ).map((id) => ({ id })),
+    [playbackList, playbackCursorId, currentIndex, songs, userQueue]
+  )
 
   const handleQueueReorder = (next: QueueItem[]) => {
     if (
@@ -168,7 +152,8 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
                       key={item.key}
                       value={item}
                       song={songsById.get(item.songId)}
-                      onPlay={() => handlePlay(item.songId)}
+                      addedBy={item.addedBy}
+                      onPlay={() => skipTo(item.songId, index)}
                       onRemove={() => queueRemove(index)}
                     />
                   ))}
@@ -191,7 +176,7 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
                       key={item.id}
                       value={item}
                       song={songsById.get(item.id)}
-                      onPlay={() => handlePlay(item.id)}
+                      onPlay={() => skipTo(item.id)}
                       onRemove={() => removeFromUpcoming(item.id)}
                     />
                   ))}
@@ -208,6 +193,8 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
 interface ReorderableRowProps<V> {
   value: V
   song: Song | undefined
+  /** Who queued it, when it was queued in a jam. */
+  addedBy?: string
   onPlay: () => void
   onRemove: () => void
 }
@@ -225,7 +212,7 @@ interface ReorderableRowProps<V> {
 const SWIPE_REMOVE_THRESHOLD = 80
 const SWIPE_REMOVE_MAX = 140
 
-function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProps<V>) {
+function ReorderableRow<V>({ value, song, addedBy, onPlay, onRemove }: ReorderableRowProps<V>) {
   const { ref, meta } = useTrackVisuals<HTMLDivElement>(
     song?.id,
     true,
@@ -320,6 +307,11 @@ function ReorderableRow<V>({ value, song, onPlay, onRemove }: ReorderableRowProp
             </p>
             {artist ? (
               <p className="text-muted-foreground truncate text-xs">{artist}</p>
+            ) : null}
+            {addedBy ? (
+              <p className="text-primary truncate text-[11px]">
+                Adicionada por {addedBy}
+              </p>
             ) : null}
           </div>
         </div>

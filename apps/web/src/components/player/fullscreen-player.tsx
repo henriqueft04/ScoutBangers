@@ -20,13 +20,16 @@ import { FavoriteButton } from "@/components/library/favorite-button"
 import { MarqueeText } from "@/components/library/marquee-text"
 import { SongArtwork } from "@/components/library/song-artwork"
 import { useOfflineDownload } from "@/hooks/useOfflineDownload"
+import { useShareLink } from "@/hooks/useShareLink"
 import { useTrackMetadata } from "@/hooks/useTrackMetadata"
 import { usePlayer } from "@/hooks/usePlayer"
 import { artistHref } from "@/lib/artists"
-import { canShareImage, shareImage, shareUrl } from "@/lib/share"
+import { canShareImage, shareImage } from "@/lib/share"
 import { displayArtist, displayTitle } from "@/lib/song-display"
 
 import { BottomSheet } from "./bottom-sheet"
+import { JamButton } from "./jam-button"
+import { JamStatus } from "./jam-status"
 import { LyricsPanel } from "./lyrics-panel"
 import { MainControls } from "./main-controls"
 import { PlaybackErrorBanner } from "./playback-error-banner"
@@ -57,7 +60,7 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
   const navigate = useNavigate()
   const song = currentIndex !== null ? songs[currentIndex] : undefined
   const meta = useTrackMetadata(song?.id, Boolean(song), song?.modifiedTime)
-  const [copied, setCopied] = React.useState(false)
+  const { copied, share } = useShareLink()
   const [storyBusy, setStoryBusy] = React.useState(false)
   const [queueOpenRaw, setQueueOpenRaw] = React.useState(false)
   const [lyricsOpenRaw, setLyricsOpenRaw] = React.useState(false)
@@ -205,12 +208,8 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
   const handleShare = React.useCallback(async () => {
     if (!song) return
     const url = `${window.location.origin}/?song=${song.id}`
-    const outcome = await shareUrl(displayTitle(song, null), url)
-    if (outcome === "copied") {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }, [song])
+    await share(displayTitle(song, null), url)
+  }, [song, share])
 
   const handleShareStory = React.useCallback(async () => {
     if (!song || storyBusy) return
@@ -401,11 +400,10 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
         >
           <ChevronDown />
         </Button>
-        <p className="text-muted-foreground text-xs uppercase tracking-wider">
-          A Reproduzir
-        </p>
+        <JamStatus />
         {song ? (
           <div className="flex items-center gap-1">
+            <JamButton className="touch-manipulation hidden size-10 md:inline-flex" />
             <Button
               type="button"
               variant="ghost"
@@ -503,7 +501,7 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
           <div data-tour-id="fullscreen-controls-wrap">
             <MainControls size="lg" />
           </div>
-          {/* Mobile actions row: share | heart | queue */}
+          {/* Mobile actions row: share | jam | story | heart | lyrics | queue */}
           {song ? (
             <div className="flex items-center justify-between px-2 md:hidden">
               <Button
@@ -521,6 +519,7 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
                   <Share2 className="size-5" />
                 )}
               </Button>
+              <JamButton className="touch-manipulation size-11" />
               {canShareImage() ? (
                 <Button
                   type="button"
