@@ -17,21 +17,30 @@ jobs:
       fail-fast: false
       matrix:
         worker: [drive-sync, jam]
+    defaults:
+      run:
+        working-directory: workers/${{ matrix.worker }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Wrangler 4 (the jam worker) requires Node 22+.
+          node-version: "22"
           cache: npm
+          cache-dependency-path: workers/${{ matrix.worker }}/package-lock.json
 
-      - name: Install workspace dependencies
+      # Each worker pins its own wrangler in its lockfile. Deploying with
+      # that exact install — rather than letting wrangler-action pick a
+      # version of its own — keeps CI identical to what runs locally and
+      # avoids peer-dependency clashes with the worker's other packages.
+      # (Workers are not npm workspaces, so the repo-root install does not
+      # cover them.)
+      - name: Install ${{ matrix.worker }} dependencies
         run: npm ci
 
-      - name: Deploy ${{ matrix.worker }} with Wrangler
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: workers/${{ matrix.worker }}
-          command: deploy
+      - name: Deploy ${{ matrix.worker }}
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
