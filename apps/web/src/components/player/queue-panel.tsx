@@ -46,7 +46,7 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
     queueClear,
     reorderUpcoming,
     removeFromUpcoming,
-    play,
+    skipTo,
   } = usePlayer()
 
   const songsById = React.useMemo(
@@ -70,11 +70,6 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
       ).map((id) => ({ id })),
     [playbackList, playbackCursorId, currentIndex, songs, userQueue]
   )
-
-  const handlePlay = (songId: string) => {
-    const idx = songs.findIndex((song) => song.id === songId)
-    if (idx !== -1) play(idx)
-  }
 
   const handleQueueReorder = (next: QueueItem[]) => {
     if (
@@ -158,7 +153,7 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
                       value={item}
                       song={songsById.get(item.songId)}
                       addedBy={item.addedBy}
-                      onPlay={() => handlePlay(item.songId)}
+                      onPlay={() => skipTo(item.songId, index)}
                       onRemove={() => queueRemove(index)}
                     />
                   ))}
@@ -181,7 +176,7 @@ export function QueuePanel({ onClose, className }: QueuePanelProps) {
                       key={item.id}
                       value={item}
                       song={songsById.get(item.id)}
-                      onPlay={() => handlePlay(item.id)}
+                      onPlay={() => skipTo(item.id)}
                       onRemove={() => removeFromUpcoming(item.id)}
                     />
                   ))}

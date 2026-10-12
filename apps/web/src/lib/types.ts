@@ -92,6 +92,13 @@ export interface PlayerActions {
    * walk through your tab's order instead of the library's.
    */
   play: (index: number, contextSongIds?: string[]) => void
+  /**
+   * Jump to a song already in the queue — a user-queued one (`queueIndex`
+   * is its position there) or an upcoming one — without rebuilding or
+   * reshuffling the playback list. Songs in between are skipped; the ones
+   * after it stay as they were.
+   */
+  skipTo: (songId: string, queueIndex?: number) => void
   toggle: () => void
   next: () => void
   prev: () => void

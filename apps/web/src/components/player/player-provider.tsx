@@ -506,29 +506,41 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     []
   )
 
-  // Drop the first occurrence of a song id from the user queue. Called
-  // whenever a song actually starts playing — keeps the displayed queue
-  // consistent with what's left to play (user-explicit duplicates remain
-  // until each is consumed in turn).
-  const consumeQueueSong = React.useCallback((songId: string) => {
-    const s = stateRef.current
-    const queueIdx = s.userQueue.findIndex((item) => item.songId === songId)
-    if (queueIdx === -1) return
-    dispatch({
-      type: "QUEUE_SET",
-      queue: [
-        ...s.userQueue.slice(0, queueIdx),
-        ...s.userQueue.slice(queueIdx + 1),
-      ],
-    })
-  }, [])
+  // Drop a song from the user queue. Called whenever a song actually starts
+  // playing — keeps the displayed queue consistent with what's left to play
+  // (user-explicit duplicates remain until each is consumed in turn).
+  //
+  // By default that is the first occurrence of `songId`. When the user
+  // jumped to a specific queue entry, `throughIndex` names it, and it AND
+  // everything queued ahead of it go: those songs were skipped, not saved
+  // for later. (Done here, not as a separate dispatch beforehand, because
+  // this reads `stateRef`, which only catches up on the next render.)
+  const consumeQueueSong = React.useCallback(
+    (songId: string, throughIndex?: number) => {
+      const s = stateRef.current
+      const queueIdx =
+        throughIndex ?? s.userQueue.findIndex((item) => item.songId === songId)
+      if (queueIdx === -1) return
+      dispatch({
+        type: "QUEUE_SET",
+        queue:
+          throughIndex === undefined
+            ? [
+                ...s.userQueue.slice(0, queueIdx),
+                ...s.userQueue.slice(queueIdx + 1),
+              ]
+            : s.userQueue.slice(queueIdx + 1),
+      })
+    },
+    []
+  )
 
   // ---- Core playback ---------------------------------------------------
 
   const playIndex = React.useCallback(
     (
       index: number,
-      opts: { crossfade?: boolean; fromQueue?: boolean } = {}
+      opts: { crossfade?: boolean; fromQueue?: boolean; queueIndex?: number } = {}
     ) => {
       const s = stateRef.current
       const song = s.songs[index]
@@ -540,7 +552,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
       // Drain the first occurrence of this song from the user queue (if any).
       // Lets the queue UI stay unique on play even when the song was in there.
-      consumeQueueSong(song.id)
+      consumeQueueSong(song.id, opts.queueIndex)
 
       // Make sure metadata (and the canonical duration that comes with
       // it) is loading for this song. Cached after first play, so this
@@ -1221,6 +1233,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     [playIndex]
   )
 
+  // Jump to a song that is already in the queue — one of the user's queued
+  // songs (`queueIndex` is its place there) or an upcoming song of the
+  // playback list — WITHOUT rebuilding that list. `play()` makes the clicked
+  // song's whole context the new list (and reshuffles it when shuffle is on),
+  // which is right for picking from the library but wrong for a queue that
+  // is already laid out: this only moves the playhead. Songs in between are
+  // skipped; songs after it stay exactly as they were.
+  const skipTo = React.useCallback(
+    (songId: string, queueIndex?: number) => {
+      audioEngine.start()
+      const index = stateRef.current.songs.findIndex((s) => s.id === songId)
+      if (index === -1) return
+      if (queueIndex === undefined) playIndex(index)
+      else playIndex(index, { fromQueue: true, queueIndex })
+    },
+    [playIndex]
+  )
+
   // Auto-play a song shared via ?song=<id> in the URL.
   React.useEffect(() => {
     if (sharedSongHandled.current || loading || songs.length === 0) return
@@ -1490,6 +1520,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       playbackList: state.playbackList,
       playbackCursorId: state.playbackCursorId,
       play,
+      skipTo,
       toggle,
       next,
       prev,
@@ -1530,6 +1561,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       state.playbackList,
       state.playbackCursorId,
       play,
+      skipTo,
       toggle,
       next,
       prev,
