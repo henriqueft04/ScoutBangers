@@ -62,21 +62,29 @@ async function decode(blob: Blob): Promise<{
  */
 export async function makeThumbnail(
   blob: Blob,
-  maxSide = THUMBNAIL_MAX_SIDE
+  maxSide = THUMBNAIL_MAX_SIDE,
+  square = false
 ): Promise<Blob | undefined> {
   try {
     const { source, width, height, release } = await decode(blob)
     try {
       if (width === 0 || height === 0) return undefined
-      const scale = Math.min(1, maxSide / Math.max(width, height))
       const canvas = document.createElement("canvas")
-      canvas.width = Math.max(1, Math.round(width * scale))
-      canvas.height = Math.max(1, Math.round(height * scale))
+      // `square` center-crops to the largest centered square — the same
+      // framing `object-cover` gives the list rows.
+      const cropSide = Math.min(width, height)
+      const sx = square ? (width - cropSide) / 2 : 0
+      const sy = square ? (height - cropSide) / 2 : 0
+      const sw = square ? cropSide : width
+      const sh = square ? cropSide : height
+      const scale = Math.min(1, maxSide / Math.max(sw, sh))
+      canvas.width = Math.max(1, Math.round(sw * scale))
+      canvas.height = Math.max(1, Math.round(sh * scale))
       const context = canvas.getContext("2d")
       if (!context) return undefined
       // The canvas starts fully transparent and drawImage keeps the source's
       // alpha, so a PNG's transparency carries over untouched.
-      context.drawImage(source, 0, 0, canvas.width, canvas.height)
+      context.drawImage(source, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
       const thumbnail = await new Promise<Blob | null>((resolve) =>
         // The quality argument only applies to JPEG; PNG ignores it.
         canvas.toBlob(resolve, thumbnailType(blob.type), THUMBNAIL_QUALITY)

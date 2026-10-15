@@ -196,9 +196,14 @@ export async function getPictureDataUrl(
   // Embedded covers can be 3000+ px / several MB; the OS lock-screen
   // process silently drops artwork that large (the app icon shows instead).
   // 512 px is what the lock screen renders at, so send that.
-  const scaled =
-    (await makeThumbnail(meta.pictureBlob, LOCK_SCREEN_ART_SIDE)) ??
-    meta.pictureBlob
+  // Cropped square to match the list rows. No full-size fallback: if the
+  // cover can't be decoded, the caller shows the app icon instead.
+  const scaled = await makeThumbnail(
+    meta.pictureBlob,
+    LOCK_SCREEN_ART_SIDE,
+    true
+  )
+  if (!scaled) return undefined
   const dataUrl = await blobToDataUrl(scaled)
   meta.pictureDataUrl = dataUrl
   return dataUrl
