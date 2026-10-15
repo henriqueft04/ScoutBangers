@@ -184,6 +184,8 @@ async function loadPersistedCache(): Promise<void> {
  * URLs aren't reliably loadable from the OS process. Avoids paying the
  * base64 conversion cost for every cached song on startup.
  */
+const LOCK_SCREEN_ART_SIDE = 512
+
 export async function getPictureDataUrl(
   songId: string
 ): Promise<string | undefined> {
@@ -191,7 +193,13 @@ export async function getPictureDataUrl(
   if (!meta) return undefined
   if (meta.pictureDataUrl) return meta.pictureDataUrl
   if (!meta.pictureBlob) return undefined
-  const dataUrl = await blobToDataUrl(meta.pictureBlob)
+  // Embedded covers can be 3000+ px / several MB; the OS lock-screen
+  // process silently drops artwork that large (the app icon shows instead).
+  // 512 px is what the lock screen renders at, so send that.
+  const scaled =
+    (await makeThumbnail(meta.pictureBlob, LOCK_SCREEN_ART_SIDE)) ??
+    meta.pictureBlob
+  const dataUrl = await blobToDataUrl(scaled)
   meta.pictureDataUrl = dataUrl
   return dataUrl
 }

@@ -25,13 +25,13 @@ const SEEK_OFFSET_SECONDS = 10
  */
 const artworkSizeCache = new Map<string, string>()
 
-async function measureArtworkSizes(songId: string, blob: Blob): Promise<string> {
+async function measureArtworkSizes(songId: string, dataUrl: string): Promise<string> {
   const cached = artworkSizeCache.get(songId)
   if (cached) return cached
   let sizes = "512x512"
   try {
     if (typeof createImageBitmap === "function") {
-      const bitmap = await createImageBitmap(blob)
+      const bitmap = await createImageBitmap(await (await fetch(dataUrl)).blob())
       sizes = `${bitmap.width}x${bitmap.height}`
       bitmap.close()
     }
@@ -186,8 +186,8 @@ export function useMediaSession(): void {
       // introduce the fallback-then-real blink the single-write pattern
       // exists to avoid.
       const sizes =
-        dataUrl && meta?.pictureBlob
-          ? await measureArtworkSizes(song.id, meta.pictureBlob)
+        dataUrl
+          ? await measureArtworkSizes(song.id, dataUrl)
           : "512x512"
       if (cancelled) return
       // List the real artwork first (if any) followed by the fallback
@@ -200,7 +200,7 @@ export function useMediaSession(): void {
             {
               src: dataUrl,
               sizes,
-              type: meta?.pictureType ?? "image/jpeg",
+              type: dataUrl.slice(5, dataUrl.indexOf(";")) || "image/jpeg",
             },
             ...FALLBACK_ARTWORK,
           ]
