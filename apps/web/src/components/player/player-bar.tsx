@@ -1,10 +1,13 @@
-import { ChevronUp, FileText } from "lucide-react"
+import { Check, ChevronUp, FileText, Share2 } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { usePlayer } from "@/hooks/usePlayer"
+import { useShareLink } from "@/hooks/useShareLink"
+import { displayTitle } from "@/lib/song-display"
 
+import { JamButton } from "./jam-button"
 import { MainControls } from "./main-controls"
 import { NowPlaying } from "./now-playing"
 import { PlaybackErrorBanner } from "./playback-error-banner"
@@ -44,7 +47,9 @@ export function PlayerBar({
   onOpenLyrics,
 }: PlayerBarProps) {
   const { currentIndex, songs } = usePlayer()
-  const hasSong = currentIndex !== null && Boolean(songs[currentIndex])
+  const song = currentIndex !== null ? songs[currentIndex] : undefined
+  const hasSong = Boolean(song)
+  const { copied, share } = useShareLink()
   return (
     <div
       data-tour-id="player-bar"
@@ -71,6 +76,23 @@ export function PlayerBar({
         <div className="hidden items-center gap-2 justify-self-end md:flex">
           {hasSong ? (
             <>
+              <JamButton className="touch-manipulation size-8" />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Partilhar música"
+                onClick={() =>
+                  song &&
+                  void share(
+                    displayTitle(song, null),
+                    `${window.location.origin}/?song=${song.id}`
+                  )
+                }
+                className="touch-manipulation"
+              >
+                {copied ? <Check /> : <Share2 />}
+              </Button>
               <Button
                 type="button"
                 variant="ghost"

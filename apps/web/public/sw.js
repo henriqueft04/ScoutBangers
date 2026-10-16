@@ -191,7 +191,10 @@ async function handleNavigation(request) {
     // Race the network against a short timeout so flaky connectivity
     // falls through to the cached shell quickly.
     const response = await fetchWithTimeout(networkRequest, 3000)
-    if (response && response.ok) {
+    // `/?song=<id>` is served with that song's link-preview tags baked in;
+    // don't let it replace the generic offline shell.
+    const isSongLink = new URL(request.url).searchParams.has("song")
+    if (response && response.ok && !isSongLink) {
       const copy = response.clone()
       caches
         .open(SHELL_CACHE)

@@ -108,7 +108,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const driveToken = await getDriveAccessToken(env)
     
     const metadata = {
-      name: `${finalArtist} - ${finalTitle}.mp3`,
+      name: `${finalTitle}.mp3`,
       parents: [env.DRIVE_FOLDER_ID],
       mimeType: "audio/mpeg"
     }
