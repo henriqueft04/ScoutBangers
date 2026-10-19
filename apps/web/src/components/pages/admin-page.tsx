@@ -7,6 +7,7 @@ import { Input } from "@workspace/ui/components/input"
 import { cn } from "@workspace/ui/lib/utils"
 import { useAuth } from "@/hooks/useAuth"
 import { supabase } from "@/lib/supabase"
+import { AdminSongsEditor } from "./admin-songs-editor"
 
 interface Submission {
   id: string
@@ -192,7 +193,7 @@ export function AdminPage() {
   const { profile } = useAuth()
   const navigate = useNavigate()
 
-  const [tab, setTab] = React.useState<"pending" | "rejected">("pending")
+  const [tab, setTab] = React.useState<"pending" | "rejected" | "songs">("pending")
   const [submissions, setSubmissions] = React.useState<Submission[]>([])
   const [loading, setLoading] = React.useState(true)
   const [actionLoading, setActionLoading] = React.useState<string | null>(null)
@@ -206,7 +207,7 @@ export function AdminPage() {
       return
     }
 
-    if (profile?.is_admin) {
+    if (profile?.is_admin && tab !== "songs") {
       fetchSubmissions()
     }
   }, [profile, navigate, tab])
@@ -218,7 +219,7 @@ export function AdminPage() {
     let query = supabase!
       .from("song_submissions")
       .select("*")
-      .eq("status", tab)
+      .eq("status", tab === "songs" ? "pending" : tab)
       .order("created_at", { ascending: false })
       
     if (tab === "rejected") {
@@ -351,7 +352,7 @@ export function AdminPage() {
               Painel de Administração
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Aprova ou rejeita submissões de músicas pendentes.
+              Aprova submissões ou edita os metadados das músicas.
             </p>
           </div>
           <div className="flex bg-muted/50 p-1 rounded-lg shrink-0">
@@ -367,10 +368,18 @@ export function AdminPage() {
             >
               Rejeitados
             </button>
+            <button
+              onClick={() => setTab("songs")}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${tab === "songs" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Músicas
+            </button>
           </div>
         </div>
 
-        {loading ? (
+        {tab === "songs" ? (
+          <AdminSongsEditor />
+        ) : loading ? (
           <div className="flex py-12 items-center justify-center text-muted-foreground">
             A carregar submissões...
           </div>

@@ -54,7 +54,19 @@ function jsonToBase64url(obj: unknown): string {
   return toBase64url(strToBuffer(JSON.stringify(obj)))
 }
 
+// Access tokens last an hour. Reusing one across requests served by the
+// same isolate saves a JWT sign + two round trips to Google per call.
+let cachedToken: { value: string; expiresAt: number } | null = null
+const TOKEN_REUSE_MS = 50 * 60 * 1000
+
 export async function getDriveAccessToken(env: any): Promise<string> {
+  if (cachedToken && Date.now() < cachedToken.expiresAt) return cachedToken.value
+  const value = await fetchDriveAccessToken(env)
+  cachedToken = { value, expiresAt: Date.now() + TOKEN_REUSE_MS }
+  return value
+}
+
+async function fetchDriveAccessToken(env: any): Promise<string> {
   if (env.GOOGLE_REFRESH_TOKEN && env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
     const res = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
