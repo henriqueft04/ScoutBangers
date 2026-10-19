@@ -1,15 +1,17 @@
 import * as React from "react"
-import { CloudDownload, Loader2, LogIn, Moon, RefreshCw, Sun, Plus, ShieldAlert } from "lucide-react"
+import { CloudDownload, Download, Loader2, LogIn, Moon, RefreshCw, Sun, Plus, ShieldAlert } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { SignInDialog } from "@/components/auth/sign-in-dialog"
+import { InstallDialog } from "@/components/onboarding/install-prompt"
 import { useAuth } from "@/hooks/useAuth"
 import { usePlayer } from "@/hooks/usePlayer"
 import { useTheme } from "@/hooks/useTheme"
 import { triggerDriveSync, useIsAdmin } from "@/lib/admin-sync"
+import { promptInstall, useInstall } from "@/lib/install"
 import { supabaseConfigured } from "@/lib/supabase"
 
 interface HeaderProps {
@@ -23,6 +25,15 @@ export function Header({ className }: HeaderProps) {
   const isAdmin = useIsAdmin()
   const [signInOpen, setSignInOpen] = React.useState(false)
   const [syncing, setSyncing] = React.useState(false)
+  const { installed, canPrompt } = useInstall()
+  const [installOpen, setInstallOpen] = React.useState(false)
+
+  // Native dialog when the browser offers one (Android Chrome), otherwise
+  // the step-by-step instructions (iOS, Chrome cooldown, other browsers).
+  const handleInstall = async () => {
+    if (canPrompt && (await promptInstall())) return
+    if (!canPrompt) setInstallOpen(true)
+  }
 
   const handleAdminSync = async () => {
     if (syncing) return
@@ -99,6 +110,18 @@ export function Header({ className }: HeaderProps) {
               )}
             </Link>
           ) : null}
+          {!installed ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Instalar app"
+              onClick={handleInstall}
+              className="text-primary touch-manipulation"
+            >
+              <Download />
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="ghost"
@@ -153,6 +176,10 @@ export function Header({ className }: HeaderProps) {
             {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
           </Button>
         </div>
+        <InstallDialog
+          open={installOpen && !installed}
+          onClose={() => setInstallOpen(false)}
+        />
         <SignInDialog open={signInOpen} onClose={() => setSignInOpen(false)} />
       </div>
     </header>

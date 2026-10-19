@@ -1,12 +1,37 @@
 import * as React from "react"
 import { createPortal } from "react-dom"
-import { Apple, Smartphone, X } from "lucide-react"
+import { Apple, ArrowDown, Download, Share, Smartphone, X } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
-const SEEN_KEY = "scoutbangers:install-prompt-seen-v1"
+import { promptInstall, useInstall } from "@/lib/install"
+
+// The popup shows on the 1st opening, then every 10th (11th, 21st, ...)
+// until the app is installed. An "opening" is a browser session, so
+// reloads and tab switches within one visit don't count.
+const OPEN_COUNT_KEY = "scoutbangers:install-prompt-opens-v1"
+const COUNTED_KEY = "scoutbangers:install-prompt-counted-session"
+const SHOW_EVERY = 10
+
+// Cached so React StrictMode's double effect run doesn't count twice.
+let showThisSession: boolean | null = null
+
+function shouldShowThisSession(): boolean {
+  if (showThisSession !== null) return showThisSession
+  showThisSession = false
+  try {
+    if (sessionStorage.getItem(COUNTED_KEY) === "1") return false
+    sessionStorage.setItem(COUNTED_KEY, "1")
+    const opens = (Number(localStorage.getItem(OPEN_COUNT_KEY)) || 0) + 1
+    localStorage.setItem(OPEN_COUNT_KEY, String(opens))
+    showThisSession = opens % SHOW_EVERY === 1
+  } catch {
+    /* storage unavailable: stay quiet rather than nag every time */
+  }
+  return showThisSession
+}
 
 type Platform = "ios" | "android"
 
@@ -17,56 +42,60 @@ function detectPlatform(): Platform {
   return "android"
 }
 
-function isStandalone(): boolean {
-  if (typeof window === "undefined") return false
-  // iOS Safari
-  if ((navigator as { standalone?: boolean }).standalone === true) return true
-  // Other browsers
-  if (window.matchMedia?.("(display-mode: standalone)").matches) return true
-  return false
-}
-
 /**
  * Aparece na primeira vez que o utilizador abre a app no browser
  * (não quando já está instalada como PWA). Explica como instalar
  * conforme a plataforma e tem um link para a página "Sobre" com
  * instruções mais completas. Conteúdo em português.
  *
- * Persistência: marcamos em localStorage que o utilizador já viu o
- * popup para não voltar a chatear. O botão "Já tenho instalada" e
- * "Mais tarde" produzem o mesmo efeito — desaparece para sempre, e
- * a informação fica disponível em /sobre se quiser rever.
+ * Persistência: conta as aberturas da app (localStorage) e aparece na
+ * 1.ª e depois a cada 10 aberturas, enquanto a app não estiver
+ * instalada.
+ * O botão no header permite abrir as instruções a qualquer momento.
  */
 export function InstallPrompt() {
-  // Detected synchronously on the first render so the initial
-  // selected tab matches the user's device. The effect-driven path
-  // would race with the modal becoming visible.
-  const [platform, setPlatform] = React.useState<Platform>(detectPlatform)
+  const { installed } = useInstall()
   const [open, setOpen] = React.useState(false)
-
-  const dismiss = React.useCallback(() => {
-    try {
-      localStorage.setItem(SEEN_KEY, "1")
-    } catch {
-      /* ignore */
-    }
-    setOpen(false)
-  }, [])
 
   React.useEffect(() => {
     if (typeof window === "undefined") return
-    if (isStandalone()) return
-    if (typeof localStorage === "undefined") return
-    try {
-      if (localStorage.getItem(SEEN_KEY) === "1") return
-    } catch {
-      return
-    }
+    if (installed) return
+    if (!shouldShowThisSession()) return
     // Pequeno delay para a app carregar primeiro — evita aparecer
     // antes de o utilizador ver sequer o que estamos a propor.
     const timer = setTimeout(() => setOpen(true), 1200)
     return () => clearTimeout(timer)
-  }, [])
+  }, [installed])
+
+  const close = React.useCallback(() => setOpen(false), [])
+
+  return <InstallDialog open={open && !installed} onClose={close} />
+}
+
+interface InstallDialogProps {
+  open: boolean
+  onClose: () => void
+}
+
+export function InstallDialog({ open, onClose }: InstallDialogProps) {
+  const { canPrompt } = useInstall()
+  // Detected synchronously on the first render so the initial
+  // selected tab matches the user's device. The effect-driven path
+  // would race with the modal becoming visible.
+  const [platform, setPlatform] = React.useState<Platform>(detectPlatform)
+  // iOS: swap the dialog for a pointer at Safari's toolbar.
+  const [hintRequested, setHintRequested] = React.useState(false)
+  const hintOpen = open && hintRequested
+
+  const dismiss = React.useCallback(() => {
+    setHintRequested(false)
+    onClose()
+  }, [onClose])
+
+  const handleNativeInstall = async () => {
+    const accepted = await promptInstall()
+    if (accepted) dismiss()
+  }
 
   React.useEffect(() => {
     if (!open) return
@@ -78,6 +107,29 @@ export function InstallPrompt() {
   }, [open, dismiss])
 
   if (!open) return null
+
+  if (hintOpen) {
+    return createPortal(
+      <div
+        role="dialog"
+        aria-label="Como instalar no iPhone"
+        className="fixed inset-0 z-50 flex flex-col items-center justify-end bg-black/40"
+        onClick={dismiss}
+        style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+      >
+        <div className="bg-card text-card-foreground border-border mx-4 max-w-sm rounded-xl border p-4 text-center text-sm shadow-xl">
+          Toca em <Share className="text-primary mx-0.5 inline size-4" />{" "}
+          <strong>Partilhar</strong> na barra do Safari e depois em{" "}
+          <strong>Adicionar ao Ecrã Principal</strong>.
+          <p className="text-muted-foreground mt-2 text-xs">
+            Toca em qualquer sítio para fechar.
+          </p>
+        </div>
+        <ArrowDown className="text-primary mt-2 size-9 animate-bounce" />
+      </div>,
+      document.body
+    )
+  }
 
   return createPortal(
     <div
@@ -100,7 +152,7 @@ export function InstallPrompt() {
               className="h-9 w-auto rounded-md"
             />
             <h2 className="text-foreground text-base font-semibold tracking-tight">
-              Instala o ScoutBangers
+              Ainda não instalaste a app?
             </h2>
           </div>
           <Button
@@ -115,10 +167,11 @@ export function InstallPrompt() {
         </div>
 
         <p className="text-muted-foreground text-sm leading-relaxed">
-          Instala a app no teu ecrã principal para uma experiência mais
-          fluida — abre instantaneamente, controla a música no ecrã de
+          A app funciona muuuito melhor quando está instalada! Instala-a no teu
+          ecrã principal para uma experiência mais smooth: abre
+          instantaneamente, controla a música no ecrã de
           bloqueio, e funciona melhor offline depois de transferires as
-          músicas.
+          músicas. Não sabes como instalar? Escolhe o teu sistema e já te explico 🏃.
         </p>
 
         <div
@@ -140,7 +193,12 @@ export function InstallPrompt() {
           />
         </div>
 
-        {platform === "ios" ? (
+        {platform === "android" && canPrompt ? (
+          <Button type="button" onClick={handleNativeInstall}>
+            <Download />
+            Instalar app
+          </Button>
+        ) : platform === "ios" ? (
           <PlatformInstructions
             icon={<Apple className="size-4" />}
             title="iPhone — Safari"
@@ -168,6 +226,16 @@ export function InstallPrompt() {
                 principal.
               </li>
             </ol>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="mt-3 w-full"
+              onClick={() => setHintRequested(true)}
+            >
+              <ArrowDown />
+              Mostrar onde tocar
+            </Button>
           </PlatformInstructions>
         ) : (
           <PlatformInstructions
