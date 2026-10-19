@@ -21,7 +21,7 @@ const SEEK_OFFSET_SECONDS = 10
  * "512x512" unconditionally (as this used to) is a lie for anything that
  * isn't actually that size, and some platforms are known to be picky
  * about a `MediaImage` whose declared `sizes` doesn't match reality.
- * Measured once per song via `createImageBitmap`, then reused.
+ * Measured once per song by decoding the image, then reused.
  */
 const artworkSizeCache = new Map<string, string>()
 
@@ -30,14 +30,15 @@ async function measureArtworkSizes(songId: string, dataUrl: string): Promise<str
   if (cached) return cached
   let sizes = "512x512"
   try {
-    if (typeof createImageBitmap === "function") {
-      const bitmap = await createImageBitmap(await (await fetch(dataUrl)).blob())
-      sizes = `${bitmap.width}x${bitmap.height}`
-      bitmap.close()
-    }
+    // An <img> rather than fetch(dataUrl): the CSP's connect-src doesn't
+    // allow data: URLs, but img-src does.
+    const image = new Image()
+    image.src = dataUrl
+    await image.decode()
+    sizes = `${image.naturalWidth}x${image.naturalHeight}`
   } catch {
-    /* Unsupported / undecodable — keep the generic guess below rather
-     * than fail the whole metadata update over an artwork size hint. */
+    /* Undecodable — keep the generic guess below rather than fail the
+     * whole metadata update over an artwork size hint. */
   }
   artworkSizeCache.set(songId, sizes)
   return sizes
@@ -190,11 +191,10 @@ export function useMediaSession(): void {
           ? await measureArtworkSizes(song.id, dataUrl)
           : "512x512"
       if (cancelled) return
-      // List the real artwork first (if any) followed by the fallback
-      // icons as additional size candidates — multiple declared sizes is
-      // the recommended pattern so the OS can pick its best fit, and it
-      // gives it something to fall back to if the data URL ever fails to
-      // load.
+      // When there is real artwork, offer ONLY that. Listing the app icons
+      // after it looks harmless but isn't: the OS picks the image whose
+      // declared size is closest to the one it wants (usually 512x512), and
+      // a 404x404 cover loses to the icon-512 every time.
       const artwork: MediaImage[] = dataUrl
         ? [
             {
@@ -202,7 +202,6 @@ export function useMediaSession(): void {
               sizes,
               type: dataUrl.slice(5, dataUrl.indexOf(";")) || "image/jpeg",
             },
-            ...FALLBACK_ARTWORK,
           ]
         : FALLBACK_ARTWORK
 

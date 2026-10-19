@@ -64,7 +64,7 @@ export const onRequestGet: PagesFunction<Env> = async ({
     })
     .on('meta[name="description"]', {
       element(el) {
-        el.setAttribute("content", "Ouve esta música no ScoutBangers.")
+        el.setAttribute("content", "Ouve este banger no ScoutBangers.")
       },
     })
     .on("head", {
@@ -74,7 +74,7 @@ export const onRequestGet: PagesFunction<Env> = async ({
             og("og:type", "website"),
             og("og:site_name", "ScoutBangers"),
             og("og:title", title!),
-            og("og:description", "Ouve esta música no ScoutBangers."),
+            og("og:description", "Ouve este banger no ScoutBangers."),
             og("og:url", `${url.origin}/?song=${id}`),
             og("og:image", image),
             '<meta name="twitter:card" content="summary" />',
