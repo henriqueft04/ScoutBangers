@@ -103,10 +103,33 @@ class AudioEngine {
       }
       this.pending.clear()
       this.startKeepalive()
+      // Chrome suspends the context on lock/minimize. Resume the moment
+      // it (or the page) comes back instead of waiting for the next tick.
+      this.context.addEventListener("statechange", () => this.resumeIfSuspended())
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") this.resumeIfSuspended()
+      })
     }
     if (this.context.state === "suspended") {
       void this.context.resume().catch(() => undefined)
     }
+  }
+
+  private resumeIfSuspended(): void {
+    const ctx = this.context
+    if (!ctx) return
+    // "interrupted" is a WebKit-only state; cast keeps the DOM typings happy.
+    const state = ctx.state as string
+    if (state === "suspended" || state === "interrupted") {
+      void ctx.resume().catch(() => undefined)
+    }
+  }
+
+  /** True while a volume ramp is still scheduled on this deck. */
+  isFading(audio: HTMLAudioElement): boolean {
+    const deck = this.decks.get(audio)
+    if (!deck || !this.context) return false
+    return deck.fadeUntil > this.context.currentTime
   }
 
   /**

@@ -1096,6 +1096,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       const active = getDeck(activeDeckRef.current)
       const idle = getDeck(otherDeck(activeDeckRef.current))
       if (!active) return
+      // Only touch the gain if a fade was cut short; hard-setting it on
+      // every unlock causes an audible hiccup.
+      const fading =
+        audioEngine.isFading(active) ||
+        (idle !== undefined && idle !== null && audioEngine.isFading(idle))
+      if (!fading) return
       cancelFades()
       const s = stateRef.current
       const target = s.muted ? 0 : s.volume
