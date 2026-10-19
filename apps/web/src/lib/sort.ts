@@ -1,7 +1,8 @@
+import { peekTrackMetadata } from "./track-metadata"
 import { displayArtist, displayTitle } from "./song-display"
 import type { Song } from "./types"
 
-export type SortMode = "default" | "title" | "artist"
+export type SortMode = "default" | "title" | "artist" | "album"
 
 /**
  * When a song was added to the catalog. Falls back to `modifiedTime` for a
@@ -26,6 +27,7 @@ export const SORT_LABEL: Record<SortMode, string> = {
   default: "Predefinido",
   title: "Título A–Z",
   artist: "Artista A–Z",
+  album: "Álbum A–Z",
 }
 
 /**
@@ -44,6 +46,14 @@ export function sortSongs(songs: readonly Song[], mode: SortMode): Song[] {
 
   return [...songs].sort((a, b) => {
     if (mode === "title") {
+      return collator.compare(displayTitle(a), displayTitle(b))
+    }
+    if (mode === "album") {
+      // Songs with no embedded album sort to the end (sentinel).
+      const aAlbum = peekTrackMetadata(a.id)?.album || "￿"
+      const bAlbum = peekTrackMetadata(b.id)?.album || "￿"
+      const byAlbum = collator.compare(aAlbum, bAlbum)
+      if (byAlbum !== 0) return byAlbum
       return collator.compare(displayTitle(a), displayTitle(b))
     }
     // artist — songs with no embedded artist sort to the end (sentinel).

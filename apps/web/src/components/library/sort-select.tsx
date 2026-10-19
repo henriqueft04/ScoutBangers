@@ -8,7 +8,7 @@ import { usePlayer } from "@/hooks/usePlayer"
 import { SORT_LABEL } from "@/lib/sort"
 import type { SortMode } from "@/lib/types"
 
-const SORT_OPTIONS: SortMode[] = ["default", "title", "artist"]
+const SORT_OPTIONS: SortMode[] = ["default", "title", "artist", "album"]
 
 interface SortSelectProps {
   className?: string

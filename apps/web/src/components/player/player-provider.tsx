@@ -57,7 +57,12 @@ interface PersistedPlayback {
   position: number
 }
 
-const VALID_SORTS: ReadonlyArray<SortMode> = ["default", "title", "artist"]
+const VALID_SORTS: ReadonlyArray<SortMode> = [
+  "default",
+  "title",
+  "artist",
+  "album",
+]
 
 const CROSSFADE_MS = 2000
 /**
@@ -597,6 +602,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         }
         audioEngine.setVolume(active, userTargetVolume())
         void active.play().catch(() => {})
+        // Re-anchor the natural-sequence cursor too: play() may have just
+        // swapped in a new list (e.g. a filtered search), and without this
+        // the cursor can still point at a song that isn't in it.
+        dispatch({ type: "SET_INDEX", index, fromQueue: Boolean(opts.fromQueue) })
         dispatch({ type: "PLAYBACK_ERROR", message: null })
         return
       }
