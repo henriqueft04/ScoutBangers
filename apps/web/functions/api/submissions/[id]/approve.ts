@@ -89,17 +89,26 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     if (finalYear) writer.setFrame("TYER", parseInt(finalYear, 10))
     if (finalGenre) writer.setFrame("TCON", [finalGenre])
     if (coverBuffer) {
-      const isPng = sub.thumbnail_path?.toLowerCase().endsWith(".png")
-      try {
-        writer.setFrame("APIC", {
-          type: 3,
-          data: coverBuffer,
-          description: "Cover",
-          mimeType: isPng ? "image/png" : "image/jpeg",
-          useUnicodeEncoding: false
-        })
-      } catch (e) {
-        console.warn("Skipping cover image due to invalid/unsupported format:", e)
+      // Sniff the real format: the file extension can lie (an .avif or .webp
+      // renamed, or just not .png), and a wrongly-labelled cover is silently
+      // unreadable by players and link-preview crawlers.
+      const head = new Uint8Array(coverBuffer.slice(0, 4))
+      const isPng = head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e
+      const isJpeg = head[0] === 0xff && head[1] === 0xd8
+      if (isPng || isJpeg) {
+        try {
+          writer.setFrame("APIC", {
+            type: 3,
+            data: coverBuffer,
+            description: "Cover",
+            mimeType: isPng ? "image/png" : "image/jpeg",
+            useUnicodeEncoding: false
+          })
+        } catch (e) {
+          console.warn("Skipping cover image due to invalid/unsupported format:", e)
+        }
+      } else {
+        console.warn("Skipping cover: not a JPEG or PNG (e.g. AVIF/WebP)")
       }
     }
     writer.addTag()

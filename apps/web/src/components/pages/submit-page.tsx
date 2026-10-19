@@ -8,6 +8,35 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useAuth } from "@/hooks/useAuth"
 import { supabase } from "@/lib/supabase"
 
+/**
+ * Audio tags, link-preview crawlers and lock screens only reliably handle
+ * JPEG and PNG covers. Anything else (AVIF, WebP, HEIC…) is re-encoded to
+ * JPEG here, where the browser can still decode it.
+ */
+async function normalizeCover(file: File): Promise<File> {
+  if (file.type === "image/jpeg" || file.type === "image/png") return file
+  const bitmap = await createImageBitmap(file)
+  try {
+    const canvas = document.createElement("canvas")
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const context = canvas.getContext("2d")
+    if (!context) throw new Error("canvas unavailable")
+    context.fillStyle = "#fff"
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.drawImage(bitmap, 0, 0)
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.92)
+    )
+    if (!blob) throw new Error("cover encode failed")
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", {
+      type: "image/jpeg",
+    })
+  } finally {
+    bitmap.close()
+  }
+}
+
 export function SubmitPage() {
   const navigate = useNavigate()
   const { session } = useAuth()
@@ -50,11 +79,12 @@ export function SubmitPage() {
       if (audioError) throw audioError
 
       // 2. Upload cover
-      const coverExt = coverFile.name.split('.').pop()
+      const cover = await normalizeCover(coverFile)
+      const coverExt = cover.name.split('.').pop()
       const coverPath = `${session.user.id}/${Date.now()}_${safeName}_cover.${coverExt}`
       const { error: coverError } = await supabase!.storage
         .from("submissions")
-        .upload(coverPath, coverFile)
+        .upload(coverPath, cover)
       
       if (coverError) throw coverError
 
