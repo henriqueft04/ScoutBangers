@@ -408,6 +408,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (loading || songs.length === 0) return
     playbackRestoredRef.current = true
 
+    // A shared link (?song=<id>) is about to start its own song. Restoring
+    // the previous one here would load it into the same deck and queue a
+    // seek to its old position, which the shared song would then inherit.
+    if (new URLSearchParams(window.location.search).has("song")) return
+
     const stored = getCached<PersistedPlayback>(PLAYBACK_KEY)
     if (!stored) return
     const index = songs.findIndex((s) => s.id === stored.songId)
@@ -1259,11 +1264,35 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (!id) return
     sharedSongHandled.current = true
     const index = songs.findIndex((s) => s.id === id)
-    if (index !== -1) play(index)
+    if (index !== -1) {
+      play(index)
+      // Opening a link is not a user gesture, so the browser may refuse
+      // to start audio on a cold load — the song would sit loaded but
+      // paused until the user taps play. If that happens, start it on
+      // the very first tap / key press instead of making them hunt for it.
+      window.setTimeout(() => {
+        const active = getDeck(activeDeckRef.current)
+        if (!active || !active.paused) return
+        const events = ["pointerdown", "touchend", "keydown"] as const
+        const cleanup = () =>
+          events.forEach((e) => document.removeEventListener(e, resume, true))
+        const resume = () => {
+          cleanup()
+          const s = stateRef.current
+          const current =
+            s.currentIndex !== null ? s.songs[s.currentIndex] : undefined
+          const deck = getDeck(activeDeckRef.current)
+          if (current?.id !== id || !deck || !deck.paused) return
+          audioEngine.start()
+          void deck.play().catch(() => {})
+        }
+        events.forEach((e) => document.addEventListener(e, resume, true))
+      }, 800)
+    }
     const url = new URL(window.location.href)
     url.searchParams.delete("song")
     window.history.replaceState(null, "", url.pathname + (url.search || ""))
-  }, [songs, loading, play])
+  }, [songs, loading, play, getDeck])
 
   const toggle = React.useCallback(() => {
     audioEngine.start()

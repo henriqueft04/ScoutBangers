@@ -8,9 +8,6 @@ interface Env {
 }
 
 const DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files"
-// WhatsApp drops preview images much over ~300 KB, so a bigger cover would
-// give no image at all — those fall back to the app icon instead.
-const MAX_PREVIEW_COVER_BYTES = 300 * 1024
 const SONG_ID = /^[\w-]{10,100}$/
 
 /**
@@ -90,24 +87,16 @@ export const onRequestGet: PagesFunction<Env> = async ({
 }
 
 /**
- * Picks the link-preview image: the song's cover resized to a small square
- * through Cloudflare Image Transformations when the zone has them enabled,
- * else the raw cover if it is small enough for WhatsApp, else the app icon.
+ * Picks the link-preview image: the song's cover cropped to a small square
+ * through Cloudflare Image Transformations (WhatsApp drops big images), or
+ * the app icon when the song has no embedded cover.
+ *
+ * The transformation URL can't be probed from inside the Worker (a
+ * subrequest to this zone's /cdn-cgi/ doesn't go through the transformer),
+ * so it is trusted once the cover itself is known to exist.
  */
 async function previewImage(origin: string, id: string): Promise<string> {
-  const icon = `${origin}/icon-512.png`
-  const coverUrl = `${origin}/api/cover/${id}`
-
-  const resized = `${origin}/cdn-cgi/image/width=600,height=600,fit=cover,format=jpeg,quality=80${new URL(coverUrl).pathname}`
-  try {
-    const res = await fetch(resized)
-    if (res.ok && res.headers.get("content-type")?.startsWith("image/")) {
-      return resized
-    }
-  } catch {
-    /* transformations unavailable — try the raw cover */
-  }
-
   const cover = await fetchCover(id)
-  return cover && cover.data.length <= MAX_PREVIEW_COVER_BYTES ? coverUrl : icon
+  if (!cover) return `${origin}/icon-512.png`
+  return `${origin}/cdn-cgi/image/width=600,height=600,fit=cover,format=jpeg,quality=80/api/cover/${id}`
 }
