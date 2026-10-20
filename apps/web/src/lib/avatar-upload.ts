@@ -9,9 +9,9 @@
 
 import { supabase } from "./supabase"
 
-const AVATAR_SIZE = 256
-const BANNER_WIDTH = 1200
-const BANNER_HEIGHT = 400
+export const AVATAR_SIZE = 256
+export const BANNER_WIDTH = 1200
+export const BANNER_HEIGHT = 400
 const JPEG_QUALITY = 0.85
 
 export async function uploadAvatar(file: File): Promise<string> {
@@ -26,6 +26,15 @@ export async function uploadBanner(file: File): Promise<string> {
     BANNER_HEIGHT,
     JPEG_QUALITY
   )
+  return await sendUpload(blob, "banner")
+}
+
+/** Upload an image the user already cropped (see `ImageCropper`). */
+export async function uploadAvatarBlob(blob: Blob): Promise<string> {
+  return await sendUpload(blob, "avatar")
+}
+
+export async function uploadBannerBlob(blob: Blob): Promise<string> {
   return await sendUpload(blob, "banner")
 }
 

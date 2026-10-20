@@ -7,6 +7,7 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { SignInDialog } from "@/components/auth/sign-in-dialog"
 import { EmptyState } from "@/components/library/empty-state"
+import { ImageCropper } from "@/components/profile/image-cropper"
 import { ListenerBadges } from "@/components/profile/listener-badges"
 import { ListeningStats } from "@/components/profile/listening-stats"
 import { ProfileEditSection } from "@/components/profile/profile-edit-section"
@@ -18,7 +19,13 @@ import { useTopStats, useUserListeningStats } from "@/hooks/useTopStats"
 import { useUserBadges } from "@/hooks/useUserBadges"
 import { useTour } from "@/hooks/useTour"
 import { artistHref } from "@/lib/artists"
-import { uploadAvatar, uploadBanner } from "@/lib/avatar-upload"
+import {
+  AVATAR_SIZE,
+  BANNER_HEIGHT,
+  BANNER_WIDTH,
+  uploadAvatarBlob,
+  uploadBannerBlob,
+} from "@/lib/avatar-upload"
 import { formatJoinDate } from "@/lib/format-date"
 import { supabase, supabaseConfigured } from "@/lib/supabase"
 
@@ -39,6 +46,11 @@ export function ProfilePage() {
   const [uploadingAvatar, setUploadingAvatar] = React.useState(false)
   const [uploadingBanner, setUploadingBanner] = React.useState(false)
   const [imageError, setImageError] = React.useState<string | null>(null)
+  // Picked image waiting to be positioned before it's uploaded.
+  const [pendingCrop, setPendingCrop] = React.useState<{
+    kind: "avatar" | "banner"
+    file: File
+  } | null>(null)
   const avatarInputRef = React.useRef<HTMLInputElement | null>(null)
   const bannerInputRef = React.useRef<HTMLInputElement | null>(null)
 
@@ -52,9 +64,9 @@ export function ProfilePage() {
   }
 
   const runUpload = async (
-    file: File,
+    file: Blob,
     field: "avatar_url" | "banner_url",
-    upload: (file: File) => Promise<string>,
+    upload: (file: Blob) => Promise<string>,
     setBusy: (busy: boolean) => void
   ) => {
     if (!supabase || !user) return
@@ -84,14 +96,14 @@ export function ProfilePage() {
   ) => {
     const file = event.target.files?.[0]
     event.target.value = ""
-    if (file) await runUpload(file, "avatar_url", uploadAvatar, setUploadingAvatar)
+    if (file) setPendingCrop({ kind: "avatar", file })
   }
   const handleBannerChange = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
     const file = event.target.files?.[0]
     event.target.value = ""
-    if (file) await runUpload(file, "banner_url", uploadBanner, setUploadingBanner)
+    if (file) setPendingCrop({ kind: "banner", file })
   }
 
   const shareActivity = profile?.share_activity ?? true
@@ -223,6 +235,30 @@ export function ProfilePage() {
         className="hidden"
         onChange={handleBannerChange}
       />
+
+      {pendingCrop ? (
+        <ImageCropper
+          file={pendingCrop.file}
+          title={
+            pendingCrop.kind === "avatar"
+              ? "Ajustar foto de perfil"
+              : "Ajustar imagem de capa"
+          }
+          aspect={pendingCrop.kind === "avatar" ? 1 : BANNER_WIDTH / BANNER_HEIGHT}
+          outputWidth={pendingCrop.kind === "avatar" ? AVATAR_SIZE : BANNER_WIDTH}
+          circle={pendingCrop.kind === "avatar"}
+          onCancel={() => setPendingCrop(null)}
+          onConfirm={async (blob) => {
+            const { kind } = pendingCrop
+            setPendingCrop(null)
+            if (kind === "avatar") {
+              await runUpload(blob, "avatar_url", uploadAvatarBlob, setUploadingAvatar)
+            } else {
+              await runUpload(blob, "banner_url", uploadBannerBlob, setUploadingBanner)
+            }
+          }}
+        />
+      ) : null}
 
       <div className="flex flex-col gap-6 px-3 pt-6 md:px-6">
         {imageError ? (

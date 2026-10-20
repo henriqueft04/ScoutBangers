@@ -100,7 +100,12 @@ export async function saveSong(
   edits: EditableTags,
   newCover?: File
 ): Promise<SaveResult> {
-  const cover = newCover ? await toJpegCover(newCover) : undefined
+  // The cropper already outputs a JPEG; only re-encode anything else.
+  const cover = newCover
+    ? newCover.type === "image/jpeg"
+      ? { data: await newCover.arrayBuffer(), mimeType: "image/jpeg" as const }
+      : await toJpegCover(newCover)
+    : undefined
 
   // The whole file is only needed now, to rewrite its tag.
   const full = await fetchSongBytes(id)

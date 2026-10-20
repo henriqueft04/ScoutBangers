@@ -1,8 +1,9 @@
 import * as React from "react"
-import { Edit3, ImagePlus, Loader2, Search } from "lucide-react"
+import { Crop, Edit3, ImagePlus, Loader2, Search } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
+import { ImageCropper } from "@/components/profile/image-cropper"
 import { usePlayer } from "@/hooks/usePlayer"
 import type { EditableTags } from "@/lib/id3-rewrite"
 import { loadSong, saveSong, type LoadedSong } from "@/lib/song-editor"
@@ -121,6 +122,10 @@ function SongEditDialog({ song, onClose, onSaved }: SongEditDialogProps) {
   const [tags, setTags] = React.useState<EditableTags | null>(null)
   const [cover, setCover] = React.useState<File | null>(null)
   const [coverUrl, setCoverUrl] = React.useState<string | null>(null)
+  // The image currently shown as the cover (existing or newly picked), and
+  // the one being positioned in the cropper.
+  const [coverBlob, setCoverBlob] = React.useState<Blob | null>(null)
+  const [cropSource, setCropSource] = React.useState<Blob | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [saving, setSaving] = React.useState(false)
 
@@ -135,9 +140,9 @@ function SongEditDialog({ song, onClose, onSaved }: SongEditDialogProps) {
           // Copy into a fresh ArrayBuffer-backed array: Blob rejects views
           // over a SharedArrayBuffer-typed buffer.
           const bytes = new Uint8Array(l.parsed.cover.data)
-          setCoverUrl(
-            URL.createObjectURL(new Blob([bytes], { type: l.parsed.cover.mimeType }))
-          )
+          const blob = new Blob([bytes], { type: l.parsed.cover.mimeType })
+          setCoverBlob(blob)
+          setCoverUrl(URL.createObjectURL(blob))
         }
       })
       .catch((e: unknown) => {
@@ -154,10 +159,11 @@ function SongEditDialog({ song, onClose, onSaved }: SongEditDialogProps) {
     }
   }, [coverUrl])
 
-  const pickCover = (file: File | undefined) => {
-    if (!file) return
-    setCover(file)
-    setCoverUrl(URL.createObjectURL(file))
+  const applyCrop = (blob: Blob) => {
+    setCover(new File([blob], "cover.jpg", { type: "image/jpeg" }))
+    setCoverBlob(blob)
+    setCoverUrl(URL.createObjectURL(blob))
+    setCropSource(null)
   }
 
   const handleSave = async () => {
@@ -209,16 +215,32 @@ function SongEditDialog({ song, onClose, onSaved }: SongEditDialogProps) {
                   <img src={coverUrl} alt="" className="size-full object-cover" />
                 ) : null}
               </div>
-              <label className="text-primary inline-flex cursor-pointer items-center gap-2 text-sm font-medium">
-                <ImagePlus className="size-4" />
-                {coverUrl ? "Mudar capa" : "Adicionar capa"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="sr-only"
-                  onChange={(e) => pickCover(e.target.files?.[0])}
-                />
-              </label>
+              <div className="flex flex-col items-start gap-2">
+                <label className="text-primary inline-flex cursor-pointer items-center gap-2 text-sm font-medium">
+                  <ImagePlus className="size-4" />
+                  {coverUrl ? "Mudar capa" : "Adicionar capa"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      e.target.value = ""
+                      if (file) setCropSource(file)
+                    }}
+                  />
+                </label>
+                {coverBlob ? (
+                  <button
+                    type="button"
+                    className="text-primary inline-flex items-center gap-2 text-sm font-medium"
+                    onClick={() => setCropSource(coverBlob)}
+                  >
+                    <Crop className="size-4" />
+                    Ajustar enquadramento
+                  </button>
+                ) : null}
+              </div>
             </div>
 
             {FIELDS.map(({ key, label }) => (
@@ -241,6 +263,17 @@ function SongEditDialog({ song, onClose, onSaved }: SongEditDialogProps) {
             {error ? <p className="text-destructive text-sm">{error}</p> : null}
           </>
         )}
+
+        {cropSource ? (
+          <ImageCropper
+            file={cropSource}
+            title="Ajustar capa"
+            aspect={1}
+            outputWidth={1000}
+            onCancel={() => setCropSource(null)}
+            onConfirm={applyCrop}
+          />
+        ) : null}
 
         <div className="flex gap-2">
           <Button

@@ -72,7 +72,8 @@ export function AboutPage() {
               <li>
                 <strong className="text-foreground">Biblioteca partilhada:</strong>{" "}
                 todas as músicas vêm de uma pasta do Google Drive comum. Quando
-                alguém adiciona uma música nova, ela aparece para toda a gente.
+                se adiciona uma música nova, ela aparece para toda a gente. Para ir à
+                drive clica aqui: <a href="https://drive.google.com/drive/folders/1WqoT_fT6m3iIfMPbgRSTzgpY6wtukAE3" target="_blank" rel="noopener noreferrer" className="text-primary underline">Drive</a>
               </li>
               <li>
                 <strong className="text-foreground">Reprodução em segundo plano:</strong>{" "}
@@ -87,7 +88,7 @@ export function AboutPage() {
               <li>
                 <strong className="text-foreground">Playlists:</strong> cria as
                 tuas próprias playlists, partilha-as por link e guarda as dos
-                outros — aparecem na tua página de Playlists em "Guardadas",
+                outros - aparecem na tua página de Playlists em "Guardadas",
                 prontas a ouvir.
               </li>
               <li>
@@ -98,8 +99,30 @@ export function AboutPage() {
                 acordes, há um botão "Ver acordes" que abre o Cancioneiro com os acordes.
               </li>
               <li>
-                <strong className="text-foreground">Estatísticas pessoais:</strong>{" "}
-                vê as tuas músicas e artistas mais ouvidos no teu perfil.
+                <strong className="text-foreground">Jam - ouvir em grupo:</strong>{" "}
+                toca no ícone das pessoas no leitor para criar uma jam e
+                partilha o link. Quem entrar ouve a mesma música, ao mesmo
+                tempo, e qualquer pessoa pode pausar, saltar ou mudar de
+                música para todos. Bate bué para uma atividade ou uma viagem
+                de carro.
+              </li>
+              <li>
+                <strong className="text-foreground">Submeter músicas:</strong>{" "}
+                tens uma música que falta? Com a sessão iniciada, usa o botão
+                "+" no topo para a enviar com capa e dados. Um administrador revê-a e, depois de
+                aprovada, aparece na app para toda a gente.
+              </li>
+              <li>
+                <strong className="text-foreground">Estatísticas e medalhas:</strong>{" "}
+                vê as tuas músicas e artistas mais ouvidos no teu perfil e as
+                estatísticas gerais da comunidade. Quem fica no top 3 de
+                ouvintes da semana ganha uma medalha de 1.º, 2.º ou 3.º lugar.
+              </li>
+              <li>
+                <strong className="text-foreground">Perfil:</strong>{" "}
+                escolhe a foto de perfil e a imagem de capa e ajusta o
+                enquadramento até ficar como queres - vês exatamente o que vai
+                aparecer. Podes (e deves) ainda indicar o teu agrupamento e região.
               </li>
               <li>
                 <strong className="text-foreground">Atividade dos amigos:</strong>{" "}
@@ -131,7 +154,10 @@ export function AboutPage() {
               <p className="text-muted-foreground">
                 O ScoutBangers funciona no browser, mas instalado fica muito
                 melhor — sem barra de endereço, com ícone no ecrã principal e
-                modo offline mais estável.
+                modo offline mais estável. Enquanto a app não estiver
+                instalada, vês um botão de instalar{" "}
+                <Download className="text-foreground inline size-3.5" /> no
+                topo do ecrã; desaparece assim que a instalares.
               </p>
 
               <div className="border-border bg-background flex flex-col gap-2 rounded-md border p-3">
@@ -142,13 +168,17 @@ export function AboutPage() {
                 <ol className="text-muted-foreground ml-5 list-decimal space-y-1">
                   <li>Abre a app no browser.</li>
                   <li>
-                    Toca no menu (três pontos no canto superior direito).
+                    Toca no botão de instalar{" "}
+                    <Download className="text-foreground inline size-3.5" /> no
+                    topo da app e confirma. É o caminho mais rápido.
                   </li>
                   <li>
-                    Escolhe <strong className="text-foreground">"Instalar app"</strong>{" "}
+                    Se não aparecer a janela de instalação, toca no menu (três
+                    pontos no canto superior direito) e escolhe{" "}
+                    <strong className="text-foreground">"Instalar app"</strong>{" "}
                     ou <strong className="text-foreground">"Adicionar ao ecrã principal"</strong>.
                   </li>
-                  <li>Confirma. O ícone aparece junto às outras apps.</li>
+                  <li>O ícone aparece junto às outras apps.</li>
                 </ol>
               </div>
 
@@ -160,9 +190,17 @@ export function AboutPage() {
                 <ol className="text-muted-foreground ml-5 list-decimal space-y-1">
                   <li>Abre a app no Safari (não funciona no Chrome no iOS).</li>
                   <li>
+                    No iPhone a Apple não permite instalar com um só toque. Toca
+                    no botão de instalar{" "}
+                    <Download className="text-foreground inline size-3.5" /> no
+                    topo da app e depois em{" "}
+                    <strong className="text-foreground">"Mostrar onde tocar"</strong>{" "}
+                    para veres uma seta a indicar o caminho.
+                  </li>
+                  <li>
                     Toca no botão de partilha{" "}
                     <span className="text-foreground">(quadrado com seta)</span>{" "}
-                    na barra inferior.
+                    na barra do Safari.
                   </li>
                   <li>
                     Desliza para baixo e escolhe{" "}
@@ -198,7 +236,7 @@ export function AboutPage() {
               <li>
                 <strong className="text-foreground">Instala a app.</strong>{" "}
                 Em modo instalado a reprodução em segundo plano é muito mais
-                fiável.
+                fiável. Usa o botão de instalar no topo do ecrã.
               </li>
               <li>
                 <strong className="text-foreground">Transfere as músicas em Wi-Fi.</strong>{" "}
@@ -290,16 +328,17 @@ export function AboutPage() {
             <div className="text-muted-foreground flex flex-col gap-3 text-sm leading-relaxed">
               <p>
                 O <strong className="text-foreground">ScoutBangers</strong>{" "}
-                nasceu da vontade de ter um sítio simples para ouvir e
+                nasceu da simples vontade de ter um sítio simples para ouvir e
                 partilhar música com toda a gente, sem listas que ficam desatualizadas,
                 sem ter de escolher música a música qual pôr a dar e sem
                 ter de andar a mandar ficheiros pelo WhatsApp. Quem nunca esteve 
                 numa atividade e quis pôr a tocar músicas escutistas e teve de andar a
-                pedir aos outros para lhe enviarem as músicas por mensagem ou o link da drive?              </p>
+                pedir aos outros para lhe enviarem as músicas por mensagem ou o link da drive?
+              </p>
               <p>
-                Inicialmente era só uma drive com músicas, havia muitas músicsa por exemplo de 
-                fescuts das quais não havia áudios, então eu fui cortando e colecionando na drive, 
-                mas ouvir na drive é de facto chato.
+                Inicialmente era só uma drive com músicas, isto porquehavia muitas músicas, 
+                por exemplo de FESCUTs das quais não havia áudios, então eu fui cortando e
+                colecionando na drive, mas ouvir na drive é de facto chato. Então eu criei uma app lol.
               </p>
               <p>
                 A ideia é que qualquer pessoa pode adicionar uma música à
@@ -308,18 +347,21 @@ export function AboutPage() {
                 lidos automaticamente das tags do ficheiro.
               </p>
               <p>
-                O projeto evoluiu rapidamente: começou só como um leitor
+                O projeto evoluiu rapidamente, depois de as músicas estarem
+                disponíveis na app o que não faltou foram ideais: começou só como um leitor
                 básico, depois ganhou contas e estatísticas, playlists, um
-                feed social com a atividade dos amigos, e por fim modo offline
-                para deixar de depender do streaming a cada utilização.
+                feed social com a atividade dos amigos, modo offline para
+                deixar de depender do streaming a cada utilização, e agora
+                jams para ouvir em grupo e submissão de músicas pela própria
+                comunidade.
               </p>
               <p>
-                A interface é deliberadamente minimalista — uma paleta de
+                A interface é deliberadamente minimalista - uma paleta de
                 duas cores, controlos óbvios, sem barras de publicidade nem
                 distrações. Ouvir bangers é o que importa.
               </p>
               <p className="text-foreground italic">
-                Feito com carinho para a P'ESTE e o resto da malta — Henrique Teixeira 680 Santão-tão-tão
+                Feito com carinho para a P'ESTE e o resto da malta - Henrique Teixeira 680 Santão-tão-tão
               </p>
             </div>
           </AccordionContent>
@@ -337,7 +379,7 @@ export function AboutPage() {
                 Tens uma ideia para melhorar a app? Encontraste um bug? Queres
                 contribuir com design para a aplicação? (eu não tive tempo para 
                 fazer isto algo bonito ahaha) Envia-me uma mensagem no
-                WhatsApp 915310103 ou no insta @henriqueft04 
+                WhatsApp 915310103
              </p>
               <p>
                 Queres ajudar? Podes sugerir design para a aplicação, 

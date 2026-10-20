@@ -410,7 +410,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const playbackRestoredRef = React.useRef(false)
   React.useEffect(() => {
     if (playbackRestoredRef.current) return
-    if (loading || songs.length === 0) return
+    // Use the reducer's (sorted) list: `songs` from useSongs is in raw
+    // order, so an index into it points at a different song once the
+    // sort has been applied.
+    const sortedSongs = state.songs
+    if (loading || state.loading || sortedSongs.length === 0) return
     playbackRestoredRef.current = true
 
     // A shared link (?song=<id>) is about to start its own song. Restoring
@@ -420,7 +424,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
     const stored = getCached<PersistedPlayback>(PLAYBACK_KEY)
     if (!stored) return
-    const index = songs.findIndex((s) => s.id === stored.songId)
+    const index = sortedSongs.findIndex((s) => s.id === stored.songId)
     if (index === -1) return
 
     const audio = deckARef.current
@@ -430,7 +434,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     audio.load()
     activeDeckRef.current = 0
     dispatch({ type: "SET_INDEX", index })
-  }, [songs, loading, seekWhenReady])
+  }, [state.songs, state.loading, loading, seekWhenReady])
 
   // Eager prefetch was hammering the proxy on cold load and competing
   // with the active stream's range requests on the same origin pool —

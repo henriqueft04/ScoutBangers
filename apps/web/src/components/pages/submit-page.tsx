@@ -5,6 +5,7 @@ import { Upload, X, FileAudio, ImageIcon, Check } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { cn } from "@workspace/ui/lib/utils"
+import { ImageCropper } from "@/components/profile/image-cropper"
 import { useAuth } from "@/hooks/useAuth"
 import { supabase } from "@/lib/supabase"
 
@@ -49,6 +50,8 @@ export function SubmitPage() {
   
   const [audioFile, setAudioFile] = React.useState<File | null>(null)
   const [coverFile, setCoverFile] = React.useState<File | null>(null)
+  // Picked image waiting to be positioned in the square cover frame.
+  const [coverToCrop, setCoverToCrop] = React.useState<File | null>(null)
   
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -251,7 +254,8 @@ export function SubmitPage() {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0]
-                    if (file) setCoverFile(file)
+                    e.target.value = ""
+                    if (file) setCoverToCrop(file)
                   }}
                 />
                 {coverFile && (
@@ -265,6 +269,20 @@ export function SubmitPage() {
               </div>
             </div>
           </div>
+
+          {coverToCrop ? (
+            <ImageCropper
+              file={coverToCrop}
+              title="Ajustar capa"
+              aspect={1}
+              outputWidth={1000}
+              onCancel={() => setCoverToCrop(null)}
+              onConfirm={(blob) => {
+                setCoverFile(new File([blob], "cover.jpg", { type: "image/jpeg" }))
+                setCoverToCrop(null)
+              }}
+            />
+          ) : null}
 
           <div className="pt-6">
             <Button type="submit" size="lg" className="w-full sm:w-auto" disabled={isSubmitting}>
