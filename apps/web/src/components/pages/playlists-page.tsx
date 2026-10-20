@@ -34,6 +34,80 @@ interface PlaylistRow {
 const CACHE_TTL_MS = 5 * 60 * 1000
 const playlistsCacheKey = (userId: string) => `scoutbangers:playlists:${userId}`
 
+const TABS = [
+  ["minhas", "As minhas"],
+  ["descobrir", "Descobrir"],
+] as const
+
+/**
+ * Tab strip whose underline slides to the selected tab instead of jumping.
+ * The underline is measured from the active button; it only animates after
+ * the first measurement so it doesn't fly in from the left on load.
+ */
+function TabBar({
+  tab,
+  onChange,
+}: {
+  tab: "minhas" | "descobrir"
+  onChange: (next: "minhas" | "descobrir") => void
+}) {
+  const buttons = React.useRef<Record<string, HTMLButtonElement | null>>({})
+  const [bar, setBar] = React.useState<{ left: number; width: number } | null>(
+    null
+  )
+  const [animate, setAnimate] = React.useState(false)
+
+  React.useLayoutEffect(() => {
+    const el = buttons.current[tab]
+    if (el) setBar({ left: el.offsetLeft, width: el.offsetWidth })
+  }, [tab])
+
+  const measured = bar !== null
+  React.useEffect(() => {
+    if (!measured) return
+    const frame = requestAnimationFrame(() => setAnimate(true))
+    return () => cancelAnimationFrame(frame)
+  }, [measured])
+
+  return (
+    <div role="tablist" className="border-border relative flex gap-4 border-b">
+      {TABS.map(([value, label]) => (
+        <button
+          key={value}
+          ref={(el) => {
+            buttons.current[value] = el
+          }}
+          type="button"
+          role="tab"
+          aria-selected={tab === value}
+          onClick={() => onChange(value)}
+          className={cn(
+            "px-1 pb-2.5 text-sm font-medium transition-colors",
+            tab === value
+              ? "text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {label}
+        </button>
+      ))}
+      {bar ? (
+        <span
+          aria-hidden
+          className={cn(
+            "bg-primary pointer-events-none absolute -bottom-px left-0 h-0.5 rounded-full",
+            animate && "transition-[transform,width] duration-300 ease-out"
+          )}
+          style={{
+            width: bar.width,
+            transform: `translateX(${bar.left}px)`,
+          }}
+        />
+      ) : null}
+    </div>
+  )
+}
+
 /**
  * Lists the signed-in user's playlists. Sign-in CTA when anonymous.
  * Each row links to /playlists/:id where the songs live and can be played.
@@ -202,30 +276,7 @@ export function PlaylistsPage() {
         ) : null}
       </header>
 
-      <div role="tablist" className="border-border flex gap-4 border-b">
-        {(
-          [
-            ["minhas", "As minhas"],
-            ["descobrir", "Descobrir"],
-          ] as const
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            role="tab"
-            aria-selected={tab === value}
-            onClick={() => setTab(value)}
-            className={cn(
-              "-mb-px border-b-2 px-1 pb-2 text-sm font-medium transition-colors",
-              tab === value
-                ? "border-primary text-foreground"
-                : "text-muted-foreground hover:text-foreground border-transparent"
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <TabBar tab={tab} onChange={setTab} />
 
       {tab === "descobrir" ? (
         <DiscoverPlaylists />
