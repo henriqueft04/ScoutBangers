@@ -1,13 +1,15 @@
 import * as React from "react"
-import { Globe, Loader2, Lock, Plus, Trash2 } from "lucide-react"
+import { Globe, Loader2, Lock, Plus, Trash2, Users } from "lucide-react"
 import { useSearchParams } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { SignInDialog } from "@/components/auth/sign-in-dialog"
+import { ConfirmDialog } from "@/components/profile/confirm-dialog"
 import { EmptyState } from "@/components/library/empty-state"
 import { DiscoverPlaylists } from "@/components/playlists/discover-playlists"
+import { PlaylistInvites } from "@/components/playlists/playlist-invites"
 import { PlaylistRow } from "@/components/playlists/playlist-row"
 import { SavedPlaylistsSection } from "@/components/playlists/saved-playlists-section"
 import { useAuth } from "@/hooks/useAuth"
@@ -24,6 +26,9 @@ interface PlaylistRow {
   save_count: number
   cover_url: string | null
   preview_song_ids: string[]
+  // Missing in caches written before collaborators existed.
+  owner_name?: string
+  is_collaborator?: boolean
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000
@@ -90,6 +95,8 @@ export function PlaylistsPage() {
       save_count: row.saveCount,
       cover_url: row.coverUrl,
       preview_song_ids: row.previewSongIds,
+      owner_name: row.ownerName,
+      is_collaborator: row.isCollaborator,
     }))
 
     setPlaylists(rows)
@@ -103,19 +110,20 @@ export function PlaylistsPage() {
     void reload()
   }, [user, reload])
 
-  const handleDelete = async (
-    event: React.MouseEvent,
-    id: string,
+  const [pendingDelete, setPendingDelete] = React.useState<{
+    id: string
     name: string
-  ) => {
+  } | null>(null)
+
+  const handleDelete = (event: React.MouseEvent, id: string, name: string) => {
     event.preventDefault()
     event.stopPropagation()
+    setPendingDelete({ id, name })
+  }
+
+  const performDelete = async (id: string) => {
+    setPendingDelete(null)
     if (!supabase || !user) return
-    if (
-      !window.confirm(`Apagar a playlist "${name}"? Isto não se pode desfazer.`)
-    ) {
-      return
-    }
     const { error } = await supabase.from("playlists").delete().eq("id", id)
     if (error) {
       setError(error.message)
@@ -253,6 +261,8 @@ export function PlaylistsPage() {
             </form>
           ) : null}
 
+          <PlaylistInvites onAccepted={() => void reload()} />
+
           {error && playlists && playlists.length > 0 ? (
             <p className="text-destructive text-xs">{error}</p>
           ) : null}
@@ -279,12 +289,22 @@ export function PlaylistsPage() {
                     <PlaylistRow
                       id={playlist.id}
                       name={playlist.name}
+                      ownerName={
+                        playlist.is_collaborator
+                          ? playlist.owner_name
+                          : undefined
+                      }
                       songCount={playlist.song_count}
                       saveCount={playlist.is_public ? playlist.save_count : 0}
                       coverUrl={playlist.cover_url}
                       previewSongIds={playlist.preview_song_ids}
                       icon={
-                        playlist.is_public ? (
+                        playlist.is_collaborator ? (
+                          <Users
+                            className="text-muted-foreground size-3.5 shrink-0"
+                            aria-label="Colaborativa"
+                          />
+                        ) : playlist.is_public ? (
                           <Globe
                             className="text-muted-foreground size-3.5 shrink-0"
                             aria-label="Pública"
@@ -297,18 +317,20 @@ export function PlaylistsPage() {
                         )
                       }
                       action={
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`Apagar ${playlist.name}`}
-                          onClick={(event) =>
-                            handleDelete(event, playlist.id, playlist.name)
-                          }
-                          className="text-muted-foreground hover:text-destructive"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
+                        playlist.is_collaborator ? undefined : (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Apagar ${playlist.name}`}
+                            onClick={(event) =>
+                              handleDelete(event, playlist.id, playlist.name)
+                            }
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        )
                       }
                     />
                   </li>
@@ -317,6 +339,18 @@ export function PlaylistsPage() {
           )}
 
           <SavedPlaylistsSection userId={user.id} />
+
+          <ConfirmDialog
+            open={pendingDelete !== null}
+            title="Apagar playlist"
+            description={`Apagar "${pendingDelete?.name ?? ""}"? Isto não se pode desfazer.`}
+            confirmLabel="Apagar"
+            destructive
+            onCancel={() => setPendingDelete(null)}
+            onConfirm={() =>
+              pendingDelete && void performDelete(pendingDelete.id)
+            }
+          />
         </>
       )}
     </div>

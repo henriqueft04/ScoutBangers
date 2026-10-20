@@ -52,10 +52,23 @@ export function AddToPlaylistDialog({
     void (async () => {
       const sb = supabase!
       // Fetch all of the user's playlists (Favorites included).
+      // Own playlists plus the ones the user collaborates on (RLS hides
+      // everyone else's private playlists; other people's public ones are
+      // filtered out by the explicit owner/collaborator check below).
+      const { data: collabRows } = await sb
+        .from("playlist_collaborators")
+        .select("playlist_id")
+        .eq("user_id", user.id)
+        .eq("status", "accepted")
+      const collabIds = (collabRows ?? []).map((row) => row.playlist_id)
       const { data: lists, error: listsErr } = await sb
         .from("playlists")
         .select("id, name")
-        .eq("user_id", user.id)
+        .or(
+          collabIds.length > 0
+            ? `user_id.eq.${user.id},id.in.(${collabIds.join(",")})`
+            : `user_id.eq.${user.id}`
+        )
         .order("created_at", { ascending: true })
       if (cancelled) return
       if (listsErr) {

@@ -1,4 +1,8 @@
+import { removeCached } from "./storage"
 import { supabase } from "./supabase"
+
+export const savedPlaylistsCacheKey = (userId: string) =>
+  `scoutbangers:saved-playlists:${userId}`
 
 /**
  * Save / unsave a public playlist for the current user, plus read
@@ -36,6 +40,8 @@ export async function savePlaylist(playlistId: string): Promise<void> {
   await supabase
     .from("playlist_saves")
     .insert({ user_id: user.id, playlist_id: playlistId })
+  // The saved list is cached; drop it so the next visit refetches.
+  removeCached(savedPlaylistsCacheKey(user.id))
 }
 
 export async function unsavePlaylist(playlistId: string): Promise<void> {
@@ -48,6 +54,7 @@ export async function unsavePlaylist(playlistId: string): Promise<void> {
     .delete()
     .eq("user_id", user.id)
     .eq("playlist_id", playlistId)
+  removeCached(savedPlaylistsCacheKey(user.id))
 }
 
 export async function isPlaylistSaved(
@@ -77,14 +84,15 @@ export async function playlistSaveCount(
   return data
 }
 
+/** Returns `null` on failure, so an empty list really means "nothing saved". */
 export async function listSavedPlaylists(
   userId: string
-): Promise<SavedPlaylistSummary[]> {
-  if (!supabase) return []
+): Promise<SavedPlaylistSummary[] | null> {
+  if (!supabase) return null
   const { data, error } = await supabase.rpc("saved_playlists_for_user", {
     uid: userId,
   })
-  if (error || !data) return []
+  if (error || !data) return null
   return (data as Array<{
     id: string
     name: string
@@ -117,6 +125,10 @@ export interface MyPlaylistOverview {
   saveCount: number
   coverUrl: string | null
   previewSongIds: string[]
+  ownerId: string
+  ownerName: string
+  /** The playlist belongs to someone else, who invited the user to edit it. */
+  isCollaborator: boolean
 }
 
 /** Returns `null` on failure so callers can keep showing cached data. */
@@ -137,6 +149,9 @@ export async function myPlaylistsOverview(
     saveCount: row.save_count,
     coverUrl: row.cover_url ?? null,
     previewSongIds: row.preview_song_ids ?? [],
+    ownerId: row.owner_id,
+    ownerName: row.owner_display_name,
+    isCollaborator: row.is_collaborator,
   }))
 }
 

@@ -5,7 +5,6 @@ import {
   Check,
   CloudDownload,
   Globe,
-  ListPlus,
   Loader2,
   Lock,
   MoreVertical,
@@ -15,7 +14,7 @@ import {
   Plus,
   Share2,
   Shuffle,
-  Trash2,
+  UserPlus,
 } from "lucide-react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 
@@ -25,10 +24,17 @@ import { cn } from "@workspace/ui/lib/utils"
 import { CellularDownloadDialog } from "@/components/library/cellular-download-dialog"
 import { EmptyState } from "@/components/library/empty-state"
 import { OfflineDownloadProgressBar } from "@/components/library/offline-download-progress"
+import { ConfirmDialog } from "@/components/profile/confirm-dialog"
 import { ImageCropper } from "@/components/profile/image-cropper"
 import { UserAvatar } from "@/components/profile/user-avatar"
 import { SongList } from "@/components/library/song-list"
 import { AddSongsSheet } from "@/components/playlists/add-songs-sheet"
+import { CollaboratorsSheet } from "@/components/playlists/collaborators-sheet"
+import { PlaylistOptionsSheet } from "@/components/playlists/playlist-options-sheet"
+import {
+  PlaylistPeopleSheet,
+  type PlaylistPerson,
+} from "@/components/playlists/playlist-people-sheet"
 import { PlaylistCover } from "@/components/playlists/playlist-cover"
 import { PlaylistSaveButton } from "@/components/playlists/playlist-save-button"
 import { useAuth } from "@/hooks/useAuth"
@@ -52,6 +58,11 @@ import {
   removeCached,
   setCached,
 } from "@/lib/storage"
+import {
+  listCollaborators,
+  removeCollaborator,
+  type Collaborator,
+} from "@/lib/playlist-collaborators"
 import { supabase } from "@/lib/supabase"
 
 interface PlaylistDetail {
@@ -82,36 +93,6 @@ function toCachedMeta(detail: PlaylistDetail): CachedPlaylistMeta {
 const CACHE_TTL_MS = 5 * 60 * 1000
 const playlistDetailCacheKey = (id: string) => `scoutbangers:playlist:${id}`
 
-function MenuItem({
-  icon,
-  children,
-  onClick,
-  disabled,
-  destructive,
-}: {
-  icon: React.ReactNode
-  children: React.ReactNode
-  onClick: () => void
-  disabled?: boolean
-  destructive?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "hover:bg-accent/50 flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors disabled:opacity-60",
-        destructive ? "text-destructive" : "text-foreground"
-      )}
-    >
-      {icon}
-      {children}
-    </button>
-  )
-}
-
 function ChipButton({
   icon,
   children,
@@ -125,7 +106,7 @@ function ChipButton({
     <button
       type="button"
       onClick={onClick}
-      className="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors"
+      className="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-sm font-semibold transition-colors"
     >
       {icon}
       {children}
@@ -151,7 +132,9 @@ export function PlaylistDetailPage() {
   React.useEffect(() => {
     if (!id) return
     const key = playlistDetailCacheKey(id)
-    const cached = getCached<CachedPlaylistMeta>(key) ?? getStaleCached<CachedPlaylistMeta>(key)
+    const cached =
+      getCached<CachedPlaylistMeta>(key) ??
+      getStaleCached<CachedPlaylistMeta>(key)
     if (cached)
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setPlaylist({
@@ -189,9 +172,12 @@ export function PlaylistDetailPage() {
         // nothing to fall back to.
         const key = playlistDetailCacheKey(id)
         const hasFallback = Boolean(
-          getCached<CachedPlaylistMeta>(key) ?? getStaleCached<CachedPlaylistMeta>(key)
+          getCached<CachedPlaylistMeta>(key) ??
+          getStaleCached<CachedPlaylistMeta>(key)
         )
-        setError(hasFallback ? null : (rowErr?.message ?? "Playlist não encontrada"))
+        setError(
+          hasFallback ? null : (rowErr?.message ?? "Playlist não encontrada")
+        )
         return
       }
       const cacheable: CachedPlaylistMeta = {
@@ -210,6 +196,29 @@ export function PlaylistDetailPage() {
       cancelled = true
     }
   }, [userId, id])
+
+  // Accepted collaborators (the owner also gets pending invites). Cached per
+  // playlist so a collaborator's edit buttons don't flicker in on each visit.
+  const [collaborators, setCollaborators] = React.useState<Collaborator[]>([])
+  React.useEffect(() => {
+    if (!id) return
+    const key = `scoutbangers:playlist-collaborators:${id}`
+    const cached =
+      getCached<Collaborator[]>(key) ?? getStaleCached<Collaborator[]>(key)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCollaborators(cached ?? [])
+    let cancelled = false
+    void listCollaborators(id).then((rows) => {
+      if (cancelled || !rows) return
+      setCollaborators(rows)
+      setCached(key, rows, CACHE_TTL_MS)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [id, userId])
+  const [collabOpen, setCollabOpen] = React.useState(false)
+  const [peopleOpen, setPeopleOpen] = React.useState(false)
 
   // Author's name for the line under the title. Not part of the cached
   // playlist meta; a missing name just hides the line.
@@ -266,7 +275,11 @@ export function PlaylistDetailPage() {
       setError(error.message)
       return
     }
-    setCached(playlistDetailCacheKey(optimistic.id), toCachedMeta(optimistic), CACHE_TTL_MS)
+    setCached(
+      playlistDetailCacheKey(optimistic.id),
+      toCachedMeta(optimistic),
+      CACHE_TTL_MS
+    )
   }
 
   const playlistSongs = React.useMemo(() => {
@@ -301,8 +314,8 @@ export function PlaylistDetailPage() {
   const currentSongId = currentIndex !== null ? songs[currentIndex]?.id : null
   const playingHere = Boolean(
     isPlaying &&
-      currentSongId &&
-      playlistSongs.some((song) => song.id === currentSongId)
+    currentSongId &&
+    playlistSongs.some((song) => song.id === currentSongId)
   )
   const handlePlay = () => {
     if (playingHere) {
@@ -322,29 +335,28 @@ export function PlaylistDetailPage() {
   const [addOpen, setAddOpen] = React.useState(false)
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = React.useState(false)
-  const menuRef = React.useRef<HTMLDivElement>(null)
   React.useEffect(() => {
     if (!menuOpen) return
-    const close = (event: Event) => {
-      if (
-        event instanceof KeyboardEvent
-          ? event.key === "Escape"
-          : !menuRef.current?.contains(event.target as Node)
-      ) {
-        setMenuOpen(false)
-      }
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false)
     }
-    document.addEventListener("pointerdown", close)
     document.addEventListener("keydown", close)
-    return () => {
-      document.removeEventListener("pointerdown", close)
-      document.removeEventListener("keydown", close)
-    }
+    return () => document.removeEventListener("keydown", close)
   }, [menuOpen])
   const [renaming, setRenaming] = React.useState(false)
   const [draftName, setDraftName] = React.useState("")
   const { toggle: toggleFavorite } = useFavorites()
   const isFavoritesList = playlist?.name === "Favorites"
+  // The owner and accepted collaborators can edit songs, name and cover;
+  // deleting, visibility and managing collaborators stay owner-only.
+  const canEdit = Boolean(
+    playlist?.is_owner ||
+    (userId &&
+      collaborators.some((c) => c.userId === userId && c.status === "accepted"))
+  )
+  const acceptedCollaborators = collaborators.filter(
+    (c) => c.status === "accepted"
+  )
 
   const setSongIds = (next: PlaylistDetail) => {
     setPlaylist(next)
@@ -396,7 +408,9 @@ export function PlaylistDetailPage() {
       const url = await uploadPlaylistCoverBlob(blob, playlist.id)
       await persistCover(url)
     } catch (err) {
-      setCoverError(err instanceof Error ? err.message : "Não foi possível guardar a capa.")
+      setCoverError(
+        err instanceof Error ? err.message : "Não foi possível guardar a capa."
+      )
     } finally {
       setCoverBusy(false)
     }
@@ -409,7 +423,9 @@ export function PlaylistDetailPage() {
       await persistCover(null)
       await deletePlaylistCover(playlist.id).catch(() => undefined)
     } catch (err) {
-      setCoverError(err instanceof Error ? err.message : "Não foi possível remover a capa.")
+      setCoverError(
+        err instanceof Error ? err.message : "Não foi possível remover a capa."
+      )
     } finally {
       setCoverBusy(false)
     }
@@ -437,15 +453,17 @@ export function PlaylistDetailPage() {
     setRenaming(false)
   }
 
-  const handleDelete = async () => {
+  const [confirmingDelete, setConfirmingDelete] = React.useState(false)
+  const [confirmingLeave, setConfirmingLeave] = React.useState(false)
+  const [removingPerson, setRemovingPerson] =
+    React.useState<PlaylistPerson | null>(null)
+  const [peopleError, setPeopleError] = React.useState<string | null>(null)
+
+  const handleDelete = () => setConfirmingDelete(true)
+
+  const performDelete = async () => {
+    setConfirmingDelete(false)
     if (!supabase || !playlist) return
-    if (
-      !window.confirm(
-        `Apagar a playlist "${playlist.name}"? Isto não se pode desfazer.`
-      )
-    ) {
-      return
-    }
     const { error: deleteError } = await supabase
       .from("playlists")
       .delete()
@@ -515,7 +533,7 @@ export function PlaylistDetailPage() {
             seed={playlist?.id}
             className="rounded-lg"
           />
-          {playlist?.is_owner ? (
+          {canEdit ? (
             <>
               <button
                 type="button"
@@ -580,19 +598,48 @@ export function PlaylistDetailPage() {
             </h2>
           )}
           {playlist && owner?.id === playlist.owner_id ? (
-            <Link
-              to={playlist.is_owner ? "/profile" : `/u/${playlist.owner_id}`}
-              className="mt-2 inline-flex max-w-full items-center gap-2"
-            >
-              <UserAvatar
-                name={owner.name}
-                avatarUrl={owner.avatarUrl}
-                className="size-6"
-              />
-              <span className="text-foreground truncate text-sm font-semibold hover:underline">
-                {owner.name}
-              </span>
-            </Link>
+            acceptedCollaborators.length > 0 ? (
+              // With collaborators the whole line opens the people list.
+              <button
+                type="button"
+                onClick={() => setPeopleOpen(true)}
+                aria-label="Ver pessoas da playlist"
+                className="mt-2 flex max-w-full items-center gap-2 text-left"
+              >
+                <span className="flex shrink-0 -space-x-2">
+                  <UserAvatar
+                    name={owner.name}
+                    avatarUrl={owner.avatarUrl}
+                    className="ring-background size-6 ring-2"
+                  />
+                  {acceptedCollaborators.slice(0, 3).map((c) => (
+                    <UserAvatar
+                      key={c.userId}
+                      name={c.displayName}
+                      avatarUrl={c.avatarUrl}
+                      className="ring-background size-6 ring-2"
+                    />
+                  ))}
+                </span>
+                <span className="text-foreground truncate text-sm font-semibold hover:underline">
+                  {owner.name} e mais {acceptedCollaborators.length}
+                </span>
+              </button>
+            ) : (
+              <Link
+                to={playlist.is_owner ? "/profile" : `/u/${playlist.owner_id}`}
+                className="mt-2 inline-flex max-w-full items-center gap-2"
+              >
+                <UserAvatar
+                  name={owner.name}
+                  avatarUrl={owner.avatarUrl}
+                  className="size-6"
+                />
+                <span className="text-foreground truncate text-sm font-semibold hover:underline">
+                  {owner.name}
+                </span>
+              </Link>
+            )
           ) : null}
           {playlist ? (
             <p className="text-muted-foreground mt-1.5 flex items-center gap-1.5 text-sm">
@@ -621,6 +668,11 @@ export function PlaylistDetailPage() {
         {playlist ? (
           <>
             <div className="flex items-center gap-1">
+              <PlaylistSaveButton
+                playlistId={playlist.id}
+                ownerId={playlist.owner_id}
+                isPublic={playlist.is_public}
+              />
               {playlistSongs.length > 0 ? (
                 <Button
                   type="button"
@@ -652,7 +704,9 @@ export function PlaylistDetailPage() {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label={linkCopied ? "Link copiado" : "Partilhar playlist"}
+                  aria-label={
+                    linkCopied ? "Link copiado" : "Partilhar playlist"
+                  }
                   onClick={handleCopyLink}
                   className="text-muted-foreground hover:text-foreground"
                 >
@@ -663,8 +717,22 @@ export function PlaylistDetailPage() {
                   )}
                 </Button>
               ) : null}
+              {canEdit && !isFavoritesList ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={
+                    playlist.is_owner ? "Convidar colaborador" : "Colaboradores"
+                  }
+                  onClick={() => setCollabOpen(true)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <UserPlus className="size-5" />
+                </Button>
+              ) : null}
 
-              <div ref={menuRef} className="relative">
+              <div className="relative">
                 <Button
                   type="button"
                   variant="ghost"
@@ -677,47 +745,6 @@ export function PlaylistDetailPage() {
                 >
                   <MoreVertical className="size-5" />
                 </Button>
-                {menuOpen ? (
-                  <div
-                    role="menu"
-                    className="bg-card border-border absolute left-0 z-20 mt-1 flex w-56 flex-col rounded-lg border p-1 shadow-lg"
-                  >
-                    {playlistSongs.length > 0 ? (
-                      <MenuItem
-                        icon={<ListPlus className="size-4" />}
-                        onClick={() => {
-                          queueAddMany(playlist.song_ids)
-                          setMenuOpen(false)
-                        }}
-                      >
-                        Adicionar à fila
-                      </MenuItem>
-                    ) : null}
-                    {playlist.is_owner && playlist.cover_url ? (
-                      <MenuItem
-                        icon={<Camera className="size-4" />}
-                        onClick={() => {
-                          setMenuOpen(false)
-                          void handleCoverRemove()
-                        }}
-                      >
-                        Remover capa
-                      </MenuItem>
-                    ) : null}
-                    {playlist.is_owner && !isFavoritesList ? (
-                      <MenuItem
-                        destructive
-                        icon={<Trash2 className="size-4" />}
-                        onClick={() => {
-                          setMenuOpen(false)
-                          void handleDelete()
-                        }}
-                      >
-                        Apagar playlist
-                      </MenuItem>
-                    ) : null}
-                  </div>
-                ) : null}
               </div>
 
               {playlistSongs.length > 0 ? (
@@ -748,9 +775,9 @@ export function PlaylistDetailPage() {
               ) : null}
             </div>
 
-            {playlist.is_owner || playlist.is_public ? (
-              <div className="-mx-3 flex items-center gap-2 overflow-x-auto px-3 pb-1 md:mx-0 md:px-0 [&::-webkit-scrollbar]:hidden">
-                {playlist.is_owner ? (
+            {canEdit ? (
+              <div className="flex items-center gap-2">
+                {canEdit ? (
                   <>
                     <ChipButton
                       icon={<Plus className="size-4" />}
@@ -769,7 +796,7 @@ export function PlaylistDetailPage() {
                         Renomear
                       </ChipButton>
                     ) : null}
-                    {!isFavoritesList ? (
+                    {playlist.is_owner && !isFavoritesList ? (
                       <ChipButton
                         icon={
                           playlist.is_public ? (
@@ -785,11 +812,6 @@ export function PlaylistDetailPage() {
                     ) : null}
                   </>
                 ) : null}
-                <PlaylistSaveButton
-                  playlistId={playlist.id}
-                  ownerId={playlist.owner_id}
-                  isPublic={playlist.is_public}
-                />
               </div>
             ) : null}
           </>
@@ -815,7 +837,7 @@ export function PlaylistDetailPage() {
         <EmptyState
           variant="empty"
           message={
-            playlist?.is_owner
+            canEdit
               ? "Esta playlist está vazia. Toca em Adicionar músicas para começar."
               : "Esta playlist está vazia."
           }
@@ -851,7 +873,7 @@ export function PlaylistDetailPage() {
         />
       ) : null}
 
-      {playlist?.is_owner ? (
+      {playlist && canEdit ? (
         <AddSongsSheet
           open={addOpen}
           songs={songs}
@@ -861,6 +883,166 @@ export function PlaylistDetailPage() {
           onClose={() => setAddOpen(false)}
         />
       ) : null}
+
+      {playlist ? (
+        <PlaylistOptionsSheet
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          playlist={playlist}
+          songs={playlistSongs}
+          ownerName={owner?.name}
+          saveCount={saveCount}
+          canEdit={canEdit}
+          isFavorites={isFavoritesList}
+          linkCopied={linkCopied}
+          coverBusy={coverBusy}
+          fullyOffline={fullyOffline}
+          offlineDownloading={Boolean(offlineDownloading)}
+          offlineBytes={offlineTargetBytes}
+          onShare={() => void handleCopyLink()}
+          onAddSongs={() => setAddOpen(true)}
+          onRename={() => {
+            setDraftName(playlist.name)
+            setRenaming(true)
+          }}
+          onChangeCover={() => coverInputRef.current?.click()}
+          onRemoveCover={() => void handleCoverRemove()}
+          onTogglePublic={() => void togglePublic()}
+          onCollaborators={() => setCollabOpen(true)}
+          onQueue={() => queueAddMany(playlist.song_ids)}
+          onDownload={requestOfflineDownload}
+          onLeave={() => setConfirmingLeave(true)}
+          onDelete={handleDelete}
+        />
+      ) : null}
+
+      {playlist && canEdit && !isFavoritesList ? (
+        <CollaboratorsSheet
+          open={collabOpen}
+          playlistId={playlist.id}
+          isOwner={playlist.is_owner}
+          userId={userId}
+          collaborators={collaborators}
+          owner={owner?.id === playlist.owner_id ? owner : undefined}
+          onChange={(next) => {
+            setCollaborators(next)
+            setCached(
+              `scoutbangers:playlist-collaborators:${playlist.id}`,
+              next,
+              CACHE_TTL_MS
+            )
+          }}
+          onLeft={() => {
+            removeCached(playlistDetailCacheKey(playlist.id))
+            if (userId) removeCached(`scoutbangers:playlists:${userId}`)
+            navigate("/playlists", { replace: true })
+          }}
+          onClose={() => setCollabOpen(false)}
+        />
+      ) : null}
+
+      {playlist && owner?.id === playlist.owner_id ? (
+        <PlaylistPeopleSheet
+          open={peopleOpen}
+          onClose={() => setPeopleOpen(false)}
+          error={peopleError}
+          onInvite={
+            playlist.is_owner && !isFavoritesList
+              ? () => {
+                  setPeopleOpen(false)
+                  setCollabOpen(true)
+                }
+              : undefined
+          }
+          onRemove={
+            playlist.is_owner
+              ? (person) => {
+                  setPeopleError(null)
+                  setRemovingPerson(person)
+                }
+              : undefined
+          }
+          people={[
+            {
+              id: owner.id,
+              name: owner.name,
+              avatarUrl: owner.avatarUrl,
+              role: "Criador",
+              to: playlist.is_owner ? "/profile" : `/u/${owner.id}`,
+            },
+            ...acceptedCollaborators.map((c) => ({
+              id: c.userId,
+              name: c.displayName,
+              avatarUrl: c.avatarUrl,
+              role: "Colaborador",
+              to: c.userId === userId ? "/profile" : `/u/${c.userId}`,
+              removable: true,
+            })),
+          ]}
+        />
+      ) : null}
+
+      <ConfirmDialog
+        open={removingPerson !== null}
+        title="Remover colaborador"
+        description={
+          removingPerson ? (
+            <>{removingPerson.name} deixa de poder editar esta playlist.</>
+          ) : null
+        }
+        confirmLabel="Remover"
+        destructive
+        onCancel={() => setRemovingPerson(null)}
+        onConfirm={async () => {
+          const person = removingPerson
+          setRemovingPerson(null)
+          if (!person || !playlist) return
+          const failure = await removeCollaborator(playlist.id, person.id)
+          if (failure) {
+            setPeopleError(failure)
+            return
+          }
+          const next = collaborators.filter((c) => c.userId !== person.id)
+          setCollaborators(next)
+          setCached(
+            `scoutbangers:playlist-collaborators:${playlist.id}`,
+            next,
+            CACHE_TTL_MS
+          )
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmingLeave}
+        title="Sair da playlist"
+        description={`Deixas de poder editar "${playlist?.name ?? ""}". Só o criador te pode convidar de novo.`}
+        confirmLabel="Sair"
+        destructive
+        onCancel={() => setConfirmingLeave(false)}
+        onConfirm={async () => {
+          setConfirmingLeave(false)
+          if (!playlist || !userId) return
+          const failure = await removeCollaborator(playlist.id, userId)
+          if (failure) {
+            setError(failure)
+            return
+          }
+          removeCached(playlistDetailCacheKey(playlist.id))
+          removeCached(`scoutbangers:playlist-collaborators:${playlist.id}`)
+          removeCached(`scoutbangers:playlists:${userId}`)
+          navigate("/playlists", { replace: true })
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmingDelete}
+        title="Apagar playlist"
+        description={`Apagar "${playlist?.name ?? ""}"? Isto não se pode desfazer.`}
+        confirmLabel="Apagar"
+        destructive
+        onCancel={() => setConfirmingDelete(false)}
+        onConfirm={() => void performDelete()}
+      />
 
       <CellularDownloadDialog
         open={confirmingCellular}

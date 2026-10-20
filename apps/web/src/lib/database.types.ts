@@ -117,6 +117,38 @@ export interface Database {
           },
         ]
       }
+      playlist_collaborators: {
+        Row: {
+          playlist_id: string
+          user_id: string
+          invited_by: string
+          status: string
+          created_at: string
+        }
+        Insert: {
+          playlist_id: string
+          user_id: string
+          invited_by: string
+          status?: string
+          created_at?: string
+        }
+        Update: {
+          playlist_id?: string
+          user_id?: string
+          invited_by?: string
+          status?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "playlist_collaborators_playlist_id_fkey"
+            columns: ["playlist_id"]
+            isOneToOne: false
+            referencedRelation: "playlists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plays: {
         Row: {
           id: string
@@ -295,7 +327,37 @@ export interface Database {
           save_count: number
           cover_url: string | null
           preview_song_ids: string[]
+          owner_id: string
+          owner_display_name: string
+          is_collaborator: boolean
         }[]
+      }
+      invite_playlist_collaborator: {
+        Args: { pid: string; uid: string }
+        Returns: undefined
+      }
+      playlist_collaborators_list: {
+        Args: { pid: string }
+        Returns: {
+          user_id: string
+          display_name: string
+          avatar_url: string | null
+          status: string
+        }[]
+      }
+      my_playlist_invites: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          playlist_id: string
+          playlist_name: string
+          inviter_id: string
+          inviter_name: string
+          invited_at: string
+        }[]
+      }
+      respond_playlist_invite: {
+        Args: { pid: string; accept: boolean }
+        Returns: undefined
       }
       discover_public_playlists: {
         Args: { q?: string; sort?: string; lim?: number; off?: number }

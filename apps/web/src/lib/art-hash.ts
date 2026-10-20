@@ -20,7 +20,8 @@ const MAX_BIT_DISTANCE = 6
 const MAX_COLOUR_DISTANCE = 28
 
 const hashes = new Map<string, ArtHash | null>()
-const inflight = new Set<string>()
+/** Callbacks waiting on a hash that is being computed. */
+const inflight = new Map<string, Array<() => void>>()
 
 /** `undefined` = not computed yet, `null` = the image couldn't be decoded. */
 export function peekArtHash(key: string): ArtHash | null | undefined {
@@ -33,14 +34,21 @@ export function ensureArtHash(
   blob: Blob,
   onDone: () => void
 ): void {
-  if (hashes.has(key) || inflight.has(key)) return
-  inflight.add(key)
+  if (hashes.has(key)) return
+  // Several covers can ask for the same song at once; all get notified.
+  const waiting = inflight.get(key)
+  if (waiting) {
+    waiting.push(onDone)
+    return
+  }
+  inflight.set(key, [onDone])
   void computeHash(blob)
     .catch(() => null)
     .then((hash) => {
       hashes.set(key, hash)
+      const callbacks = inflight.get(key) ?? []
       inflight.delete(key)
-      onDone()
+      for (const callback of callbacks) callback()
     })
 }
 

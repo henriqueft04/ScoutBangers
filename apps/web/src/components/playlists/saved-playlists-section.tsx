@@ -4,6 +4,7 @@ import { BookmarkCheck } from "lucide-react"
 import { PlaylistRow } from "@/components/playlists/playlist-row"
 import {
   listSavedPlaylists,
+  savedPlaylistsCacheKey,
   type SavedPlaylistSummary,
 } from "@/lib/playlist-saves"
 import { getCached, setCached } from "@/lib/storage"
@@ -14,7 +15,6 @@ interface SavedPlaylistsSectionProps {
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000
-const savedPlaylistsCacheKey = (userId: string) => `scoutbangers:saved-playlists:${userId}`
 
 /**
  * Lists playlists the user has saved (others' public playlists).
@@ -22,39 +22,20 @@ const savedPlaylistsCacheKey = (userId: string) => `scoutbangers:saved-playlists
  * playlists" page clean for users who don't engage with the
  * social side.
  *
- * `listSavedPlaylists` swallows its own errors (returns `[]`), which
- * offline would otherwise silently hide this whole section instead of
- * showing what was saved last time — so unlike the SWR pages elsewhere,
- * this only ever overwrites `items` with a genuinely fresh (non-empty
- * OR confirmed-empty-by-a-successful-fetch) result. Since we can't tell
- * "fetch failed" from "really has nothing saved" here, we keep it
- * simple: seed from cache, and only persist a fresh fetch back to cache
- * (never blank the display on a failed one).
+ * Seeded from cache so the section shows instantly; a successful fetch
+ * (including a confirmed-empty one, e.g. after unsaving the last playlist)
+ * replaces it, while a failed fetch leaves what is showing alone.
  */
 export function SavedPlaylistsSection({ userId }: SavedPlaylistsSectionProps) {
   const [items, setItems] = React.useState<SavedPlaylistSummary[] | null>(
     () => getCached<SavedPlaylistSummary[]>(savedPlaylistsCacheKey(userId))
   )
-  // Snapshot of "did we have cache at mount", taken once via lazy init —
-  // deliberately NOT reactive to `items` so the effect below doesn't need
-  // it as a dependency (and can't see a stale value from a prior render).
-  const hadCacheRef = React.useRef(items !== null)
-
   React.useEffect(() => {
     let cancelled = false
     void listSavedPlaylists(userId).then((next) => {
-      if (cancelled) return
-      // An empty result here is ambiguous (genuinely nothing saved vs.
-      // the fetch failing offline) — only overwrite what's already
-      // showing when we got something, or when we had nothing cached to
-      // begin with (first-ever load).
-      if (next.length > 0 || !hadCacheRef.current) {
-        setItems(next)
-      }
-      if (next.length > 0) {
-        setCached(savedPlaylistsCacheKey(userId), next, CACHE_TTL_MS)
-        hadCacheRef.current = true
-      }
+      if (cancelled || !next) return
+      setItems(next)
+      setCached(savedPlaylistsCacheKey(userId), next, CACHE_TTL_MS)
     })
     return () => {
       cancelled = true

@@ -52,12 +52,15 @@ function useDistinctArtSongs(
   const candidates = songs.slice(0, MAX_CANDIDATES)
   const windowed = candidates.slice(0, windowSize)
 
+  // Keyed by ids: callers rebuild `songs` on every render, and re-running
+  // this effect each time would re-trigger the metadata loads.
+  const windowKey = windowed.map((song) => song.id).join(",")
   React.useEffect(() => {
     if (!enabled) return
     for (const song of windowed) void ensureTrackMetadata(song.id, song.modifiedTime)
     return subscribeToAnyMetadata(rerender)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, windowSize, songs])
+  }, [enabled, windowKey])
 
   // Hash each loaded cover once; reruns are cheap (cached / in flight).
   const blobs = new Map<string, Blob>()
