@@ -1,7 +1,7 @@
 import * as React from "react"
 import { BookmarkCheck } from "lucide-react"
-import { Link } from "react-router-dom"
 
+import { PlaylistRow } from "@/components/playlists/playlist-row"
 import {
   listSavedPlaylists,
   type SavedPlaylistSummary,
@@ -71,26 +71,16 @@ export function SavedPlaylistsSection({ userId }: SavedPlaylistsSectionProps) {
       <ul role="list" className="flex flex-col gap-1">
         {items.map((playlist) => (
           <li key={playlist.id}>
-            <Link
-              to={`/playlists/${playlist.id}`}
-              className="hover:bg-accent/40 flex items-center justify-between gap-2 rounded-md px-3 py-2.5 transition-colors"
-            >
-              <span className="text-foreground flex min-w-0 items-center gap-2 text-sm font-medium">
-                <BookmarkCheck className="text-primary size-3.5 shrink-0" />
-                <span className="flex min-w-0 flex-col">
-                  <span className="truncate">{playlist.name}</span>
-                  {playlist.ownerDisplayName ? (
-                    <span className="text-muted-foreground truncate text-xs">
-                      de {playlist.ownerDisplayName}
-                    </span>
-                  ) : null}
-                </span>
-              </span>
-              <span className="text-muted-foreground shrink-0 text-xs">
-                {playlist.songCount}{" "}
-                {playlist.songCount === 1 ? "música" : "músicas"}
-              </span>
-            </Link>
+            <PlaylistRow
+              id={playlist.id}
+              name={playlist.name}
+              ownerName={playlist.ownerDisplayName}
+              songCount={playlist.songCount}
+              saveCount={playlist.saveCount}
+              coverUrl={playlist.coverUrl}
+              previewSongIds={playlist.previewSongIds}
+              icon={<BookmarkCheck className="text-primary size-3.5 shrink-0" />}
+            />
           </li>
         ))}
       </ul>

@@ -24,9 +24,9 @@ interface AddToPlaylistDialogProps {
 const FAVORITES_PLAYLIST_NAME = "Favorites"
 
 /**
- * Modal that opens when a user clicks the heart on an already-favorited
- * song. Lets them add the song to one of their other playlists, or
- * remove it from Favorites outright. Loads playlists lazily on open and
+ * Modal that opens when a user clicks the heart on a song. Favorites sits
+ * on top (checked when the song is a favorite), followed by the user's
+ * other playlists and a "Nova playlist" button. Loads playlists lazily on open and
  * marks the ones that already contain this song so the user can see the
  * current state.
  */
@@ -36,12 +36,13 @@ export function AddToPlaylistDialog({
   onClose,
 }: AddToPlaylistDialogProps) {
   const { user } = useAuth()
-  const { toggle: toggleFavorite } = useFavorites()
+  const { toggle: toggleFavorite, isFavorite } = useFavorites()
   const [playlists, setPlaylists] = React.useState<PlaylistSummary[] | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [busyId, setBusyId] = React.useState<string | null>(null)
   const [creating, setCreating] = React.useState(false)
   const [newName, setNewName] = React.useState("")
+  const [filter, setFilter] = React.useState("")
   const [creatingBusy, setCreatingBusy] = React.useState(false)
 
   React.useEffect(() => {
@@ -103,6 +104,20 @@ export function AddToPlaylistDialog({
   }, [open, onClose])
 
   if (!open) return null
+
+  // The Favorites check mirrors the shared store: the heart may have just
+  // toggled it optimistically, before this dialog's fetch could see it.
+  const favoritesRow = playlists
+    ?.filter((p) => p.isFavorites)
+    .map((p) => ({ ...p, alreadyContains: isFavorite(songId) }))[0]
+  const otherRows = (playlists ?? []).filter((p) => !p.isFavorites)
+  const needle = filter.trim().toLowerCase()
+  const visibleOthers = needle
+    ? otherRows.filter((p) => p.name.toLowerCase().includes(needle))
+    : otherRows
+  const visible = favoritesRow && !needle
+    ? [favoritesRow, ...visibleOthers]
+    : visibleOthers
 
   const handleToggleRow = async (
     playlistId: string,
@@ -211,7 +226,7 @@ export function AddToPlaylistDialog({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Adicionar à playlist"
+      aria-label="Guardar em"
       className="bg-background/80 fixed inset-0 z-50 flex items-end justify-center p-0 backdrop-blur-sm md:items-center md:p-4"
       onClick={onClose}
     >
@@ -222,7 +237,7 @@ export function AddToPlaylistDialog({
       >
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-semibold tracking-tight">
-            Adicionar à playlist
+            Guardar em
           </h2>
           <Button
             type="button"
@@ -290,16 +305,26 @@ export function AddToPlaylistDialog({
           </button>
         )}
 
+        {otherRows.length > 8 ? (
+          <input
+            type="search"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="Procurar playlist"
+            className="border-input bg-background focus-visible:ring-ring/40 mb-2 w-full rounded-md border px-3 py-1.5 text-sm focus-visible:ring-2 focus-visible:outline-none"
+          />
+        ) : null}
+
         <div className="mb-4 max-h-72 overflow-y-auto">
           {playlists === null ? (
             <Loader2 className="text-muted-foreground mx-auto my-4 size-5 animate-spin" />
           ) : playlists.length === 0 ? (
             <p className="text-muted-foreground py-4 text-center text-sm">
-              Ainda não tens outras playlists. Cria uma a partir do separador Playlists.
+              Ainda não tens playlists. Cria uma com "Nova playlist".
             </p>
           ) : (
             <ul className="flex flex-col gap-1">
-              {playlists.map((playlist) => (
+              {visible.map((playlist) => (
                 <li key={playlist.id}>
                   <button
                     type="button"

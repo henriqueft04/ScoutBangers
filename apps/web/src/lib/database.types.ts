@@ -61,30 +61,13 @@ export interface Database {
         }
         Relationships: []
       }
-      favorites: {
-        Row: {
-          user_id: string
-          song_id: string
-          created_at: string
-        }
-        Insert: {
-          user_id: string
-          song_id: string
-          created_at?: string
-        }
-        Update: {
-          user_id?: string
-          song_id?: string
-          created_at?: string
-        }
-        Relationships: []
-      }
       playlists: {
         Row: {
           id: string
           user_id: string
           name: string
           is_public: boolean
+          cover_url: string | null
           created_at: string
         }
         Insert: {
@@ -92,6 +75,7 @@ export interface Database {
           user_id: string
           name: string
           is_public?: boolean
+          cover_url?: string | null
           created_at?: string
         }
         Update: {
@@ -99,6 +83,7 @@ export interface Database {
           user_id?: string
           name?: string
           is_public?: boolean
+          cover_url?: string | null
           created_at?: string
         }
         Relationships: []
@@ -122,7 +107,15 @@ export interface Database {
           position?: number
           added_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "playlist_songs_playlist_id_fkey"
+            columns: ["playlist_id"]
+            isOneToOne: false
+            referencedRelation: "playlists"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       plays: {
         Row: {
@@ -286,6 +279,35 @@ export interface Database {
           owner_display_name: string
           song_count: number
           saved_at: string
+          save_count: number
+          cover_url: string | null
+          preview_song_ids: string[]
+        }[]
+      }
+      my_playlists_overview: {
+        Args: { uid: string }
+        Returns: {
+          id: string
+          name: string
+          is_public: boolean
+          created_at: string
+          song_count: number
+          save_count: number
+          cover_url: string | null
+          preview_song_ids: string[]
+        }[]
+      }
+      discover_public_playlists: {
+        Args: { q?: string; sort?: string; lim?: number; off?: number }
+        Returns: {
+          id: string
+          name: string
+          owner_id: string
+          owner_display_name: string
+          song_count: number
+          save_count: number
+          cover_url: string | null
+          preview_song_ids: string[]
         }[]
       }
       stats_top_songs_weekly: {

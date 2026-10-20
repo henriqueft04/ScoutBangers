@@ -1,13 +1,17 @@
 import * as React from "react"
 import { Globe, Loader2, Lock, Plus, Trash2 } from "lucide-react"
-import { Link } from "react-router-dom"
+import { useSearchParams } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
+import { cn } from "@workspace/ui/lib/utils"
 
 import { SignInDialog } from "@/components/auth/sign-in-dialog"
 import { EmptyState } from "@/components/library/empty-state"
+import { DiscoverPlaylists } from "@/components/playlists/discover-playlists"
+import { PlaylistRow } from "@/components/playlists/playlist-row"
 import { SavedPlaylistsSection } from "@/components/playlists/saved-playlists-section"
 import { useAuth } from "@/hooks/useAuth"
+import { myPlaylistsOverview } from "@/lib/playlist-saves"
 import { getCached, getStaleCached, setCached } from "@/lib/storage"
 import { supabase } from "@/lib/supabase"
 
@@ -17,6 +21,9 @@ interface PlaylistRow {
   is_public: boolean
   created_at: string
   song_count: number
+  save_count: number
+  cover_url: string | null
+  preview_song_ids: string[]
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000
@@ -39,6 +46,10 @@ export function PlaylistsPage() {
   const [signInOpen, setSignInOpen] = React.useState(false)
   const [creating, setCreating] = React.useState(false)
   const [newName, setNewName] = React.useState("")
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = searchParams.get("tab") === "descobrir" ? "descobrir" : "minhas"
+  const setTab = (next: "minhas" | "descobrir") =>
+    setSearchParams(next === "minhas" ? {} : { tab: next }, { replace: true })
 
   // Hydrate from cache the moment we know who the user is — before the
   // network fetch below even starts. Prefer fresh cache, fall back to
@@ -47,7 +58,8 @@ export function PlaylistsPage() {
   React.useEffect(() => {
     if (!user) return
     const key = playlistsCacheKey(user.id)
-    const cached = getCached<PlaylistRow[]>(key) ?? getStaleCached<PlaylistRow[]>(key)
+    const cached =
+      getCached<PlaylistRow[]>(key) ?? getStaleCached<PlaylistRow[]>(key)
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (cached) setPlaylists(cached)
   }, [user])
@@ -56,12 +68,8 @@ export function PlaylistsPage() {
     if (!supabase || !user) return
     setLoading(true)
     setError(null)
-    const { data, error: fetchError } = await supabase
-      .from("playlists")
-      .select("id, name, is_public, created_at")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-    if (fetchError) {
+    const overview = await myPlaylistsOverview(user.id)
+    if (!overview) {
       setLoading(false)
       // Keep showing whatever's cached rather than blanking the page —
       // only surface the error when there's truly nothing to fall back
@@ -70,33 +78,19 @@ export function PlaylistsPage() {
       const hasFallback = Boolean(
         getCached<PlaylistRow[]>(key) ?? getStaleCached<PlaylistRow[]>(key)
       )
-      setError(hasFallback ? null : fetchError.message)
+      setError(hasFallback ? null : "Não foi possível carregar as playlists.")
       return
     }
-    const rows: PlaylistRow[] = (data ?? []).map((row) => ({
+    const rows: PlaylistRow[] = overview.map((row) => ({
       id: row.id,
       name: row.name,
-      is_public: row.is_public,
-      created_at: row.created_at,
-      song_count: 0,
+      is_public: row.isPublic,
+      created_at: row.createdAt,
+      song_count: row.songCount,
+      save_count: row.saveCount,
+      cover_url: row.coverUrl,
+      preview_song_ids: row.previewSongIds,
     }))
-
-    // Fetch song counts in a single query, then merge.
-    if (rows.length > 0) {
-      const { data: counts } = await supabase
-        .from("playlist_songs")
-        .select("playlist_id")
-        .in("playlist_id", rows.map((r) => r.id))
-      if (counts) {
-        const tally = new Map<string, number>()
-        for (const c of counts) {
-          tally.set(c.playlist_id, (tally.get(c.playlist_id) ?? 0) + 1)
-        }
-        for (const row of rows) {
-          row.song_count = tally.get(row.id) ?? 0
-        }
-      }
-    }
 
     setPlaylists(rows)
     setCached(playlistsCacheKey(user.id), rows, CACHE_TTL_MS)
@@ -117,7 +111,9 @@ export function PlaylistsPage() {
     event.preventDefault()
     event.stopPropagation()
     if (!supabase || !user) return
-    if (!window.confirm(`Apagar a playlist "${name}"? Isto não se pode desfazer.`)) {
+    if (
+      !window.confirm(`Apagar a playlist "${name}"? Isto não se pode desfazer.`)
+    ) {
       return
     }
     const { error } = await supabase.from("playlists").delete().eq("id", id)
@@ -184,108 +180,145 @@ export function PlaylistsPage() {
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-3 pt-3 pb-4 md:px-6 md:pt-4">
       <header className="flex items-center justify-between">
         <h2 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">
-          As tuas playlists
+          Playlists
         </h2>
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => setCreating((open) => !open)}
-        >
-          <Plus className="size-4" />
-          Nova
-        </Button>
-      </header>
-
-      {creating ? (
-        <form
-          onSubmit={handleCreate}
-          className="border-border bg-card flex items-center gap-2 rounded-md border p-2"
-        >
-          <input
-            autoFocus
-            type="text"
-            placeholder="Nome da playlist"
-            value={newName}
-            onChange={(event) => setNewName(event.target.value)}
-            className="border-input bg-background focus-visible:ring-ring/40 flex-1 rounded-md border px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2"
-          />
-          <Button type="submit" size="sm" disabled={!newName.trim()}>
-            Criar
-          </Button>
+        {tab === "minhas" ? (
           <Button
             type="button"
             size="sm"
-            variant="ghost"
-            onClick={() => {
-              setCreating(false)
-              setNewName("")
-            }}
+            onClick={() => setCreating((open) => !open)}
           >
-            Cancelar
+            <Plus className="size-4" />
+            Nova
           </Button>
-        </form>
-      ) : null}
+        ) : null}
+      </header>
 
-      {error && playlists && playlists.length > 0 ? (
-        <p className="text-destructive text-xs">{error}</p>
-      ) : null}
+      <div role="tablist" className="border-border flex gap-4 border-b">
+        {(
+          [
+            ["minhas", "As minhas"],
+            ["descobrir", "Descobrir"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={tab === value}
+            onClick={() => setTab(value)}
+            className={cn(
+              "-mb-px border-b-2 px-1 pb-2 text-sm font-medium transition-colors",
+              tab === value
+                ? "border-primary text-foreground"
+                : "text-muted-foreground hover:text-foreground border-transparent"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      {loading && !playlists ? (
-        <EmptyState variant="loading" />
-      ) : error && (!playlists || playlists.length === 0) ? (
-        <EmptyState variant="error" message={error} />
-      ) : !playlists || playlists.length === 0 ? (
-        <EmptyState
-          variant="empty"
-          message="Ainda não tens playlists. Toca em Nova para criar a primeira."
-        />
+      {tab === "descobrir" ? (
+        <DiscoverPlaylists />
       ) : (
-        <ul role="list" className="flex flex-col gap-1">
-          {playlists.map((playlist) => (
-            <li key={playlist.id}>
-              <div className="hover:bg-accent/40 flex items-center gap-2 rounded-md pr-1 transition-colors">
-                <Link
-                  to={`/playlists/${playlist.id}`}
-                  className="flex flex-1 items-center justify-between gap-2 px-3 py-2.5"
-                >
-                  <span className="text-foreground flex min-w-0 items-center gap-2 text-sm font-medium">
-                    {playlist.is_public ? (
-                      <Globe
-                        className="text-muted-foreground size-3.5 shrink-0"
-                        aria-label="Pública"
-                      />
-                    ) : (
-                      <Lock
-                        className="text-muted-foreground size-3.5 shrink-0"
-                        aria-label="Privada"
-                      />
-                    )}
-                    <span className="truncate">{playlist.name}</span>
-                  </span>
-                  <span className="text-muted-foreground shrink-0 text-xs">
-                    {playlist.song_count}{" "}
-                    {playlist.song_count === 1 ? "música" : "músicas"}
-                  </span>
-                </Link>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Apagar ${playlist.name}`}
-                  onClick={(event) =>
-                    handleDelete(event, playlist.id, playlist.name)
-                  }
-                  className="text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+        <>
+          {creating ? (
+            <form
+              onSubmit={handleCreate}
+              className="border-border bg-card flex items-center gap-2 rounded-md border p-2"
+            >
+              <input
+                autoFocus
+                type="text"
+                placeholder="Nome da playlist"
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+                className="border-input bg-background focus-visible:ring-ring/40 flex-1 rounded-md border px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2"
+              />
+              <Button type="submit" size="sm" disabled={!newName.trim()}>
+                Criar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setCreating(false)
+                  setNewName("")
+                }}
+              >
+                Cancelar
+              </Button>
+            </form>
+          ) : null}
 
-      <SavedPlaylistsSection userId={user.id} />
+          {error && playlists && playlists.length > 0 ? (
+            <p className="text-destructive text-xs">{error}</p>
+          ) : null}
+
+          {loading && !playlists ? (
+            <EmptyState variant="loading" />
+          ) : error && (!playlists || playlists.length === 0) ? (
+            <EmptyState variant="error" message={error} />
+          ) : !playlists || playlists.length === 0 ? (
+            <EmptyState
+              variant="empty"
+              message="Ainda não tens playlists. Toca em Nova para criar a primeira."
+            />
+          ) : (
+            <ul role="list" className="flex flex-col gap-1">
+              {[...playlists]
+                .sort(
+                  (a, b) =>
+                    Number(b.name === "Favorites") -
+                    Number(a.name === "Favorites")
+                )
+                .map((playlist) => (
+                  <li key={playlist.id}>
+                    <PlaylistRow
+                      id={playlist.id}
+                      name={playlist.name}
+                      songCount={playlist.song_count}
+                      saveCount={playlist.is_public ? playlist.save_count : 0}
+                      coverUrl={playlist.cover_url}
+                      previewSongIds={playlist.preview_song_ids}
+                      icon={
+                        playlist.is_public ? (
+                          <Globe
+                            className="text-muted-foreground size-3.5 shrink-0"
+                            aria-label="Pública"
+                          />
+                        ) : (
+                          <Lock
+                            className="text-muted-foreground size-3.5 shrink-0"
+                            aria-label="Privada"
+                          />
+                        )
+                      }
+                      action={
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Apagar ${playlist.name}`}
+                          onClick={(event) =>
+                            handleDelete(event, playlist.id, playlist.name)
+                          }
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      }
+                    />
+                  </li>
+                ))}
+            </ul>
+          )}
+
+          <SavedPlaylistsSection userId={user.id} />
+        </>
+      )}
     </div>
   )
 }
