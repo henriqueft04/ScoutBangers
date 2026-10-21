@@ -135,6 +135,7 @@ export function PlaylistOptionsPanel(props: PlaylistOptionsSheetProps) {
       onClick={onClose}
     >
       <div
+        data-tour-id="playlist-options-panel"
         role="menu"
         className="bg-card text-card-foreground border-border animate-in slide-in-from-bottom md:fade-in flex max-h-[90vh] w-full max-w-md flex-col overflow-y-auto rounded-t-3xl border px-2 pt-3 shadow-xl duration-200 ease-out md:rounded-3xl"
         onClick={(event) => event.stopPropagation()}

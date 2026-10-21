@@ -1,5 +1,7 @@
 import * as React from "react"
 import type { Profile } from "@/hooks/auth-context"
+import { FAVORITES_PLAYLIST_NAME } from "@/lib/playlist-saves"
+import { supabase } from "@/lib/supabase"
 
 import type { TourStep } from "./tour-context"
 
@@ -90,6 +92,7 @@ const JAM_JOKES: JokeOption[] = [
     reply: "A IA achava sempre que era Ronda a seguir, ainda precisa de trabalho",
   },
 ]
+
 
 /**
  * Main first-run tour. Adding / removing steps only requires editing
@@ -218,6 +221,104 @@ function closeLyricsPanel(): void {
 function closeQueuePanel(): void {
   closeTogglableTourButton('[data-tour-id="player-queue"]')
 }
+
+function openPlaylistOptions(): void {
+  clickTourButton('[data-tour-id="playlist-options"]')
+}
+
+/** The options sheet closes on Escape. */
+function closePlaylistOptions(): void {
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+}
+
+/** Set when the tour had to create a playlist so there is one to open. */
+let tourPlaylistId: string | null = null
+
+/**
+ * Makes sure the user has a playlist (other than Favorites) for the tour to
+ * open: someone with none would otherwise see the playlist steps point at
+ * nothing. The playlist is private and empty, and stays theirs afterwards.
+ */
+async function ensureTourPlaylist(): Promise<void> {
+  tourPlaylistId = null
+  if (!supabase) return
+  try {
+    const { data: session } = await supabase.auth.getSession()
+    const userId = session.session?.user.id
+    if (!userId) return
+    const { data: existing } = await supabase
+      .from("playlists")
+      .select("id")
+      .eq("user_id", userId)
+      .neq("name", FAVORITES_PLAYLIST_NAME)
+      .limit(1)
+    if (existing && existing.length > 0) return
+    const { data: created } = await supabase
+      .from("playlists")
+      .insert({ user_id: userId, name: "A minha primeira playlist", is_public: false })
+      .select("id")
+      .single()
+    tourPlaylistId = created?.id ?? null
+  } catch {
+    /* the steps just fall back to whatever playlist is listed */
+  }
+}
+
+/**
+ * Playlist walkthrough, shared by the main tour and the playlists update
+ * tour so the two never drift apart. Starts on /playlists and ends inside a
+ * playlist (the main tour's next step navigates away on its own).
+ */
+const PLAYLIST_STEPS: TourStep[] = [
+  {
+    id: "playlists-tabs",
+    target: '[data-tour-id="playlists-tabs"]',
+    route: "/playlists",
+    title: "As minhas e Descobrir",
+    body: "Em “As minhas” estão as tuas playlists, as partilhadas contigo e os convites para colaborar. Em “Descobrir” pesquisas as playlists públicas de outras pessoas e guardas as que gostares.",
+    side: "bottom",
+  },
+  {
+    id: "playlists-new",
+    target: '[data-tour-id="playlists-new"]',
+    title: "Criar uma playlist",
+    body: "Cria uma nova playlist aqui. Também podes tocar no coração de uma música para a guardares numa playlist. Se ainda não tens nenhuma, criámos-te uma vazia para veres como funciona. Carrega em Seguinte para a abrires.",
+    side: "bottom",
+    onEnter: () => void ensureTourPlaylist(),
+    nextRoute: () => {
+      if (tourPlaylistId) return `/playlists/${tourPlaylistId}`
+      // Favorites is listed first and can't be shared, so prefer the next one.
+      const links = document.querySelectorAll(
+        '[data-tour-id="playlists-list"] a[href^="/playlists/"]'
+      )
+      const link = links[1] ?? links[0]
+      return link instanceof HTMLAnchorElement ? link.getAttribute("href") : null
+    },
+  },
+  {
+    id: "playlist-actions",
+    target: '[data-tour-id="playlist-actions"]',
+    title: "Dentro da playlist",
+    body: "Guarda playlists de outros, descarrega para ouvir offline, partilha o link e convida colaboradores com o botão da pessoa com “+”: eles podem adicionar músicas, mudar o nome e a capa. À direita tens o aleatório e o play.",
+    side: "bottom",
+  },
+  {
+    id: "playlist-options",
+    target: '[data-tour-id="playlist-options"]',
+    title: "Mais opções",
+    body: "Aqui estão as opções da playlist. Carrega em Seguinte para as veres.",
+    side: "bottom",
+    onAdvance: openPlaylistOptions,
+  },
+  {
+    id: "playlist-options-shown",
+    target: '[data-tour-id="playlist-options-panel"]',
+    title: "O que podes fazer",
+    body: "Editar o nome e a capa, tornar pública ou privada, convidar colaboradores, adicionar à fila e descarregar para ouvir offline. Carrega em Seguinte para fechar e continuar.",
+    side: "top",
+    onAdvance: closePlaylistOptions,
+  },
+]
 
 export const MAIN_TOUR: TourStep[] = [
   {
@@ -386,44 +487,7 @@ export const MAIN_TOUR: TourStep[] = [
     side: "auto",
     nextRoute: "/playlists",
   },
-  {
-    id: "playlists-tabs",
-    target: '[data-tour-id="playlists-tabs"]',
-    route: "/playlists",
-    title: "As minhas e Descobrir",
-    body: "Em “As minhas” estão as tuas playlists, as partilhadas contigo e os convites para colaborar. Em “Descobrir” pesquisas as playlists públicas de outras pessoas e guardas as que gostares.",
-    side: "bottom",
-  },
-  {
-    id: "playlists-new",
-    target: '[data-tour-id="playlists-new"]',
-    title: "Criar uma playlist",
-    body: "Cria uma nova playlist aqui. Também podes tocar no coração de uma música para a guardares numa playlist. Carrega em Seguinte para abrires uma.",
-    side: "bottom",
-    nextRoute: () => {
-      // Favorites is listed first and can't be shared, so prefer the next one.
-      const links = document.querySelectorAll(
-        '[data-tour-id="playlists-list"] a[href^="/playlists/"]'
-      )
-      const link = links[1] ?? links[0]
-      return link instanceof HTMLAnchorElement ? link.getAttribute("href") : null
-    },
-  },
-  {
-    id: "playlist-actions",
-    target: '[data-tour-id="playlist-actions"]',
-    title: "Dentro da playlist",
-    body: "Guarda playlists de outros, descarrega para ouvir offline, partilha o link e convida colaboradores com o botão da pessoa com “+”: eles podem adicionar músicas, mudar o nome e a capa. À direita tens o aleatório e o play.",
-    side: "bottom",
-  },
-  {
-    id: "playlist-options",
-    target: '[data-tour-id="playlist-options"]',
-    title: "Mais opções",
-    body: "Aqui editas o nome e a capa, tornas a playlist pública ou privada, adicionas à fila e vês quem colabora. Carrega em Seguinte para continuar.",
-    side: "bottom",
-    nextRoute: "/",
-  },
+  ...PLAYLIST_STEPS,
   {
     id: "nav-submit",
     target: '[data-tour-id="nav-submit"]',
@@ -549,10 +613,45 @@ export const JAM_TOUR: TourStep[] = [
   },
 ]
 
+export const PLAYLISTS_TOUR: TourStep[] = [
+  {
+    id: "playlists-welcome",
+    target: null,
+    title: "BANGER UPDAAATEEEEEE",
+    body: (
+      <>
+        <img
+          src="/passinho.gif"
+          alt=""
+          className="mb-3 max-h-40 w-full rounded-md object-contain"
+        />
+        Ai ai qui locura 😝
+      </>
+    ),
+  },
+  {
+    id: "playlists-intro",
+    target: null,
+    title: "As playlists estão muuuuito melhores🎶",
+    body: "Agora há playlists colaborativas, playlists públicas para descobrir e guardar, capas personalizadas e muito mais. Olha bem fast onde está cada coisa.",
+  },
+  {
+    id: "playlists-nav",
+    target: '[data-tour-id="nav-playlists"]',
+    route: "/",
+    title: "Playlists",
+    body: "Carrega em Seguinte para veres as novidades.",
+    side: "auto",
+    nextRoute: "/playlists",
+  },
+  ...PLAYLIST_STEPS,
+]
+
 export const TOURS: Record<string, TourStep[]> = {
   main: MAIN_TOUR,
   update: UPDATE_TOUR,
   jam: JAM_TOUR,
+  playlists: PLAYLISTS_TOUR,
 }
 
 /** A profile flag recording that an update tour has been seen. */
@@ -567,4 +666,5 @@ export type UpdateTourColumn = Extract<keyof Profile, `${string}_tour_seen`>
 export const UPDATE_TOURS: readonly { id: string; seenColumn: UpdateTourColumn }[] = [
   { id: "update", seenColumn: "update_tour_seen" },
   { id: "jam", seenColumn: "jam_tour_seen" },
+  { id: "playlists", seenColumn: "playlists_tour_seen" },
 ]

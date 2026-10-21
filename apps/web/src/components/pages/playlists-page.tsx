@@ -13,7 +13,7 @@ import { PlaylistInvites } from "@/components/playlists/playlist-invites"
 import { PlaylistRow } from "@/components/playlists/playlist-row"
 import { SavedPlaylistsSection } from "@/components/playlists/saved-playlists-section"
 import { useAuth } from "@/hooks/useAuth"
-import { myPlaylistsOverview } from "@/lib/playlist-saves"
+import { FAVORITES_PLAYLIST_NAME, myPlaylistsOverview } from "@/lib/playlist-saves"
 import { getCached, getStaleCached, setCached } from "@/lib/storage"
 import { supabase } from "@/lib/supabase"
 
@@ -341,8 +341,8 @@ export function PlaylistsPage() {
               {[...playlists]
                 .sort(
                   (a, b) =>
-                    Number(b.name === "Favorites") -
-                    Number(a.name === "Favorites")
+                    Number(b.name === FAVORITES_PLAYLIST_NAME) -
+                    Number(a.name === FAVORITES_PLAYLIST_NAME)
                 )
                 .map((playlist) => (
                   <li key={playlist.id}>

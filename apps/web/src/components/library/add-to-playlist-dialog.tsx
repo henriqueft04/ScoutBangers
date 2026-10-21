@@ -1,11 +1,12 @@
 import * as React from "react"
-import { createPortal } from "react-dom"
-import { Check, Heart, ListPlus, Loader2, Plus, X } from "lucide-react"
+import { Check, Heart, ListPlus, Loader2, Plus } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 
+import { BottomSheet } from "@/components/common/bottom-sheet"
 import { useAuth } from "@/hooks/useAuth"
 import { useFavorites } from "@/hooks/useFavorites"
+import { FAVORITES_PLAYLIST_NAME } from "@/lib/playlist-saves"
 import { supabase } from "@/lib/supabase"
 
 interface PlaylistSummary {
@@ -20,8 +21,6 @@ interface AddToPlaylistDialogProps {
   songId: string
   onClose: () => void
 }
-
-const FAVORITES_PLAYLIST_NAME = "Favorites"
 
 /**
  * Modal that opens when a user clicks the heart on a song. Favorites sits
@@ -106,15 +105,6 @@ export function AddToPlaylistDialog({
       cancelled = true
     }
   }, [open, user, songId])
-
-  React.useEffect(() => {
-    if (!open) return
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose()
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [open, onClose])
 
   if (!open) return null
 
@@ -235,33 +225,8 @@ export function AddToPlaylistDialog({
     setCreatingBusy(false)
   }
 
-  return createPortal(
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Guardar em"
-      className="bg-background/80 fixed inset-0 z-50 flex items-end justify-center p-0 backdrop-blur-sm md:items-center md:p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-card text-card-foreground border-border animate-in slide-in-from-bottom md:fade-in w-full max-w-md rounded-t-2xl border p-5 shadow-xl duration-200 ease-out md:rounded-2xl"
-        onClick={(event) => event.stopPropagation()}
-        style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
-      >
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold tracking-tight">
-            Guardar em
-          </h2>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Fechar"
-            onClick={onClose}
-          >
-            <X />
-          </Button>
-        </div>
+  return (
+    <BottomSheet open={open} title="Guardar em" onClose={onClose}>
 
         {error ? (
           <p className="text-destructive mb-2 text-xs">{error}</p>
@@ -381,8 +346,6 @@ export function AddToPlaylistDialog({
             </ul>
           )}
         </div>
-      </div>
-    </div>,
-    document.body
+    </BottomSheet>
   )
 }

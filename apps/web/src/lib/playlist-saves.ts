@@ -195,3 +195,6 @@ export async function discoverPlaylists(opts: {
     previewSongIds: row.preview_song_ids ?? [],
   }))
 }
+
+/** Name of the per-user playlist that backs the heart button. */
+export const FAVORITES_PLAYLIST_NAME = "Favorites"

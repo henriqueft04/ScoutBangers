@@ -1,9 +1,9 @@
 import * as React from "react"
-import { createPortal } from "react-dom"
-import { Loader2, Search, UserMinus, X } from "lucide-react"
+import { Loader2, Search, UserMinus } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 
+import { BottomSheet } from "@/components/common/bottom-sheet"
 import { UserAvatar } from "@/components/profile/user-avatar"
 import { useDebouncedValue } from "@/hooks/useDebouncedValue"
 import {
@@ -71,15 +71,6 @@ export function CollaboratorsSheet({
     }
   }, [open, isOwner, debounced])
 
-  React.useEffect(() => {
-    if (!open) return
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose()
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [open, onClose])
-
   if (!open) return null
 
   const taken = new Set(collaborators.map((c) => c.userId))
@@ -118,169 +109,137 @@ export function CollaboratorsSheet({
     if (collaborator.userId === userId) onLeft()
   }
 
-  return createPortal(
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Colaboradores"
-      className="bg-background/80 fixed inset-0 z-50 flex items-end justify-center p-0 backdrop-blur-sm md:items-center md:p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-card text-card-foreground border-border animate-in slide-in-from-bottom md:fade-in w-full max-w-md rounded-t-2xl border p-5 shadow-xl duration-200 ease-out md:rounded-2xl"
-        onClick={(event) => event.stopPropagation()}
-        style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
-      >
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold tracking-tight">
-            Colaboradores
-          </h2>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Fechar"
-            onClick={onClose}
-          >
-            <X />
-          </Button>
-        </div>
+  return (
+    <BottomSheet open={open} title="Colaboradores" onClose={onClose}>
+      {error ? <p className="text-destructive mb-2 text-xs">{error}</p> : null}
 
-        {error ? (
-          <p className="text-destructive mb-2 text-xs">{error}</p>
-        ) : null}
-
-        {isOwner ? (
-          <div className="mb-3">
-            <div className="relative">
-              <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-              <input
-                type="search"
-                autoFocus
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Procurar pessoas para convidar"
-                className="border-input bg-background focus-visible:ring-ring/40 w-full rounded-md border py-2 pr-3 pl-9 text-sm focus-visible:ring-2 focus-visible:outline-none"
-              />
-            </div>
-            {debounced ? (
-              <ul role="list" className="mt-1 flex flex-col">
-                {searching ? (
-                  <li className="py-3">
-                    <Loader2 className="text-muted-foreground mx-auto size-4 animate-spin" />
-                  </li>
-                ) : invitable.length === 0 ? (
-                  <li className="text-muted-foreground py-3 text-center text-xs">
-                    Ninguém encontrado.
-                  </li>
-                ) : (
-                  invitable.map((person) => (
-                    <li
-                      key={person.id}
-                      className="flex items-center gap-3 rounded-md px-2 py-2"
-                    >
-                      <UserAvatar
-                        name={person.displayName}
-                        avatarUrl={person.avatarUrl}
-                        className="size-8"
-                      />
-                      <span className="text-foreground min-w-0 flex-1 truncate text-sm">
-                        {person.displayName}
-                      </span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={busyId === person.id}
-                        onClick={() => void handleInvite(person)}
-                      >
-                        {busyId === person.id ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          "Convidar"
-                        )}
-                      </Button>
-                    </li>
-                  ))
-                )}
-              </ul>
-            ) : null}
+      {isOwner ? (
+        <div className="mb-3">
+          <div className="relative">
+            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+            <input
+              type="search"
+              autoFocus
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Procurar pessoas para convidar"
+              className="border-input bg-background focus-visible:ring-ring/40 w-full rounded-md border py-2 pr-3 pl-9 text-sm focus-visible:ring-2 focus-visible:outline-none"
+            />
           </div>
-        ) : null}
+          {debounced ? (
+            <ul role="list" className="mt-1 flex flex-col">
+              {searching ? (
+                <li className="py-3">
+                  <Loader2 className="text-muted-foreground mx-auto size-4 animate-spin" />
+                </li>
+              ) : invitable.length === 0 ? (
+                <li className="text-muted-foreground py-3 text-center text-xs">
+                  Ninguém encontrado.
+                </li>
+              ) : (
+                invitable.map((person) => (
+                  <li
+                    key={person.id}
+                    className="flex items-center gap-3 rounded-md px-2 py-2"
+                  >
+                    <UserAvatar
+                      name={person.displayName}
+                      avatarUrl={person.avatarUrl}
+                      className="size-8"
+                    />
+                    <span className="text-foreground min-w-0 flex-1 truncate text-sm">
+                      {person.displayName}
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={busyId === person.id}
+                      onClick={() => void handleInvite(person)}
+                    >
+                      {busyId === person.id ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        "Convidar"
+                      )}
+                    </Button>
+                  </li>
+                ))
+              )}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
 
-        <div className="max-h-72 overflow-y-auto">
-          {collaborators.length === 0 && !owner ? (
-            <p className="text-muted-foreground py-4 text-center text-sm">
-              Ainda não há colaboradores.
-            </p>
-          ) : (
-            <ul role="list" className="flex flex-col">
-              {owner ? (
-                <li className="flex items-center gap-3 rounded-md px-2 py-2">
+      <div className="max-h-72 overflow-y-auto">
+        {collaborators.length === 0 && !owner ? (
+          <p className="text-muted-foreground py-4 text-center text-sm">
+            Ainda não há colaboradores.
+          </p>
+        ) : (
+          <ul role="list" className="flex flex-col">
+            {owner ? (
+              <li className="flex items-center gap-3 rounded-md px-2 py-2">
+                <UserAvatar
+                  name={owner.name}
+                  avatarUrl={owner.avatarUrl}
+                  className="size-8"
+                />
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="text-foreground truncate text-sm">
+                    {owner.name}
+                    {owner.id === userId ? " (tu)" : ""}
+                  </span>
+                  <span className="text-muted-foreground text-xs">Criador</span>
+                </div>
+              </li>
+            ) : null}
+            {collaborators.map((collaborator) => {
+              const isMe = collaborator.userId === userId
+              const canRemove = isOwner || isMe
+              return (
+                <li
+                  key={collaborator.userId}
+                  className="flex items-center gap-3 rounded-md px-2 py-2"
+                >
                   <UserAvatar
-                    name={owner.name}
-                    avatarUrl={owner.avatarUrl}
+                    name={collaborator.displayName}
+                    avatarUrl={collaborator.avatarUrl}
                     className="size-8"
                   />
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="text-foreground truncate text-sm">
-                      {owner.name}
-                      {owner.id === userId ? " (tu)" : ""}
+                      {collaborator.displayName}
+                      {isMe ? " (tu)" : ""}
                     </span>
                     <span className="text-muted-foreground text-xs">
-                      Criador
+                      {collaborator.status === "pending"
+                        ? "Convite pendente"
+                        : "Colaborador"}
                     </span>
                   </div>
+                  {canRemove ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={busyId === collaborator.userId}
+                      onClick={() => void handleRemove(collaborator)}
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <UserMinus className="size-4" />
+                      {isMe
+                        ? "Sair"
+                        : collaborator.status === "pending"
+                          ? "Cancelar"
+                          : "Remover"}
+                    </Button>
+                  ) : null}
                 </li>
-              ) : null}
-              {collaborators.map((collaborator) => {
-                const isMe = collaborator.userId === userId
-                const canRemove = isOwner || isMe
-                return (
-                  <li
-                    key={collaborator.userId}
-                    className="flex items-center gap-3 rounded-md px-2 py-2"
-                  >
-                    <UserAvatar
-                      name={collaborator.displayName}
-                      avatarUrl={collaborator.avatarUrl}
-                      className="size-8"
-                    />
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="text-foreground truncate text-sm">
-                        {collaborator.displayName}
-                        {isMe ? " (tu)" : ""}
-                      </span>
-                      <span className="text-muted-foreground text-xs">
-                        {collaborator.status === "pending"
-                          ? "Convite pendente"
-                          : "Colaborador"}
-                      </span>
-                    </div>
-                    {canRemove ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={busyId === collaborator.userId}
-                        onClick={() => void handleRemove(collaborator)}
-                        className="text-muted-foreground hover:text-destructive"
-                      >
-                        <UserMinus className="size-4" />
-                        {isMe
-                          ? "Sair"
-                          : collaborator.status === "pending"
-                            ? "Cancelar"
-                            : "Remover"}
-                      </Button>
-                    ) : null}
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </div>
+              )
+            })}
+          </ul>
+        )}
       </div>
-    </div>,
-    document.body
+    </BottomSheet>
   )
 }

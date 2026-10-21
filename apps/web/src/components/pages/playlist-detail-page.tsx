@@ -63,6 +63,7 @@ import {
   removeCollaborator,
   type Collaborator,
 } from "@/lib/playlist-collaborators"
+import { FAVORITES_PLAYLIST_NAME } from "@/lib/playlist-saves"
 import { supabase } from "@/lib/supabase"
 
 interface PlaylistDetail {
@@ -346,7 +347,7 @@ export function PlaylistDetailPage() {
   const [renaming, setRenaming] = React.useState(false)
   const [draftName, setDraftName] = React.useState("")
   const { toggle: toggleFavorite } = useFavorites()
-  const isFavoritesList = playlist?.name === "Favorites"
+  const isFavoritesList = playlist?.name === FAVORITES_PLAYLIST_NAME
   // The owner and accepted collaborators can edit songs, name and cover;
   // deleting, visibility and managing collaborators stay owner-only.
   const canEdit = Boolean(

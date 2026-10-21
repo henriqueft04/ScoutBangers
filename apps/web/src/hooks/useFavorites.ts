@@ -1,9 +1,9 @@
 import * as React from "react"
 
 import { useAuth } from "./useAuth"
+import { FAVORITES_PLAYLIST_NAME } from "@/lib/playlist-saves"
 import { supabase } from "@/lib/supabase"
 
-const FAVORITES_PLAYLIST_NAME = "Favorites"
 
 /**
  * Module-scope state. Backed by a single per-user playlist named

@@ -1,9 +1,7 @@
 import * as React from "react"
-import { createPortal } from "react-dom"
-import { Check, Loader2, Plus, Search, X } from "lucide-react"
+import { Check, Loader2, Plus, Search } from "lucide-react"
 
-import { Button } from "@workspace/ui/components/button"
-
+import { BottomSheet } from "@/components/common/bottom-sheet"
 import { TrackArtwork } from "@/components/library/track-artwork"
 import { useDebouncedValue } from "@/hooks/useDebouncedValue"
 import { useFilteredSongs } from "@/hooks/useFilteredSongs"
@@ -92,15 +90,6 @@ export function AddSongsSheet({
   const filtered = useFilteredSongs(songs, debounced)
   const inPlaylist = React.useMemo(() => new Set(songIds), [songIds])
 
-  React.useEffect(() => {
-    if (!open) return
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose()
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [open, onClose])
-
   if (!open) return null
 
   const visible = filtered.slice(0, MAX_VISIBLE)
@@ -115,73 +104,50 @@ export function AddSongsSheet({
     }
   }
 
-  return createPortal(
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Adicionar músicas"
-      className="bg-background/80 fixed inset-0 z-50 flex items-end justify-center p-0 backdrop-blur-sm md:items-center md:p-4"
-      onClick={onClose}
+  return (
+    <BottomSheet
+      open={open}
+      title="Adicionar músicas"
+      onClose={onClose}
+      className="flex max-h-[85vh] flex-col"
     >
-      <div
-        className="bg-card text-card-foreground border-border animate-in slide-in-from-bottom md:fade-in flex max-h-[85vh] w-full max-w-md flex-col rounded-t-2xl border p-5 shadow-xl duration-200 ease-out md:rounded-2xl"
-        onClick={(event) => event.stopPropagation()}
-        style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
-      >
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold tracking-tight">
-            Adicionar músicas
-          </h2>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Fechar"
-            onClick={onClose}
-          >
-            <X />
-          </Button>
-        </div>
-
-        <div className="relative mb-2">
-          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-          <input
-            type="search"
-            autoFocus
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Pesquisar músicas"
-            className="border-input bg-background focus-visible:ring-ring/40 w-full rounded-md border py-2 pr-3 pl-9 text-sm focus-visible:ring-2 focus-visible:outline-none"
-          />
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {visible.length === 0 ? (
-            <p className="text-muted-foreground py-6 text-center text-sm">
-              Nenhuma música encontrada.
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-0.5">
-              {visible.map((song) => (
-                <li key={song.id}>
-                  <AddSongRow
-                    song={song}
-                    added={inPlaylist.has(song.id)}
-                    busy={busyId === song.id}
-                    onToggle={() => void handleToggle(song.id)}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-          {filtered.length > MAX_VISIBLE ? (
-            <p className="text-muted-foreground py-2 text-center text-xs">
-              A mostrar {MAX_VISIBLE} de {filtered.length} — afina a pesquisa.
-            </p>
-          ) : null}
-        </div>
+      <div className="relative mb-2">
+        <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+        <input
+          type="search"
+          autoFocus
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Pesquisar músicas"
+          className="border-input bg-background focus-visible:ring-ring/40 w-full rounded-md border py-2 pr-3 pl-9 text-sm focus-visible:ring-2 focus-visible:outline-none"
+        />
       </div>
-    </div>,
-    document.body
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {visible.length === 0 ? (
+          <p className="text-muted-foreground py-6 text-center text-sm">
+            Nenhuma música encontrada.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-0.5">
+            {visible.map((song) => (
+              <li key={song.id}>
+                <AddSongRow
+                  song={song}
+                  added={inPlaylist.has(song.id)}
+                  busy={busyId === song.id}
+                  onToggle={() => void handleToggle(song.id)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+        {filtered.length > MAX_VISIBLE ? (
+          <p className="text-muted-foreground py-2 text-center text-xs">
+            A mostrar {MAX_VISIBLE} de {filtered.length} — afina a pesquisa.
+          </p>
+        ) : null}
+      </div>
+    </BottomSheet>
   )
 }
