@@ -18,6 +18,7 @@ export interface Database {
           tour_completed_at: string | null
           update_tour_seen: boolean | null
           jam_tour_seen: boolean | null
+          playlists_tour_seen: boolean | null
           created_at: string
           regiao: string | null
           nucleo: string | null
@@ -35,6 +36,7 @@ export interface Database {
           tour_completed_at?: string | null
           update_tour_seen?: boolean | null
           jam_tour_seen?: boolean | null
+          playlists_tour_seen?: boolean | null
           created_at?: string
           regiao?: string | null
           nucleo?: string | null
@@ -52,6 +54,7 @@ export interface Database {
           tour_completed_at?: string | null
           update_tour_seen?: boolean | null
           jam_tour_seen?: boolean | null
+          playlists_tour_seen?: boolean | null
           created_at?: string
           regiao?: string | null
           nucleo?: string | null
@@ -61,30 +64,13 @@ export interface Database {
         }
         Relationships: []
       }
-      favorites: {
-        Row: {
-          user_id: string
-          song_id: string
-          created_at: string
-        }
-        Insert: {
-          user_id: string
-          song_id: string
-          created_at?: string
-        }
-        Update: {
-          user_id?: string
-          song_id?: string
-          created_at?: string
-        }
-        Relationships: []
-      }
       playlists: {
         Row: {
           id: string
           user_id: string
           name: string
           is_public: boolean
+          cover_url: string | null
           created_at: string
         }
         Insert: {
@@ -92,6 +78,7 @@ export interface Database {
           user_id: string
           name: string
           is_public?: boolean
+          cover_url?: string | null
           created_at?: string
         }
         Update: {
@@ -99,6 +86,7 @@ export interface Database {
           user_id?: string
           name?: string
           is_public?: boolean
+          cover_url?: string | null
           created_at?: string
         }
         Relationships: []
@@ -122,7 +110,47 @@ export interface Database {
           position?: number
           added_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "playlist_songs_playlist_id_fkey"
+            columns: ["playlist_id"]
+            isOneToOne: false
+            referencedRelation: "playlists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      playlist_collaborators: {
+        Row: {
+          playlist_id: string
+          user_id: string
+          invited_by: string
+          status: string
+          created_at: string
+        }
+        Insert: {
+          playlist_id: string
+          user_id: string
+          invited_by: string
+          status?: string
+          created_at?: string
+        }
+        Update: {
+          playlist_id?: string
+          user_id?: string
+          invited_by?: string
+          status?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "playlist_collaborators_playlist_id_fkey"
+            columns: ["playlist_id"]
+            isOneToOne: false
+            referencedRelation: "playlists"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       plays: {
         Row: {
@@ -286,6 +314,65 @@ export interface Database {
           owner_display_name: string
           song_count: number
           saved_at: string
+          save_count: number
+          cover_url: string | null
+          preview_song_ids: string[]
+        }[]
+      }
+      my_playlists_overview: {
+        Args: { uid: string }
+        Returns: {
+          id: string
+          name: string
+          is_public: boolean
+          created_at: string
+          song_count: number
+          save_count: number
+          cover_url: string | null
+          preview_song_ids: string[]
+          owner_id: string
+          owner_display_name: string
+          is_collaborator: boolean
+        }[]
+      }
+      invite_playlist_collaborator: {
+        Args: { pid: string; uid: string }
+        Returns: undefined
+      }
+      playlist_collaborators_list: {
+        Args: { pid: string }
+        Returns: {
+          user_id: string
+          display_name: string
+          avatar_url: string | null
+          status: string
+        }[]
+      }
+      my_playlist_invites: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          playlist_id: string
+          playlist_name: string
+          inviter_id: string
+          inviter_name: string
+          invited_at: string
+        }[]
+      }
+      respond_playlist_invite: {
+        Args: { pid: string; accept: boolean }
+        Returns: undefined
+      }
+      discover_public_playlists: {
+        Args: { q?: string; sort?: string; lim?: number; off?: number }
+        Returns: {
+          id: string
+          name: string
+          owner_id: string
+          owner_display_name: string
+          song_count: number
+          save_count: number
+          cover_url: string | null
+          preview_song_ids: string[]
         }[]
       }
       stats_top_songs_weekly: {

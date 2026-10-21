@@ -12,6 +12,8 @@ import { supabase } from "./supabase"
 export const AVATAR_SIZE = 256
 export const BANNER_WIDTH = 1200
 export const BANNER_HEIGHT = 400
+export const PLAYLIST_COVER_WIDTH = 1200
+export const PLAYLIST_COVER_HEIGHT = 742
 const JPEG_QUALITY = 0.85
 
 export async function uploadAvatar(file: File): Promise<string> {
@@ -38,6 +40,18 @@ export async function uploadBannerBlob(blob: Blob): Promise<string> {
   return await sendUpload(blob, "banner")
 }
 
+/** Upload a cropped playlist cover (16:9). The caller persists the URL. */
+export async function uploadPlaylistCoverBlob(
+  blob: Blob,
+  playlistId: string
+): Promise<string> {
+  return await sendUpload(blob, "playlist", playlistId)
+}
+
+export async function deletePlaylistCover(playlistId: string): Promise<void> {
+  await sendDelete("playlist", playlistId)
+}
+
 export async function deleteAvatar(): Promise<void> {
   await sendDelete("avatar")
 }
@@ -46,9 +60,21 @@ export async function deleteBanner(): Promise<void> {
   await sendDelete("banner")
 }
 
-async function sendUpload(blob: Blob, kind: "avatar" | "banner"): Promise<string> {
+type UploadKind = "avatar" | "banner" | "playlist"
+
+function endpoint(kind: UploadKind, playlistId?: string): string {
+  return playlistId
+    ? `/api/avatar?kind=${kind}&id=${encodeURIComponent(playlistId)}`
+    : `/api/avatar?kind=${kind}`
+}
+
+async function sendUpload(
+  blob: Blob,
+  kind: UploadKind,
+  playlistId?: string
+): Promise<string> {
   const token = await getToken()
-  const response = await fetch(`/api/avatar?kind=${kind}`, {
+  const response = await fetch(endpoint(kind, playlistId), {
     method: "POST",
     headers: {
       "Content-Type": "image/jpeg",
@@ -61,9 +87,12 @@ async function sendUpload(blob: Blob, kind: "avatar" | "banner"): Promise<string
   return payload.url
 }
 
-async function sendDelete(kind: "avatar" | "banner"): Promise<void> {
+async function sendDelete(
+  kind: UploadKind,
+  playlistId?: string
+): Promise<void> {
   const token = await getToken()
-  const response = await fetch(`/api/avatar?kind=${kind}`, {
+  const response = await fetch(endpoint(kind, playlistId), {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   })

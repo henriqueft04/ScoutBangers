@@ -21,10 +21,9 @@ interface PlaylistSaveButtonProps {
 }
 
 /**
- * Save / unsave toggle for a public playlist, with a public count
- * that doubles as a like counter. When the current user is the
- * owner of the playlist (or signed out / playlist is private), the
- * component falls back to a small read-only count badge instead.
+ * Save / unsave toggle for a public playlist, with the save count next to
+ * it. Renders nothing for the owner, when signed out, or when the playlist
+ * is private.
  */
 export function PlaylistSaveButton({
   playlistId,
@@ -32,21 +31,17 @@ export function PlaylistSaveButton({
   isPublic,
 }: PlaylistSaveButtonProps) {
   const { user } = useAuth()
-  const { saved, count, toggle, busy } = usePlaylistSave(playlistId)
+  const { saved, count, toggle, busy, loaded } = usePlaylistSave(playlistId)
 
   if (!isPublic) return null
 
   const isOwner = user?.id === ownerId
-  // Owner / signed out: show the count read-only.
-  if (isOwner || !user) {
-    if (count === 0) return null
-    return (
-      <span className="text-muted-foreground inline-flex items-center gap-1 text-xs tabular-nums">
-        <Bookmark className="size-3.5" />
-        {count}
-      </span>
-    )
-  }
+  // Owner / signed out: nothing to toggle. The count is already shown in
+  // the playlist's "Guardada por N" line.
+  if (isOwner || !user) return null
+
+  // Wait for the first answer instead of flashing the wrong state.
+  if (!loaded) return null
 
   return (
     <Button

@@ -22,6 +22,9 @@ interface Env {
    *  the JWKS for RS256/ES256 verification. */
   SUPABASE_URL?: string
   AVATAR_PUBLIC_BASE_URL: string
+  /** Used to check, with the caller's own token, that they may edit a playlist. */
+  VITE_SUPABASE_URL?: string
+  VITE_SUPABASE_ANON_KEY?: string
 }
 
 // Avatars are tight (256² JPEG); banners are wider so we allow a
@@ -36,19 +39,33 @@ const ALLOWED_TYPES = new Set([
   "image/webp",
 ])
 
-type Kind = "avatar" | "banner"
+type Kind = "avatar" | "banner" | "playlist"
 
 function kindFromRequest(request: Request): Kind {
   const url = new URL(request.url)
-  return url.searchParams.get("kind") === "banner" ? "banner" : "avatar"
+  const kind = url.searchParams.get("kind")
+  if (kind === "banner" || kind === "playlist") return kind
+  return "avatar"
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Playlist covers are keyed by (user, playlist). The user part comes from
+ * the verified JWT, so a caller can only ever write inside their own
+ * namespace; the `playlists.cover_url` update itself is guarded by RLS.
+ */
+function playlistIdFromRequest(request: Request): string | undefined {
+  const id = new URL(request.url).searchParams.get("id") ?? ""
+  return UUID_RE.test(id) ? id.toLowerCase() : undefined
 }
 
 function maxBytesFor(kind: Kind): number {
-  return kind === "banner" ? MAX_BYTES_BANNER : MAX_BYTES_AVATAR
+  return kind === "avatar" ? MAX_BYTES_AVATAR : MAX_BYTES_BANNER
 }
 
 function keyPrefixFor(kind: Kind): string {
-  return kind === "banner" ? "banner" : "avatar"
+  return kind
 }
 
 /**
@@ -94,14 +111,50 @@ async function authenticate(
   return { userId: result.sub }
 }
 
+/**
+ * Whether the caller owns or collaborates on the playlist. Asked to
+ * Supabase with the caller's own token, so `is_playlist_editor` (and RLS)
+ * decide; any failure counts as "no" so uploads can't be spammed into R2.
+ */
+async function canEditPlaylist(
+  env: Env,
+  token: string,
+  playlistId: string
+): Promise<boolean> {
+  if (!env.VITE_SUPABASE_URL || !env.VITE_SUPABASE_ANON_KEY) return false
+  try {
+    const res = await fetch(
+      `${env.VITE_SUPABASE_URL}/rest/v1/rpc/is_playlist_editor`,
+      {
+        method: "POST",
+        headers: {
+          apikey: env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ pid: playlistId }),
+      }
+    )
+    return res.ok && (await res.json()) === true
+  } catch {
+    return false
+  }
+}
+
 function extensionFor(contentType: string): string {
   if (contentType === "image/png") return "png"
   if (contentType === "image/webp") return "webp"
   return "jpg"
 }
 
-function objectKey(kind: Kind, userId: string, ext: string): string {
-  return `${keyPrefixFor(kind)}-${userId}.${ext}`
+function objectKey(
+  kind: Kind,
+  userId: string,
+  ext: string,
+  playlistId?: string
+): string {
+  const owner = playlistId ? `${userId}-${playlistId}` : userId
+  return `${keyPrefixFor(kind)}-${owner}.${ext}`
 }
 
 function publicUrl(env: Env, key: string): string {
@@ -116,6 +169,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (auth instanceof Response) return auth
   const kind = kindFromRequest(request)
   const maxBytes = maxBytesFor(kind)
+  const playlistId = kind === "playlist" ? playlistIdFromRequest(request) : undefined
+  if (kind === "playlist" && !playlistId) {
+    return json({ error: "Playlist inválida" }, 400)
+  }
+  if (
+    playlistId &&
+    !(await canEditPlaylist(env, bearerToken(request) ?? "", playlistId))
+  ) {
+    return json({ error: "Sem permissões nesta playlist." }, 403)
+  }
 
   const contentType = (request.headers.get("Content-Type") || "").toLowerCase()
   const baseType = contentType.split(";")[0]?.trim() ?? ""
@@ -134,13 +197,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   const ext = extensionFor(baseType)
-  const key = objectKey(kind, auth.userId, ext)
+  const key = objectKey(kind, auth.userId, ext, playlistId)
   // Bust other extensions so a user switching from PNG → JPG doesn't
   // leave a stale file orphaned in the bucket.
   for (const otherExt of ["jpg", "png", "webp"]) {
     if (otherExt !== ext) {
       await env.AVATAR_BUCKET.delete(
-        objectKey(kind, auth.userId, otherExt)
+        objectKey(kind, auth.userId, otherExt, playlistId)
       ).catch(() => undefined)
     }
   }
@@ -164,11 +227,15 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env }) => {
   const auth = await authenticate(request, env)
   if (auth instanceof Response) return auth
   const kind = kindFromRequest(request)
+  const playlistId = kind === "playlist" ? playlistIdFromRequest(request) : undefined
+  if (kind === "playlist" && !playlistId) {
+    return json({ error: "Playlist inválida" }, 400)
+  }
 
   for (const ext of ["jpg", "png", "webp"]) {
-    await env.AVATAR_BUCKET.delete(objectKey(kind, auth.userId, ext)).catch(
-      () => undefined
-    )
+    await env.AVATAR_BUCKET.delete(
+      objectKey(kind, auth.userId, ext, playlistId)
+    ).catch(() => undefined)
   }
   return json({ ok: true })
 }

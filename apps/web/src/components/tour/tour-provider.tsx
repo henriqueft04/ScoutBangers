@@ -183,9 +183,20 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     }
     if (!supabase) return
     try {
+      // The main tour already covers every update tour, so a new user
+      // never sees them again as separate tours.
+      const seen: Partial<Record<UpdateTourColumn, boolean>> = {}
+      for (const tour of UPDATE_TOURS) {
+        seen[tour.seenColumn] = true
+        try {
+          localStorage.setItem(updateCacheKey(tour, user.id), "1")
+        } catch {
+          /* ignore */
+        }
+      }
       const { error } = await supabase
         .from("profiles")
-        .update({ tour_completed_at: new Date().toISOString() })
+        .update({ ...seen, tour_completed_at: new Date().toISOString() })
         .eq("id", user.id)
       if (!error) {
         await refreshProfile()
@@ -232,9 +243,10 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       setHasSeenTour(true)
       void recordCompletion()
     }
+    // Finishing the main tour covers the updates too, so nothing follows it.
     const following =
-      user && profile
-        ? nextUnseenUpdateTour(profile, user.id, finishedUpdate?.id)
+      user && profile && finishedUpdate
+        ? nextUnseenUpdateTour(profile, user.id, finishedUpdate.id)
         : undefined
     setActiveTourId(following?.id ?? null)
     setStepIndex(0)

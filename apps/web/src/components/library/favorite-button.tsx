@@ -18,8 +18,8 @@ interface FavoriteButtonProps {
 }
 
 /**
- * Heart toggle. Filled when the song is favorited, outlined otherwise.
- * Opens a sign-in dialog on click when no user is authenticated. Clicks
+ * Heart button. Filled when the song is favorited, outlined otherwise.
+ * Opens the save-to-playlist picker on click, or a sign-in dialog when no user is authenticated. Clicks
  * never bubble to parent rows so a user can favorite a song without
  * starting playback.
  */
@@ -42,7 +42,7 @@ export function FavoriteButton({
       <button
         type="button"
         aria-label={
-          fav ? "Gerir nas playlists" : "Adicionar aos favoritos"
+          fav ? "Gerir nas playlists" : "Guardar numa playlist"
         }
         aria-pressed={fav}
         onClick={(event) => {
@@ -51,13 +51,11 @@ export function FavoriteButton({
             if (supabaseConfigured) setSignInOpen(true)
             return
           }
-          if (fav) {
-            // Already favorited — open the playlist chooser so the user
-            // can add to other playlists or remove from favorites.
-            setAddOpen(true)
-          } else {
-            void toggle(songId)
-          }
+          // Favorite right away, then open the chooser so the user can undo
+          // it or add the song to other playlists. An already-favorited
+          // song just opens the chooser.
+          if (!fav) void toggle(songId)
+          setAddOpen(true)
         }}
         className={cn(
           "touch-manipulation inline-flex shrink-0 items-center justify-center rounded-full transition-colors",

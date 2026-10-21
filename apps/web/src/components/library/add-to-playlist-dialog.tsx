@@ -1,11 +1,12 @@
 import * as React from "react"
-import { createPortal } from "react-dom"
-import { Check, Heart, ListPlus, Loader2, Plus, X } from "lucide-react"
+import { Check, Heart, ListPlus, Loader2, Plus } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 
+import { BottomSheet } from "@/components/common/bottom-sheet"
 import { useAuth } from "@/hooks/useAuth"
 import { useFavorites } from "@/hooks/useFavorites"
+import { FAVORITES_PLAYLIST_NAME } from "@/lib/playlist-saves"
 import { supabase } from "@/lib/supabase"
 
 interface PlaylistSummary {
@@ -21,12 +22,10 @@ interface AddToPlaylistDialogProps {
   onClose: () => void
 }
 
-const FAVORITES_PLAYLIST_NAME = "Favorites"
-
 /**
- * Modal that opens when a user clicks the heart on an already-favorited
- * song. Lets them add the song to one of their other playlists, or
- * remove it from Favorites outright. Loads playlists lazily on open and
+ * Modal that opens when a user clicks the heart on a song. Favorites sits
+ * on top (checked when the song is a favorite), followed by the user's
+ * other playlists and a "Nova playlist" button. Loads playlists lazily on open and
  * marks the ones that already contain this song so the user can see the
  * current state.
  */
@@ -36,12 +35,13 @@ export function AddToPlaylistDialog({
   onClose,
 }: AddToPlaylistDialogProps) {
   const { user } = useAuth()
-  const { toggle: toggleFavorite } = useFavorites()
+  const { toggle: toggleFavorite, isFavorite } = useFavorites()
   const [playlists, setPlaylists] = React.useState<PlaylistSummary[] | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [busyId, setBusyId] = React.useState<string | null>(null)
   const [creating, setCreating] = React.useState(false)
   const [newName, setNewName] = React.useState("")
+  const [filter, setFilter] = React.useState("")
   const [creatingBusy, setCreatingBusy] = React.useState(false)
 
   React.useEffect(() => {
@@ -51,10 +51,23 @@ export function AddToPlaylistDialog({
     void (async () => {
       const sb = supabase!
       // Fetch all of the user's playlists (Favorites included).
+      // Own playlists plus the ones the user collaborates on (RLS hides
+      // everyone else's private playlists; other people's public ones are
+      // filtered out by the explicit owner/collaborator check below).
+      const { data: collabRows } = await sb
+        .from("playlist_collaborators")
+        .select("playlist_id")
+        .eq("user_id", user.id)
+        .eq("status", "accepted")
+      const collabIds = (collabRows ?? []).map((row) => row.playlist_id)
       const { data: lists, error: listsErr } = await sb
         .from("playlists")
         .select("id, name")
-        .eq("user_id", user.id)
+        .or(
+          collabIds.length > 0
+            ? `user_id.eq.${user.id},id.in.(${collabIds.join(",")})`
+            : `user_id.eq.${user.id}`
+        )
         .order("created_at", { ascending: true })
       if (cancelled) return
       if (listsErr) {
@@ -93,16 +106,21 @@ export function AddToPlaylistDialog({
     }
   }, [open, user, songId])
 
-  React.useEffect(() => {
-    if (!open) return
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose()
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [open, onClose])
-
   if (!open) return null
+
+  // The Favorites check mirrors the shared store: the heart may have just
+  // toggled it optimistically, before this dialog's fetch could see it.
+  const favoritesRow = playlists
+    ?.filter((p) => p.isFavorites)
+    .map((p) => ({ ...p, alreadyContains: isFavorite(songId) }))[0]
+  const otherRows = (playlists ?? []).filter((p) => !p.isFavorites)
+  const needle = filter.trim().toLowerCase()
+  const visibleOthers = needle
+    ? otherRows.filter((p) => p.name.toLowerCase().includes(needle))
+    : otherRows
+  const visible = favoritesRow && !needle
+    ? [favoritesRow, ...visibleOthers]
+    : visibleOthers
 
   const handleToggleRow = async (
     playlistId: string,
@@ -207,33 +225,8 @@ export function AddToPlaylistDialog({
     setCreatingBusy(false)
   }
 
-  return createPortal(
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Adicionar à playlist"
-      className="bg-background/80 fixed inset-0 z-50 flex items-end justify-center p-0 backdrop-blur-sm md:items-center md:p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-card text-card-foreground border-border animate-in slide-in-from-bottom md:fade-in w-full max-w-md rounded-t-2xl border p-5 shadow-xl duration-200 ease-out md:rounded-2xl"
-        onClick={(event) => event.stopPropagation()}
-        style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
-      >
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold tracking-tight">
-            Adicionar à playlist
-          </h2>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Fechar"
-            onClick={onClose}
-          >
-            <X />
-          </Button>
-        </div>
+  return (
+    <BottomSheet open={open} title="Guardar em" onClose={onClose}>
 
         {error ? (
           <p className="text-destructive mb-2 text-xs">{error}</p>
@@ -290,16 +283,26 @@ export function AddToPlaylistDialog({
           </button>
         )}
 
+        {otherRows.length > 8 ? (
+          <input
+            type="search"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="Procurar playlist"
+            className="border-input bg-background focus-visible:ring-ring/40 mb-2 w-full rounded-md border px-3 py-1.5 text-sm focus-visible:ring-2 focus-visible:outline-none"
+          />
+        ) : null}
+
         <div className="mb-4 max-h-72 overflow-y-auto">
           {playlists === null ? (
             <Loader2 className="text-muted-foreground mx-auto my-4 size-5 animate-spin" />
           ) : playlists.length === 0 ? (
             <p className="text-muted-foreground py-4 text-center text-sm">
-              Ainda não tens outras playlists. Cria uma a partir do separador Playlists.
+              Ainda não tens playlists. Cria uma com "Nova playlist".
             </p>
           ) : (
             <ul className="flex flex-col gap-1">
-              {playlists.map((playlist) => (
+              {visible.map((playlist) => (
                 <li key={playlist.id}>
                   <button
                     type="button"
@@ -343,8 +346,6 @@ export function AddToPlaylistDialog({
             </ul>
           )}
         </div>
-      </div>
-    </div>,
-    document.body
+    </BottomSheet>
   )
 }
