@@ -43,7 +43,13 @@ export function BottomSheet({
       aria-modal="true"
       aria-label={title}
       className="bg-background/80 fixed inset-0 z-50 flex items-end justify-center p-0 backdrop-blur-sm md:items-center md:p-4"
-      onClick={onClose}
+      onClick={(event) => {
+        // React bubbles portal events to the component that opened the
+        // sheet: without this, closing one opened from a song row also
+        // "clicks" the row and starts the song.
+        event.stopPropagation()
+        onClose()
+      }}
     >
       <div
         className={cn(
