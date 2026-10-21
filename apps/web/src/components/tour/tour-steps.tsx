@@ -330,7 +330,7 @@ export const MAIN_TOUR: TourStep[] = [
     id: "fullscreen-favorite",
     target: '[data-tour-id="player-favorite"]',
     title: "Favoritos",
-    body: "Toca no coração para marcares uma música como favorita.",
+    body: "Toca no coração para a marcares como favorita; abre também a lista para a guardares noutras playlists.",
     side: "top",
   },
   {
@@ -364,6 +364,13 @@ export const MAIN_TOUR: TourStep[] = [
     onAdvance: closeQueuePanel,
   },
   {
+    id: "fullscreen-jam",
+    target: '[data-tour-id="player-jam"]',
+    title: "Jam 🎧",
+    body: "Cria uma Jam e partilha o link: quem abrir ouve exatamente o mesmo que tu, ao mesmo tempo. Qualquer pessoa na Jam pode pausar, avançar ou pôr músicas na fila. Quando estás numa, o título do leitor mostra quem está contigo. Ainda é novo e pode ter bugs, avisem-me se algo falhar 🤟",
+    side: "top",
+  },
+  {
     id: "fullscreen-close",
     target: '[data-tour-id="fullscreen-close"]',
     title: "Voltar",
@@ -380,11 +387,50 @@ export const MAIN_TOUR: TourStep[] = [
     nextRoute: "/playlists",
   },
   {
-    id: "playlists-page",
-    target: null,
-    title: "As tuas playlists",
-    body: "Vês aqui todas as playlists que tens. Cria novas com o botão no topo. Carrega em Seguinte para continuar.",
+    id: "playlists-tabs",
+    target: '[data-tour-id="playlists-tabs"]',
+    route: "/playlists",
+    title: "As minhas e Descobrir",
+    body: "Em “As minhas” estão as tuas playlists, as partilhadas contigo e os convites para colaborar. Em “Descobrir” pesquisas as playlists públicas de outras pessoas e guardas as que gostares.",
+    side: "bottom",
+  },
+  {
+    id: "playlists-new",
+    target: '[data-tour-id="playlists-new"]',
+    title: "Criar uma playlist",
+    body: "Cria uma nova playlist aqui. Também podes tocar no coração de uma música para a guardares numa playlist. Carrega em Seguinte para abrires uma.",
+    side: "bottom",
+    nextRoute: () => {
+      // Favorites is listed first and can't be shared, so prefer the next one.
+      const links = document.querySelectorAll(
+        '[data-tour-id="playlists-list"] a[href^="/playlists/"]'
+      )
+      const link = links[1] ?? links[0]
+      return link instanceof HTMLAnchorElement ? link.getAttribute("href") : null
+    },
+  },
+  {
+    id: "playlist-actions",
+    target: '[data-tour-id="playlist-actions"]',
+    title: "Dentro da playlist",
+    body: "Guarda playlists de outros, descarrega para ouvir offline, partilha o link e convida colaboradores com o botão da pessoa com “+”: eles podem adicionar músicas, mudar o nome e a capa. À direita tens o aleatório e o play.",
+    side: "bottom",
+  },
+  {
+    id: "playlist-options",
+    target: '[data-tour-id="playlist-options"]',
+    title: "Mais opções",
+    body: "Aqui editas o nome e a capa, tornas a playlist pública ou privada, adicionas à fila e vês quem colabora. Carrega em Seguinte para continuar.",
+    side: "bottom",
     nextRoute: "/",
+  },
+  {
+    id: "nav-submit",
+    target: '[data-tour-id="nav-submit"]',
+    route: "/",
+    title: "Submeter músicas",
+    body: "Qualquer pessoa pode submeter novas músicas (áudio e imagem de capa) para integrarem a plataforma. Começa por aqui!",
+    side: "auto",
   },
   {
     id: "nav-profile",

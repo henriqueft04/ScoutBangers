@@ -70,7 +70,11 @@ function TabBar({
   }, [measured])
 
   return (
-    <div role="tablist" className="border-border relative flex gap-4 border-b">
+    <div
+      role="tablist"
+      data-tour-id="playlists-tabs"
+      className="border-border relative flex gap-4 border-b"
+    >
       {TABS.map(([value, label]) => (
         <button
           key={value}
@@ -268,6 +272,7 @@ export function PlaylistsPage() {
           <Button
             type="button"
             size="sm"
+            data-tour-id="playlists-new"
             onClick={() => setCreating((open) => !open)}
           >
             <Plus className="size-4" />
@@ -328,7 +333,11 @@ export function PlaylistsPage() {
               message="Ainda não tens playlists. Toca em Nova para criar a primeira."
             />
           ) : (
-            <ul role="list" className="flex flex-col gap-1">
+            <ul
+              role="list"
+              data-tour-id="playlists-list"
+              className="flex flex-col gap-1"
+            >
               {[...playlists]
                 .sort(
                   (a, b) =>

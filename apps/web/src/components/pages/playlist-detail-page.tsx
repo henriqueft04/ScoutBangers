@@ -667,7 +667,7 @@ export function PlaylistDetailPage() {
 
         {playlist ? (
           <>
-            <div className="flex items-center gap-1">
+            <div data-tour-id="playlist-actions" className="flex items-center gap-1">
               <PlaylistSaveButton
                 playlistId={playlist.id}
                 ownerId={playlist.owner_id}
@@ -738,6 +738,7 @@ export function PlaylistDetailPage() {
                   variant="ghost"
                   size="icon"
                   aria-label="Mais opções"
+                  data-tour-id="playlist-options"
                   aria-haspopup="menu"
                   aria-expanded={menuOpen}
                   onClick={() => setMenuOpen((open) => !open)}
