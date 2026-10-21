@@ -1,5 +1,5 @@
 import { getDriveAccessToken } from "./api/_lib/drive-auth"
-import { fetchCover } from "./_lib/cover"
+import { withLinkPreview, songPreviewImage } from "./_lib/og"
 
 interface Env {
   ASSETS: Fetcher
@@ -11,10 +11,9 @@ const DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files"
 const SONG_ID = /^[\w-]{10,100}$/
 
 /**
- * Link-preview crawlers (WhatsApp, iMessage, Telegram…) never run JS, so the
- * SPA's static index.html gives every shared link the same generic card.
  * For `/?song=<id>` we look the song up and rewrite the head's Open Graph
- * tags so the preview names the song that was actually shared.
+ * tags (see `withLinkPreview`) so the preview names the song that was
+ * actually shared.
  */
 export const onRequestGet: PagesFunction<Env> = async ({
   request,
@@ -52,51 +51,10 @@ export const onRequestGet: PagesFunction<Env> = async ({
   if (!title) return next()
 
   const response = await next()
-  const image = await previewImage(url.origin, id)
-  const og = (property: string, content: string) =>
-    `<meta property="${property}" content="${content.replace(/"/g, "&quot;")}" />`
-
-  return new HTMLRewriter()
-    .on("title", {
-      element(el) {
-        el.setInnerContent(`${title} — ScoutBangers`)
-      },
-    })
-    .on('meta[name="description"]', {
-      element(el) {
-        el.setAttribute("content", "Ouve este banger no ScoutBangers.")
-      },
-    })
-    .on("head", {
-      element(el) {
-        el.append(
-          [
-            og("og:type", "website"),
-            og("og:site_name", "ScoutBangers"),
-            og("og:title", title!),
-            og("og:description", "Ouve este banger no ScoutBangers."),
-            og("og:url", `${url.origin}/?song=${id}`),
-            og("og:image", image),
-            '<meta name="twitter:card" content="summary" />',
-          ].join(""),
-          { html: true }
-        )
-      },
-    })
-    .transform(response)
-}
-
-/**
- * Picks the link-preview image: the song's cover cropped to a small square
- * through Cloudflare Image Transformations (WhatsApp drops big images), or
- * the app icon when the song has no embedded cover.
- *
- * The transformation URL can't be probed from inside the Worker (a
- * subrequest to this zone's /cdn-cgi/ doesn't go through the transformer),
- * so it is trusted once the cover itself is known to exist.
- */
-async function previewImage(origin: string, id: string): Promise<string> {
-  const cover = await fetchCover(id)
-  if (!cover) return `${origin}/icon-512.png`
-  return `${origin}/cdn-cgi/image/width=600,height=600,fit=cover,format=jpeg,quality=80/api/cover/${id}`
+  return withLinkPreview(response, {
+    title,
+    description: "Ouve este banger no ScoutBangers.",
+    url: `${url.origin}/?song=${id}`,
+    image: await songPreviewImage(url.origin, id),
+  })
 }
