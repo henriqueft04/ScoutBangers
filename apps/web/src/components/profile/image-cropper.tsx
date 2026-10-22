@@ -14,6 +14,12 @@ interface ImageCropperProps {
   outputWidth: number
   /** Dim everything outside a circle, for images that are shown round. */
   circle?: boolean
+  /**
+   * Keep a transparent image transparent (output PNG) instead of flattening
+   * it onto white as a JPEG. Opaque images still come out as JPEG, which is
+   * much smaller.
+   */
+  keepTransparency?: boolean
   onCancel: () => void
   onConfirm: (cropped: Blob) => void | Promise<void>
 }
@@ -42,6 +48,19 @@ async function decode(file: Blob): Promise<ImageBitmap> {
   }
 }
 
+/** Whether any pixel of the canvas is not fully opaque. */
+function hasTransparency(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number
+): boolean {
+  const { data } = ctx.getImageData(0, 0, width, height)
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i]! < 255) return true
+  }
+  return false
+}
+
 /**
  * Lets the user position an image inside the exact frame it will be shown
  * in: drag to move, slider / wheel / pinch to zoom. What's visible inside
@@ -53,6 +72,7 @@ export function ImageCropper({
   aspect,
   outputWidth,
   circle = false,
+  keepTransparency = false,
   onCancel,
   onConfirm,
 }: ImageCropperProps) {
@@ -190,12 +210,21 @@ export function ImageCropper({
       canvas.height = outH
       const ctx = canvas.getContext("2d")
       if (!ctx) throw new Error("canvas unavailable")
-      ctx.fillStyle = "#fff"
-      ctx.fillRect(0, 0, outW, outH)
       ctx.imageSmoothingQuality = "high"
       ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, outW, outH)
+      const transparent = keepTransparency && hasTransparency(ctx, outW, outH)
+      if (!transparent) {
+        // JPEG has no alpha: put the image on white instead of black.
+        ctx.globalCompositeOperation = "destination-over"
+        ctx.fillStyle = "#fff"
+        ctx.fillRect(0, 0, outW, outH)
+      }
       const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY)
+        canvas.toBlob(
+          resolve,
+          transparent ? "image/png" : "image/jpeg",
+          JPEG_QUALITY
+        )
       )
       if (!blob) throw new Error("encode failed")
       await onConfirm(blob)

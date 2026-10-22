@@ -8,12 +8,9 @@ import {
   Loader2,
   Lock,
   MoreVertical,
-  Pause,
   Pencil,
-  Play,
   Plus,
   Share2,
-  Shuffle,
   UserPlus,
 } from "lucide-react"
 import { Link, useNavigate, useParams } from "react-router-dom"
@@ -36,6 +33,7 @@ import {
   type PlaylistPerson,
 } from "@/components/playlists/playlist-people-sheet"
 import { PlaylistCover } from "@/components/playlists/playlist-cover"
+import { PlayShuffleButtons } from "@/components/library/play-shuffle-buttons"
 import { PlaylistSaveButton } from "@/components/playlists/playlist-save-button"
 import { useAuth } from "@/hooks/useAuth"
 import { useFavorites } from "@/hooks/useFavorites"
@@ -50,7 +48,6 @@ import {
   uploadPlaylistCoverBlob,
 } from "@/lib/avatar-upload"
 import { formatBytes } from "@/lib/format"
-import { shuffle } from "@/lib/shuffle"
 import { shareUrl } from "@/lib/share"
 import {
   getCached,
@@ -119,7 +116,7 @@ export function PlaylistDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user, loading: authLoading } = useAuth()
   const userId = user?.id
-  const { songs, currentIndex, isPlaying, queueAddMany, toggle } = usePlayer()
+  const { songs, currentIndex, isPlaying, queueAddMany } = usePlayer()
   const playFromList = usePlayFromList()
   const [playlist, setPlaylist] = React.useState<PlaylistDetail | null>(null)
   const [loading, setLoading] = React.useState(true)
@@ -310,28 +307,6 @@ export function PlaylistDetailPage() {
   const fullyOffline = playlistSongs.length > 0 && offlineTargets.length === 0
 
   const { count: saveCount } = usePlaylistSave(playlist?.id)
-
-  // The deck is "on this playlist" when the current song belongs to it.
-  const currentSongId = currentIndex !== null ? songs[currentIndex]?.id : null
-  const playingHere = Boolean(
-    isPlaying &&
-    currentSongId &&
-    playlistSongs.some((song) => song.id === currentSongId)
-  )
-  const handlePlay = () => {
-    if (playingHere) {
-      toggle()
-      return
-    }
-    const first = playlistSongs[0]
-    if (first) playFromList(first, playlistSongs)
-  }
-  const handleShuffle = () => {
-    // Play a pre-shuffled copy so the order is random from the first song.
-    const order = shuffle(playlistSongs)
-    const first = order[0]
-    if (first) playFromList(first, order)
-  }
 
   const [addOpen, setAddOpen] = React.useState(false)
   const navigate = useNavigate()
@@ -749,32 +724,12 @@ export function PlaylistDetailPage() {
                 </Button>
               </div>
 
-              {playlistSongs.length > 0 ? (
-                <div className="ml-auto flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Reprodução aleatória"
-                    onClick={handleShuffle}
-                    className="text-muted-foreground hover:text-foreground"
-                  >
-                    <Shuffle className="size-5" />
-                  </Button>
-                  <button
-                    type="button"
-                    aria-label={playingHere ? "Pausar" : "Reproduzir playlist"}
-                    onClick={handlePlay}
-                    className="bg-primary text-primary-foreground focus-visible:ring-ring/40 inline-flex size-14 items-center justify-center rounded-full shadow-md transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:outline-none"
-                  >
-                    {playingHere ? (
-                      <Pause className="size-6 fill-current" />
-                    ) : (
-                      <Play className="size-6 translate-x-0.5 fill-current" />
-                    )}
-                  </button>
-                </div>
-              ) : null}
+              <div className="ml-auto">
+                <PlayShuffleButtons
+                  songs={playlistSongs}
+                  playLabel="Reproduzir playlist"
+                />
+              </div>
             </div>
 
             {canEdit ? (

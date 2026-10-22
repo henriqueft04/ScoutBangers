@@ -2,6 +2,7 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { useTrackVisuals } from "@/hooks/useTrackVisuals"
 import type { Album } from "@/lib/albums"
+import { displayArtist } from "@/lib/song-display"
 
 import { TrackArtwork } from "./track-artwork"
 
@@ -28,7 +29,11 @@ function AlbumCard({ album, selected, onSelect }: AlbumCardProps) {
     album.cover.modifiedTime
   )
   return (
-    <li ref={ref} className="w-22 shrink-0 snap-start">
+    <li
+      ref={ref}
+      data-artist={displayArtist(album.cover)}
+      className="w-22 shrink-0 snap-start"
+    >
       <button
         type="button"
         aria-pressed={selected}
@@ -62,7 +67,11 @@ export function AlbumsStrip({
   onSelect,
 }: AlbumsStripProps) {
   return (
-    <section aria-label="Álbuns" className="flex flex-col gap-2">
+    <section
+      aria-label="Álbuns"
+      data-tour-id="library-albums"
+      className="flex flex-col gap-2"
+    >
       <h2 className="text-foreground text-sm font-semibold tracking-tight">
         Álbuns
       </h2>

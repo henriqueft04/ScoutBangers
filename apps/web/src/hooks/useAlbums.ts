@@ -6,10 +6,10 @@ import {
   subscribeToAlbumTags,
 } from "@/lib/album-tags"
 import { groupAlbums, type Album } from "@/lib/albums"
-import { fetchChart } from "@/lib/top-songs-cache"
 import type { Song } from "@/lib/types"
 
 import { useAllMetadataVersion } from "./useAllMetadataVersion"
+import { useSongPlayCounts } from "./useSongPlayCounts"
 
 /**
  * The library's albums. Album names are read for every song in the
@@ -25,23 +25,8 @@ export function useAlbums(songs: Song[]): Album[] {
   )
 
   // All-time play counts pick the cover of albums whose songs don't look
-  // like the album's name. Only the edge-cached top chart is used (no extra
-  // database work), so very quiet albums fall back to their first song.
-  const [playCounts, setPlayCounts] = React.useState<Map<string, number>>(
-    () => new Map()
-  )
-  React.useEffect(() => {
-    let cancelled = false
-    fetchChart("all")
-      .then((rows) => {
-        if (cancelled) return
-        setPlayCounts(new Map(rows.map((r) => [r.song_id, r.play_count])))
-      })
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  // like the album's name.
+  const playCounts = useSongPlayCounts()
 
   React.useEffect(() => {
     let cancelled = false

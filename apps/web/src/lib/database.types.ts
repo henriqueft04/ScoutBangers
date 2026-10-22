@@ -19,6 +19,7 @@ export interface Database {
           update_tour_seen: boolean | null
           jam_tour_seen: boolean | null
           playlists_tour_seen: boolean | null
+          artists_tour_seen: boolean | null
           created_at: string
           regiao: string | null
           nucleo: string | null
@@ -37,6 +38,7 @@ export interface Database {
           update_tour_seen?: boolean | null
           jam_tour_seen?: boolean | null
           playlists_tour_seen?: boolean | null
+          artists_tour_seen?: boolean | null
           created_at?: string
           regiao?: string | null
           nucleo?: string | null
@@ -55,6 +57,7 @@ export interface Database {
           update_tour_seen?: boolean | null
           jam_tour_seen?: boolean | null
           playlists_tour_seen?: boolean | null
+          artists_tour_seen?: boolean | null
           created_at?: string
           regiao?: string | null
           nucleo?: string | null
@@ -119,6 +122,51 @@ export interface Database {
             referencedColumns: ["id"]
           },
         ]
+      }
+      artist_banners: {
+        Row: {
+          artist_key: string
+          artist_name: string
+          banner_url: string
+          updated_at: string
+        }
+        Insert: {
+          artist_key: string
+          artist_name: string
+          banner_url: string
+          updated_at?: string
+        }
+        Update: {
+          artist_key?: string
+          artist_name?: string
+          banner_url?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      artist_banner_submissions: {
+        Row: {
+          id: string
+          user_id: string
+          artist_name: string
+          status: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          artist_name: string
+          status?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          artist_name?: string
+          status?: string
+          created_at?: string
+        }
+        Relationships: []
       }
       playlist_collaborators: {
         Row: {
@@ -334,6 +382,10 @@ export interface Database {
           owner_display_name: string
           is_collaborator: boolean
         }[]
+      }
+      submit_artist_banner: {
+        Args: { artist_name: string }
+        Returns: string
       }
       invite_playlist_collaborator: {
         Args: { pid: string; uid: string }
