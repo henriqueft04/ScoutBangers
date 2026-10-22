@@ -264,6 +264,47 @@ async function ensureTourPlaylist(): Promise<void> {
   }
 }
 
+/** Where "Seguinte" goes to open an artist: the first one the albums row knows. */
+function firstArtistRoute(): string | null {
+  const card = document.querySelector(
+    '[data-tour-id="library-albums"] [data-artist]'
+  )
+  const artist = card instanceof HTMLElement ? card.dataset.artist : undefined
+  return artist ? `/artist/${encodeURIComponent(artist)}` : null
+}
+
+/** The albums row on the Music tab (main tour only). */
+const ALBUMS_STEP: TourStep = {
+  id: "library-albums",
+  target: '[data-tour-id="library-albums"]',
+  route: "/music",
+  title: "Álbuns",
+  body: "Aqui estão os álbuns da biblioteca, com a capa de uma das músicas. Desliza para os ver todos e toca num para veres só as músicas dele. Carrega em Seguinte para abrires um artista.",
+  side: "bottom",
+  nextRoute: firstArtistRoute,
+}
+
+/**
+ * Artist page walkthrough, shared by the main tour and the artists update
+ * tour. Starts on an artist's page and ends there.
+ */
+const ARTIST_PAGE_STEPS: TourStep[] = [
+  {
+    id: "artist-banner",
+    target: '[data-tour-id="artist-banner"]',
+    title: "Banner do artista",
+    body: "Cada artista tem agora um banner. Enquanto não houver um aprovado, mostramos um mosaico das capas dele. Toca na câmara para sugerires um: um admin aprova antes de aparecer.",
+    side: "bottom",
+  },
+  {
+    id: "artist-header",
+    target: '[data-tour-id="artist-header"]',
+    title: "Ouvintes e reprodução",
+    body: "Vês quantos ouvintes mensais o artista tem e quantas reproduções, e tens os botões para tocar tudo ou em aleatório, como nas playlists.",
+    side: "bottom",
+  },
+]
+
 /**
  * Playlist walkthrough, shared by the main tour and the playlists update
  * tour so the two never drift apart. Starts on /playlists and ends inside a
@@ -479,6 +520,8 @@ export const MAIN_TOUR: TourStep[] = [
     side: "bottom",
     advanceOn: "click",
   },
+  ALBUMS_STEP,
+  ...ARTIST_PAGE_STEPS,
   {
     id: "nav-playlists",
     target: '[data-tour-id="nav-playlists"]',
@@ -647,11 +690,24 @@ export const PLAYLISTS_TOUR: TourStep[] = [
   ...PLAYLIST_STEPS,
 ]
 
+export const ARTISTS_TOUR: TourStep[] = [
+  {
+    id: "artists-welcome",
+    target: null,
+    route: "/music",
+    title: "Dois updates pelo preço de um 👯",
+    body: "Sempre ouvi dizer que bons updates vêm aos pares, por isso há mais novidades!!: banners e estatísticas nas páginas dos artistas. Carrega em Seguinte para veres.",
+    nextRoute: firstArtistRoute,
+  },
+  ...ARTIST_PAGE_STEPS,
+]
+
 export const TOURS: Record<string, TourStep[]> = {
   main: MAIN_TOUR,
   update: UPDATE_TOUR,
   jam: JAM_TOUR,
   playlists: PLAYLISTS_TOUR,
+  artists: ARTISTS_TOUR,
 }
 
 /** A profile flag recording that an update tour has been seen. */
@@ -667,4 +723,5 @@ export const UPDATE_TOURS: readonly { id: string; seenColumn: UpdateTourColumn }
   { id: "update", seenColumn: "update_tour_seen" },
   { id: "jam", seenColumn: "jam_tour_seen" },
   { id: "playlists", seenColumn: "playlists_tour_seen" },
+  { id: "artists", seenColumn: "artists_tour_seen" },
 ]

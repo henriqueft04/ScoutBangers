@@ -100,10 +100,14 @@ export async function saveSong(
   edits: EditableTags,
   newCover?: File
 ): Promise<SaveResult> {
-  // The cropper already outputs a JPEG; only re-encode anything else.
+  // The cropper already outputs a JPEG (or a PNG for transparent covers);
+  // only re-encode anything else.
   const cover = newCover
-    ? newCover.type === "image/jpeg"
-      ? { data: await newCover.arrayBuffer(), mimeType: "image/jpeg" as const }
+    ? newCover.type === "image/jpeg" || newCover.type === "image/png"
+      ? {
+          data: await newCover.arrayBuffer(),
+          mimeType: newCover.type as "image/jpeg" | "image/png",
+        }
       : await toJpegCover(newCover)
     : undefined
 

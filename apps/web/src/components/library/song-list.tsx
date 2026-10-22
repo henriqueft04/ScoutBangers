@@ -14,7 +14,7 @@ interface SongListProps {
    * 10 uses). Missing entries are rendered as no-count rather than 0
    * so a row whose count hasn't been fetched yet doesn't lie.
    */
-  playCounts?: Map<string, number>
+  playCounts?: ReadonlyMap<string, number>
   /**
    * When true, song rows suppress the artist line. Used on the
    * artist page where every row would otherwise repeat the same

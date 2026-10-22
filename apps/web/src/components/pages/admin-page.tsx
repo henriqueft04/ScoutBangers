@@ -7,6 +7,7 @@ import { Input } from "@workspace/ui/components/input"
 import { cn } from "@workspace/ui/lib/utils"
 import { useAuth } from "@/hooks/useAuth"
 import { supabase } from "@/lib/supabase"
+import { AdminBanners } from "./admin-banners"
 import { AdminSongsEditor } from "./admin-songs-editor"
 
 interface Submission {
@@ -193,7 +194,7 @@ export function AdminPage() {
   const { profile } = useAuth()
   const navigate = useNavigate()
 
-  const [tab, setTab] = React.useState<"pending" | "rejected" | "songs">("pending")
+  const [tab, setTab] = React.useState<"pending" | "rejected" | "songs" | "banners">("pending")
   const [submissions, setSubmissions] = React.useState<Submission[]>([])
   const [loading, setLoading] = React.useState(true)
   const [actionLoading, setActionLoading] = React.useState<string | null>(null)
@@ -207,7 +208,7 @@ export function AdminPage() {
       return
     }
 
-    if (profile?.is_admin && tab !== "songs") {
+    if (profile?.is_admin && tab !== "songs" && tab !== "banners") {
       fetchSubmissions()
     }
   }, [profile, navigate, tab])
@@ -355,30 +356,38 @@ export function AdminPage() {
               Aprova submissões ou edita os metadados das músicas.
             </p>
           </div>
-          <div className="flex bg-muted/50 p-1 rounded-lg shrink-0">
+          <div className="flex w-full max-w-full overflow-x-auto bg-muted/50 p-1 rounded-lg sm:w-auto sm:shrink-0 [&::-webkit-scrollbar]:hidden">
             <button
               onClick={() => setTab("pending")}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${tab === "pending" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              className={`flex-1 whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors sm:flex-none sm:px-4 ${tab === "pending" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
             >
               Pendentes
             </button>
             <button
               onClick={() => setTab("rejected")}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${tab === "rejected" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              className={`flex-1 whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors sm:flex-none sm:px-4 ${tab === "rejected" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
             >
               Rejeitados
             </button>
             <button
               onClick={() => setTab("songs")}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${tab === "songs" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              className={`flex-1 whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors sm:flex-none sm:px-4 ${tab === "songs" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
             >
               Músicas
+            </button>
+            <button
+              onClick={() => setTab("banners")}
+              className={`flex-1 whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors sm:flex-none sm:px-4 ${tab === "banners" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Banners
             </button>
           </div>
         </div>
 
         {tab === "songs" ? (
           <AdminSongsEditor />
+        ) : tab === "banners" ? (
+          <AdminBanners />
         ) : loading ? (
           <div className="flex py-12 items-center justify-center text-muted-foreground">
             A carregar submissões...

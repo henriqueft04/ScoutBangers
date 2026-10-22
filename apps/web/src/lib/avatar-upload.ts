@@ -7,7 +7,8 @@
  * originals over the wire — at 5000 users that would add up fast.
  */
 
-import { supabase } from "./supabase"
+import { apiErrorMessage } from "./api-error"
+import { getAccessToken } from "./auth-token"
 
 export const AVATAR_SIZE = 256
 export const BANNER_WIDTH = 1200
@@ -73,7 +74,7 @@ async function sendUpload(
   kind: UploadKind,
   playlistId?: string
 ): Promise<string> {
-  const token = await getToken()
+  const token = await getAccessToken()
   const response = await fetch(endpoint(kind, playlistId), {
     method: "POST",
     headers: {
@@ -82,7 +83,7 @@ async function sendUpload(
     },
     body: blob,
   })
-  if (!response.ok) throw new Error(await safeErrorMessage(response))
+  if (!response.ok) throw new Error(await apiErrorMessage(response))
   const payload = (await response.json()) as { url: string }
   return payload.url
 }
@@ -91,30 +92,12 @@ async function sendDelete(
   kind: UploadKind,
   playlistId?: string
 ): Promise<void> {
-  const token = await getToken()
+  const token = await getAccessToken()
   const response = await fetch(endpoint(kind, playlistId), {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   })
-  if (!response.ok) throw new Error(await safeErrorMessage(response))
-}
-
-async function getToken(): Promise<string> {
-  if (!supabase) throw new Error("Sessão indisponível.")
-  const { data } = await supabase.auth.getSession()
-  const token = data.session?.access_token
-  if (!token) throw new Error("Sessão expirada. Volta a iniciar sessão.")
-  return token
-}
-
-async function safeErrorMessage(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as { error?: string }
-    if (body.error) return body.error
-  } catch {
-    /* fall through */
-  }
-  return `Erro ${response.status}`
+  if (!response.ok) throw new Error(await apiErrorMessage(response))
 }
 
 async function resizeToSquareJpeg(

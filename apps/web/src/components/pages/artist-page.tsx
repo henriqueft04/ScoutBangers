@@ -4,13 +4,16 @@ import { useNavigate, useParams } from "react-router-dom"
 
 import { Button } from "@workspace/ui/components/button"
 
+import { ArtistBanner } from "@/components/artist/artist-banner"
 import { EmptyState } from "@/components/library/empty-state"
+import { PlayShuffleButtons } from "@/components/library/play-shuffle-buttons"
 import { SongList } from "@/components/library/song-list"
 import { useAllMetadataVersion } from "@/hooks/useAllMetadataVersion"
 import { usePlayFromList } from "@/hooks/usePlayFromList"
 import { usePlayer } from "@/hooks/usePlayer"
+import { useSongPlayCounts } from "@/hooks/useSongPlayCounts"
+import { fetchArtistListeners } from "@/lib/artist-listeners"
 import { songsByArtist } from "@/lib/artists"
-import { supabase, supabaseConfigured } from "@/lib/supabase"
 
 /**
  * Spotify-like artist profile. Resolved from the URL segment, lists every
@@ -37,35 +40,19 @@ export function ArtistPage() {
     [songs, decoded, metadataVersion]
   )
 
-  // All-time global play counts per song. We fetch once on mount and
-  // build a Map for O(1) lookup when rendering each row + summing
-  // for the artist total. The RPC returns the global top — same data
-  // would power the home Top 10 — so a single high-limit call is
-  // cheap relative to one-per-song queries.
-  const [playCounts, setPlayCounts] = React.useState<Map<string, number>>(
-    () => new Map()
-  )
+  // All-time play counts per song, for each row and the artist's total.
+  const playCounts = useSongPlayCounts()
+
+  const [listeners, setListeners] = React.useState<number | null>(null)
   React.useEffect(() => {
-    if (!supabaseConfigured || !supabase) return
     let cancelled = false
-    const fetchCounts = async () => {
-      if (!supabase) return
-      const { data, error } = await supabase.rpc("stats_top_songs", {
-        period: "all",
-        lim: 10000,
-      })
-      if (cancelled || error || !data) return
-      const map = new Map<string, number>()
-      for (const row of data) {
-        map.set(row.song_id, Number(row.play_count))
-      }
-      setPlayCounts(map)
-    }
-    void fetchCounts()
+    void fetchArtistListeners(decoded).then((count) => {
+      if (!cancelled) setListeners(count)
+    })
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [decoded])
 
   const totalPlays = React.useMemo(() => {
     let sum = 0
@@ -101,20 +88,36 @@ export function ArtistPage() {
         <p className="text-muted-foreground text-xs">Artista</p>
       </div>
 
-      <div>
-        <h1 className="text-foreground text-2xl font-semibold tracking-tight md:text-3xl">
-          {decoded}
-        </h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          {matched.length} {matched.length === 1 ? "música" : "músicas"}
-          {totalPlays > 0 ? (
-            <>
-              {" · "}
-              {totalPlays.toLocaleString()}{" "}
-              {totalPlays === 1 ? "reprodução" : "reproduções"}
-            </>
+      {matched.length > 0 ? (
+        <ArtistBanner name={decoded} songs={matched} />
+      ) : null}
+
+      <div
+        data-tour-id="artist-header"
+        className="flex items-center justify-between gap-3"
+      >
+        <div className="min-w-0">
+          <h1 className="text-foreground text-2xl font-semibold tracking-tight md:text-3xl">
+            {decoded}
+          </h1>
+          {listeners ? (
+            <p className="text-foreground mt-1 text-sm font-medium">
+              {listeners.toLocaleString()}{" "}
+              {listeners === 1 ? "ouvinte mensal" : "ouvintes mensais"}
+            </p>
           ) : null}
-        </p>
+          <p className="text-muted-foreground mt-1 text-sm">
+            {matched.length} {matched.length === 1 ? "música" : "músicas"}
+            {totalPlays > 0 ? (
+              <>
+                {" · "}
+                {totalPlays.toLocaleString()}{" "}
+                {totalPlays === 1 ? "reprodução" : "reproduções"}
+              </>
+            ) : null}
+          </p>
+        </div>
+        <PlayShuffleButtons songs={matched} playLabel="Reproduzir artista" />
       </div>
 
       {matched.length === 0 ? (

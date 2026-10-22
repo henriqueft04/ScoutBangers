@@ -4,6 +4,7 @@ import { Crop, Edit3, ImagePlus, Loader2, Search } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { ImageCropper } from "@/components/profile/image-cropper"
+import { toCoverFile } from "@/lib/cover-file"
 import { usePlayer } from "@/hooks/usePlayer"
 import type { EditableTags } from "@/lib/id3-rewrite"
 import { loadSong, saveSong, type LoadedSong } from "@/lib/song-editor"
@@ -160,7 +161,7 @@ function SongEditDialog({ song, onClose, onSaved }: SongEditDialogProps) {
   }, [coverUrl])
 
   const applyCrop = (blob: Blob) => {
-    setCover(new File([blob], "cover.jpg", { type: "image/jpeg" }))
+    setCover(toCoverFile(blob))
     setCoverBlob(blob)
     setCoverUrl(URL.createObjectURL(blob))
     setCropSource(null)
@@ -270,6 +271,7 @@ function SongEditDialog({ song, onClose, onSaved }: SongEditDialogProps) {
             title="Ajustar capa"
             aspect={1}
             outputWidth={1000}
+            keepTransparency
             onCancel={() => setCropSource(null)}
             onConfirm={applyCrop}
           />

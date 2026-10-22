@@ -6,6 +6,7 @@ import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { cn } from "@workspace/ui/lib/utils"
 import { ImageCropper } from "@/components/profile/image-cropper"
+import { toCoverFile } from "@/lib/cover-file"
 import { useAuth } from "@/hooks/useAuth"
 import { supabase } from "@/lib/supabase"
 
@@ -276,9 +277,10 @@ export function SubmitPage() {
               title="Ajustar capa"
               aspect={1}
               outputWidth={1000}
+              keepTransparency
               onCancel={() => setCoverToCrop(null)}
               onConfirm={(blob) => {
-                setCoverFile(new File([blob], "cover.jpg", { type: "image/jpeg" }))
+                setCoverFile(toCoverFile(blob))
                 setCoverToCrop(null)
               }}
             />
