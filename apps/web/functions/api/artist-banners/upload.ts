@@ -1,8 +1,8 @@
+import { json } from "../_lib/http"
 import {
   authenticate,
   checkBannerConfig,
   fetchSubmission,
-  json,
   pendingKey,
   UUID_RE,
   type BannerEnv,
@@ -50,6 +50,16 @@ export const onRequestPost: PagesFunction<BannerEnv> = async ({
   const buffer = await request.arrayBuffer()
   if (buffer.byteLength > MAX_BYTES) {
     return json({ error: "Imagem demasiado grande." }, 413)
+  }
+
+  // JPEG files start FF D8 FF; the Content-Type header alone proves nothing.
+  const head = new Uint8Array(buffer, 0, Math.min(3, buffer.byteLength))
+  if (head[0] !== 0xff || head[1] !== 0xd8 || head[2] !== 0xff) {
+    return json({ error: "A imagem não é um JPEG válido." }, 415)
+  }
+  // A suggestion's image is set once: an admin approves what they looked at.
+  if (await env.AVATAR_BUCKET!.head(pendingKey(id))) {
+    return json({ error: "Esta sugestão já tem imagem." }, 409)
   }
 
   await env.AVATAR_BUCKET!.put(pendingKey(id), buffer, {

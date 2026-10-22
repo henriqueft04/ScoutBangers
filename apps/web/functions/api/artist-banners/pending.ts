@@ -1,13 +1,13 @@
 import { requireAdmin, type AdminEnv } from "../_lib/admin"
 import {
   checkBannerConfig,
-  json,
   pendingKey,
   publicUrl,
   restHeaders,
   type BannerEnv,
   type Submission,
 } from "../_lib/artist-banner"
+import { json } from "../_lib/http"
 import { bearerToken } from "../_lib/jwt"
 
 /**

@@ -1,4 +1,5 @@
 import { cachedRpc, type RpcEnv } from "./_lib/cached-rpc"
+import { json } from "./_lib/http"
 
 /**
  * `GET /api/artist-listeners?name=<artist>` — the artist page's monthly
@@ -12,14 +13,7 @@ const MAX_AGE_SECONDS = 60 * 60
 /** Longer than any artist name, so a hostile caller can't fill the cache with junk. */
 const MAX_NAME_LENGTH = 200
 
-const reply = (body: unknown, status = 200): Response =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-    },
-  })
+const NO_STORE = { "Cache-Control": "no-store" }
 
 export const onRequestGet: PagesFunction<RpcEnv> = async ({
   request,
@@ -28,7 +22,7 @@ export const onRequestGet: PagesFunction<RpcEnv> = async ({
 }) => {
   const name = new URL(request.url).searchParams.get("name")?.trim() ?? ""
   if (!name || name.length > MAX_NAME_LENGTH) {
-    return reply({ error: "name is required" }, 400)
+    return json({ error: "name is required" }, 400, NO_STORE)
   }
 
   const result = await cachedRpc({
@@ -40,6 +34,6 @@ export const onRequestGet: PagesFunction<RpcEnv> = async ({
     key: `name=${encodeURIComponent(name)}`,
     maxAgeSeconds: MAX_AGE_SECONDS,
   })
-  if (!result.ok) return reply({ error: result.error }, result.status)
-  return reply({ listeners: Number(result.body) })
+  if (!result.ok) return json({ error: result.error }, result.status, NO_STORE)
+  return json({ listeners: Number(result.body) }, 200, NO_STORE)
 }

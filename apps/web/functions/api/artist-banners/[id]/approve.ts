@@ -4,13 +4,13 @@ import {
   approvedKey,
   checkBannerConfig,
   fetchSubmission,
-  json,
   pendingKey,
   publicUrl,
   restHeaders,
   UUID_RE,
   type BannerEnv,
 } from "../../_lib/artist-banner"
+import { json } from "../../_lib/http"
 import { bearerToken } from "../../_lib/jwt"
 
 /**

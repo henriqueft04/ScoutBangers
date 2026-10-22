@@ -1,3 +1,4 @@
+import { json } from "./http"
 import { bearerToken, verifyJwt, type JwtEnv } from "./jwt"
 
 export interface BannerEnv extends JwtEnv {
@@ -6,12 +7,6 @@ export interface BannerEnv extends JwtEnv {
   VITE_SUPABASE_URL?: string
   VITE_SUPABASE_ANON_KEY?: string
 }
-
-export const json = (body: unknown, status = 200): Response =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json; charset=utf-8" },
-  })
 
 export const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

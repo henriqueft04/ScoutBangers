@@ -1274,8 +1274,7 @@ create policy "artist_banner_submissions_admin_update" on public.artist_banner_s
   for update using (exists (select 1 from public.profiles where id = auth.uid() and is_admin = true));
 
 -- Starts a suggestion and returns its id; the image is uploaded against that
--- id afterwards. A user may have a few suggestions waiting at once, and
--- suggesting again for the same artist replaces their earlier waiting one.
+-- id afterwards. A user may have 3 suggestions waiting and make 10 a day.
 create or replace function public.submit_artist_banner(artist_name text)
 returns uuid
 language plpgsql
@@ -1284,7 +1283,6 @@ set search_path = public
 as $$
 declare
   name_clean text := btrim(coalesce(artist_name, ''));
-  existing uuid;
   new_id uuid;
 begin
   if auth.uid() is null then
@@ -1294,15 +1292,21 @@ begin
     raise exception 'Invalid artist name';
   end if;
 
-  select id into existing
-  from public.artist_banner_submissions
+  -- Each suggestion is uploaded once and never changed afterwards (so an
+  -- admin approves exactly what they looked at). Suggesting again for the
+  -- same artist therefore supersedes the earlier waiting one with a new id.
+  update public.artist_banner_submissions
+  set status = 'rejected'
   where user_id = auth.uid()
     and lower(artist_name) = lower(name_clean)
     and status = 'pending';
-  if existing is not null then
-    return existing;
-  end if;
 
+  if (
+    select count(*) from public.artist_banner_submissions
+    where user_id = auth.uid() and created_at > now() - interval '1 day'
+  ) >= 10 then
+    raise exception 'Too many suggestions today';
+  end if;
   if (
     select count(*) from public.artist_banner_submissions
     where user_id = auth.uid() and status = 'pending'

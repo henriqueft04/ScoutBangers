@@ -42,10 +42,13 @@ export async function suggestArtistBanner(
     artist_name: artistName,
   })
   if (error || !id) {
+    const reason = error?.message ?? ""
     throw new Error(
-      error?.message.includes("Too many")
+      reason.includes("waiting")
         ? "Já tens 3 sugestões à espera de aprovação."
-        : "Não foi possível enviar a sugestão."
+        : reason.includes("today")
+          ? "Atingiste o limite de sugestões por hoje."
+          : "Não foi possível enviar a sugestão."
     )
   }
   const response = await fetch(

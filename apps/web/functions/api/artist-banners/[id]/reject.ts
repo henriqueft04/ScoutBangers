@@ -1,12 +1,12 @@
 import { requireAdmin, type AdminEnv } from "../../_lib/admin"
 import {
   checkBannerConfig,
-  json,
   pendingKey,
   restHeaders,
   UUID_RE,
   type BannerEnv,
 } from "../../_lib/artist-banner"
+import { json } from "../../_lib/http"
 import { bearerToken } from "../../_lib/jwt"
 
 /** `POST /api/artist-banners/<id>/reject` (admins): declines a suggestion. */

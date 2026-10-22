@@ -1,4 +1,5 @@
 import { cachedRpc, type RpcEnv } from "./_lib/cached-rpc"
+import { json } from "./_lib/http"
 
 /**
  * `GET /api/song-plays` — all-time play count of every song, as
@@ -12,16 +13,6 @@ import { cachedRpc, type RpcEnv } from "./_lib/cached-rpc"
 const MAX_AGE_SECONDS = 10 * 60
 /** More songs than the library will ever hold: effectively "all of them". */
 const ALL_SONGS = 10_000
-
-const reply = (body: BodyInit, status = 200): Response =>
-  new Response(body, {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      // The edge copy is the cache; the client keeps its own.
-      "Cache-Control": "no-store",
-    },
-  })
 
 export const onRequestGet: PagesFunction<RpcEnv> = async ({
   request,
@@ -37,7 +28,14 @@ export const onRequestGet: PagesFunction<RpcEnv> = async ({
     key: "all",
     maxAgeSeconds: MAX_AGE_SECONDS,
   })
+  // The edge copy is the cache; the client keeps its own.
+  const noStore = { "Cache-Control": "no-store" }
   return result.ok
-    ? reply(result.body)
-    : reply(JSON.stringify({ error: result.error }), result.status)
+    ? new Response(result.body, {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          ...noStore,
+        },
+      })
+    : json({ error: result.error }, result.status, noStore)
 }
