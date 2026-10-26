@@ -7,7 +7,15 @@
 export interface Song {
   id: string
   title: string
+  /**
+   * Artist and album tags from the server's catalog (see song-catalog.ts).
+   * undefined: not in the catalog (yet), so the song's own loaded tags are
+   * the only source. "": the catalog knows the song has none. The catalog is
+   * refreshed whenever a song is edited, so it wins over tags cached on the
+   * device, which can be from before the edit.
+   */
   artist?: string
+  album?: string
   mimeType: string
   size: number
   /** Last edit (retag, new cover, re-upload). Not when it was added. */

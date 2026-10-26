@@ -43,6 +43,7 @@ export async function suggestArtistBanner(
   })
   if (error || !id) {
     const reason = error?.message ?? ""
+    console.warn("[artist-banners] submit failed:", error ?? "no id returned")
     throw new Error(
       reason.includes("waiting")
         ? "Já tens 3 sugestões à espera de aprovação."

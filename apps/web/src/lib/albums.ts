@@ -1,7 +1,5 @@
-import { peekAlbumTag } from "./album-tags"
 import { normalizeText } from "./normalize"
-import { displayTitle } from "./song-display"
-import { peekTrackMetadata } from "./track-metadata"
+import { displayAlbum, displayTitle } from "./song-display"
 import type { Song } from "./types"
 
 export interface Album {
@@ -83,9 +81,7 @@ export function pickCoverSong(
 }
 
 /**
- * Groups songs by the album tag of their embedded metadata. Only songs whose
- * tags are already loaded can be placed, so the result grows as tags arrive.
- * Biggest albums first.
+ * Groups songs by their album tag (see `displayAlbum`). Biggest albums first.
  */
 export function groupAlbums(
   songs: readonly Song[],
@@ -93,7 +89,7 @@ export function groupAlbums(
 ): Album[] {
   const groups = new Map<string, { name: string; songs: Song[] }>()
   for (const song of songs) {
-    const name = peekTrackMetadata(song.id)?.album?.trim() || peekAlbumTag(song)
+    const name = displayAlbum(song)?.trim()
     if (!name) continue
     const key = normalizeText(name)
     const group = groups.get(key) ?? { name, songs: [] }
