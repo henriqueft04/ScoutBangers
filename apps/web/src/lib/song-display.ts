@@ -10,24 +10,35 @@ import type { Song } from "./types"
  * Pass `meta` if you've already read it from `useTrackMetadata` to avoid a
  * second cache lookup.
  */
-export function displayTitle(
-  song: Song,
-  meta?: TrackMetadata | null
-): string {
+export function displayTitle(song: Song, meta?: TrackMetadata | null): string {
   void meta
   return song.title || "Sem título"
 }
 
 /**
- * Resolve a song's display artist. Only the embedded tag artist is used —
- * filename pattern parsing is unreliable so we deliberately ignore it.
- * Returns `undefined` when the song has no embedded artist tag, in which
- * case callers should render no artist line at all (per product decision).
+ * Resolve a song's display artist. Only the tag artist is used — filename
+ * pattern parsing is unreliable so we deliberately ignore it. The server
+ * catalog's value wins (it follows edits); a song not in it falls back to its
+ * own loaded tags. Returns `undefined` when the song has no artist tag, in
+ * which case callers should render no artist line at all (per product
+ * decision).
  */
 export function displayArtist(
   song: Song,
   meta?: TrackMetadata | null
 ): string | undefined {
   const m = meta ?? peekTrackMetadata(song.id)
-  return m?.artist || undefined
+  return (song.artist ?? m?.artist) || undefined
+}
+
+/**
+ * A song's album: the server catalog's, which is complete from the start and
+ * follows edits; the song's own loaded tags only for a song not in it.
+ */
+export function displayAlbum(
+  song: Song,
+  meta?: TrackMetadata | null
+): string | undefined {
+  const m = meta ?? peekTrackMetadata(song.id)
+  return (song.album ?? m?.album) || undefined
 }

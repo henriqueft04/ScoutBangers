@@ -7,6 +7,8 @@ on:
       - "workers/**"
       # The jam relay imports the wire protocol shared with the web app.
       - "apps/web/src/lib/jam-protocol.ts"
+      # The drive-sync worker writes the catalog described here.
+      - "apps/web/src/lib/song-catalog.ts"
       - ".github/workflows/deploy-worker.yml"
   workflow_dispatch: {}
 

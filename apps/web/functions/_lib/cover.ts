@@ -1,6 +1,6 @@
 import { parseBuffer } from "music-metadata"
 
-const AUDIO_BASE_URL = "https://audio.scoutbangers.com"
+export const AUDIO_BASE_URL = "https://audio.scoutbangers.com"
 // Same budget the app uses client-side: tags (and embedded art) sit at the
 // front of the file, so a partial read is enough.
 const PARTIAL_BYTES = 2 * 1024 * 1024

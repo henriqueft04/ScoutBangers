@@ -1,3 +1,4 @@
+import { refreshCatalog } from "./catalog"
 import { getDriveAccessToken } from "./drive-auth"
 
 interface Env {
@@ -131,6 +132,8 @@ interface SyncResult {
   skipped: number
   errors: Array<{ id: string; name: string; error: string }>
   remaining: number
+  /** Songs whose tags were read into the catalog this run. */
+  tagged: number
   /** Filled only when debug=1. First N rows of the comparison so we can
    *  confirm modifiedTime is actually changing. */
   debug?: DebugRow[]
@@ -146,6 +149,7 @@ async function runSync(env: Env, debug = false): Promise<SyncResult> {
     skipped: 0,
     errors: [],
     remaining: 0,
+    tagged: 0,
   }
   if (debug) result.debug = []
 
@@ -206,6 +210,7 @@ async function runSync(env: Env, debug = false): Promise<SyncResult> {
       })
     }
   }
+  result.tagged = await refreshCatalog(env.AUDIO_BUCKET, files)
   return result
 }
 

@@ -1,7 +1,7 @@
 import * as React from "react"
 
 import { normalizeText } from "@/lib/normalize"
-import { displayArtist, displayTitle } from "@/lib/song-display"
+import { displayAlbum, displayArtist, displayTitle } from "@/lib/song-display"
 import { peekTrackMetadata } from "@/lib/track-metadata"
 import type { Song } from "@/lib/types"
 
@@ -28,7 +28,11 @@ export function useFilteredSongs(songs: Song[], query: string): Song[] {
     return songs.filter((song) => {
       const meta = peekTrackMetadata(song.id)
       const haystack = normalizeText(
-        [displayTitle(song, meta), displayArtist(song, meta), meta?.album]
+        [
+          displayTitle(song, meta),
+          displayArtist(song, meta),
+          displayAlbum(song, meta),
+        ]
           .filter(Boolean)
           .join(" ")
       )

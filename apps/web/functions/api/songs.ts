@@ -1,9 +1,17 @@
+import { AUDIO_BASE_URL } from "../_lib/cover"
 import { getDriveAccessToken } from "./_lib/drive-auth"
+import { CATALOG_KEY, type Catalog } from "../../src/lib/song-catalog"
 
 interface Env {
   DRIVE_FOLDER_ID: string
   GOOGLE_SERVICE_ACCOUNT_JSON: string
 }
+
+/**
+ * How long the song list (and the catalog behind it) may be served from the
+ * edge. Short, so an edited song's tags reach everyone within a few minutes.
+ */
+const CACHE_SECONDS = 60
 
 const DRIVE_LIST_URL = "https://www.googleapis.com/drive/v3/files"
 
@@ -25,6 +33,7 @@ interface Song {
   id: string
   title: string
   artist?: string
+  album?: string
   mimeType: string
   size: number
   modifiedTime: string
@@ -41,6 +50,23 @@ function json(body: unknown, status = 200, extra?: HeadersInit): Response {
     status,
     headers: { "Content-Type": "application/json; charset=utf-8", ...extra },
   })
+}
+
+/**
+ * The published tag catalog (see song-catalog.ts), or nothing if it can't be
+ * had: the song list still works without it, just with no artists or albums.
+ */
+async function fetchCatalog(fresh: boolean): Promise<Catalog> {
+  try {
+    // A fresh copy (after an edit) skips the CDN's by giving it another URL.
+    const query = fresh ? `?v=${Date.now()}` : ""
+    const response = await fetch(`${AUDIO_BASE_URL}/${CATALOG_KEY}${query}`, {
+      cf: { cacheTtl: CACHE_SECONDS, cacheEverything: true },
+    })
+    return response.ok ? ((await response.json()) as Catalog) : {}
+  } catch {
+    return {}
+  }
 }
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
@@ -117,9 +143,18 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       return aKey.localeCompare(bKey)
     })
 
+  // Merged after sorting: the list's order is by title, and must stay so.
+  const catalog = await fetchCatalog(bust)
+  for (const song of songs) {
+    const tags = catalog[song.id]
+    if (!tags) continue
+    song.artist = tags.artist ?? ""
+    song.album = tags.album ?? ""
+  }
+
   return json(songs, 200, {
     "Cache-Control": bust
       ? "no-store"
-      : "public, s-maxage=300, stale-while-revalidate=600",
+      : `public, s-maxage=${CACHE_SECONDS}, stale-while-revalidate=${CACHE_SECONDS * 2}`,
   })
 }

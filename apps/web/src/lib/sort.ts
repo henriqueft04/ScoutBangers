@@ -1,5 +1,4 @@
-import { peekTrackMetadata } from "./track-metadata"
-import { displayArtist, displayTitle } from "./song-display"
+import { displayAlbum, displayArtist, displayTitle } from "./song-display"
 import type { Song } from "./types"
 
 export type SortMode = "default" | "title" | "artist" | "album"
@@ -50,8 +49,8 @@ export function sortSongs(songs: readonly Song[], mode: SortMode): Song[] {
     }
     if (mode === "album") {
       // Songs with no embedded album sort to the end (sentinel).
-      const aAlbum = peekTrackMetadata(a.id)?.album || "￿"
-      const bAlbum = peekTrackMetadata(b.id)?.album || "￿"
+      const aAlbum = displayAlbum(a) ?? "￿"
+      const bAlbum = displayAlbum(b) ?? "￿"
       const byAlbum = collator.compare(aAlbum, bAlbum)
       if (byAlbum !== 0) return byAlbum
       return collator.compare(displayTitle(a), displayTitle(b))

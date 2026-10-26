@@ -1295,21 +1295,22 @@ begin
   -- Each suggestion is uploaded once and never changed afterwards (so an
   -- admin approves exactly what they looked at). Suggesting again for the
   -- same artist therefore supersedes the earlier waiting one with a new id.
-  update public.artist_banner_submissions
+  -- (Columns are qualified: the parameter is also called artist_name.)
+  update public.artist_banner_submissions as s
   set status = 'rejected'
-  where user_id = auth.uid()
-    and lower(artist_name) = lower(name_clean)
-    and status = 'pending';
+  where s.user_id = auth.uid()
+    and lower(s.artist_name) = lower(name_clean)
+    and s.status = 'pending';
 
   if (
-    select count(*) from public.artist_banner_submissions
-    where user_id = auth.uid() and created_at > now() - interval '1 day'
+    select count(*) from public.artist_banner_submissions as s
+    where s.user_id = auth.uid() and s.created_at > now() - interval '1 day'
   ) >= 10 then
     raise exception 'Too many suggestions today';
   end if;
   if (
-    select count(*) from public.artist_banner_submissions
-    where user_id = auth.uid() and status = 'pending'
+    select count(*) from public.artist_banner_submissions as s
+    where s.user_id = auth.uid() and s.status = 'pending'
   ) >= 3 then
     raise exception 'Too many suggestions waiting for approval';
   end if;
