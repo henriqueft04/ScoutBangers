@@ -2,6 +2,7 @@ import * as React from "react"
 
 import { ConfirmDialog } from "@/components/profile/confirm-dialog"
 import { UserAvatar } from "@/components/profile/user-avatar"
+import { useConnect } from "@/hooks/useConnect"
 import { useJam } from "@/hooks/useJam"
 
 const LABEL_CLASS = "text-xs uppercase tracking-wider"
@@ -13,12 +14,13 @@ const MAX_AVATARS = 3
  */
 export function JamStatus() {
   const { roomId, status, members, you, leave } = useJam()
+  const { outputElsewhere, activeName } = useConnect()
   const [open, setOpen] = React.useState(false)
 
   if (!roomId) {
     return (
       <p data-tour-id="jam-status" className={`text-muted-foreground ${LABEL_CLASS}`}>
-        A Reproduzir
+        {outputElsewhere ? `A tocar em ${activeName ?? "outro dispositivo"}` : "A Reproduzir"}
       </p>
     )
   }

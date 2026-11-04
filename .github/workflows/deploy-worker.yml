@@ -7,6 +7,10 @@ on:
       - "workers/**"
       # The jam relay imports the wire protocol shared with the web app.
       - "apps/web/src/lib/jam-protocol.ts"
+      # The connect relay shares its protocol, and verifies tokens with the
+      # same JWT helper as the Pages Functions.
+      - "apps/web/src/lib/connect-protocol.ts"
+      - "apps/web/functions/api/_lib/jwt.ts"
       # The drive-sync worker writes the catalog described here.
       - "apps/web/src/lib/song-catalog.ts"
       - ".github/workflows/deploy-worker.yml"
@@ -18,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        worker: [drive-sync, jam]
+        worker: [drive-sync, jam, connect]
     defaults:
       run:
         working-directory: workers/${{ matrix.worker }}

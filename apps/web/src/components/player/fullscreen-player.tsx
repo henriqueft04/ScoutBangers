@@ -28,6 +28,7 @@ import { canShareImage, shareImage } from "@/lib/share"
 import { displayArtist, displayTitle } from "@/lib/song-display"
 
 import { BottomSheet } from "./bottom-sheet"
+import { DeviceButton } from "./device-button"
 import { JamButton } from "./jam-button"
 import { JamStatus } from "./jam-status"
 import { LyricsPanel } from "./lyrics-panel"
@@ -403,17 +404,6 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
         <JamStatus />
         {song ? (
           <div className="flex items-center gap-1">
-            <JamButton className="touch-manipulation hidden size-10 md:inline-flex" />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Partilhar música"
-              onClick={handleShare}
-              className="touch-manipulation hidden size-10 md:inline-flex"
-            >
-              {copied ? <Check className="size-5" /> : <Share2 className="size-5" />}
-            </Button>
             <Button
               type="button"
               variant="ghost"
@@ -519,6 +509,7 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
                   <Share2 className="size-5" />
                 )}
               </Button>
+              <DeviceButton className="touch-manipulation size-11" />
               <JamButton className="touch-manipulation size-11" />
               {canShareImage() ? (
                 <Button
@@ -567,9 +558,26 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
               </span>
             </div>
           ) : null}
-          {/* Desktop: lyrics + queue buttons left of the volume slider */}
+          {/* Desktop: share | device | jam, the volume slider in the middle, lyrics | queue */}
           {song ? (
-            <div className="mt-2 hidden items-center gap-3 md:flex">
+            <div className="mt-2 hidden items-center gap-1 md:flex">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Partilhar música"
+                onClick={handleShare}
+                data-tour-id="player-share"
+                className="touch-manipulation size-10"
+              >
+                {copied ? <Check className="size-5" /> : <Share2 className="size-5" />}
+              </Button>
+              <DeviceButton className="touch-manipulation size-10" />
+              <JamButton className="touch-manipulation size-10" />
+              <VolumeControl
+                className="mx-2 min-w-0 flex-1"
+                sliderClassName="w-auto min-w-0 flex-1"
+              />
               <Button
                 type="button"
                 variant="ghost"
@@ -589,7 +597,6 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
                   sizeClass="size-10"
                 />
               </span>
-              <VolumeControl className="flex-1" />
             </div>
           ) : null}
         </div>

@@ -1,7 +1,9 @@
 import * as React from "react"
 
 import { useAuth } from "./useAuth"
+import { useConnect } from "./useConnect"
 import { usePlayer } from "./usePlayer"
+import { getOrCreateDeviceId } from "@/lib/device"
 import { peekPlaybackDuration } from "@/lib/playback-duration"
 import { ensureTrackMetadata, peekTrackMetadata } from "@/lib/track-metadata"
 import { supabase } from "@/lib/supabase"
@@ -19,22 +21,14 @@ import { supabase } from "@/lib/supabase"
  */
 const PLAY_THRESHOLD_SECONDS = 30
 
-function getOrCreateDeviceId(): string {
-  if (typeof window === "undefined") return ""
-  let deviceId = localStorage.getItem("sb_device_id")
-  if (!deviceId) {
-    deviceId =
-      typeof crypto !== "undefined" && crypto.randomUUID
-        ? crypto.randomUUID()
-        : Math.random().toString(36).substring(2) + Date.now().toString(36)
-    localStorage.setItem("sb_device_id", deviceId)
-  }
-  return deviceId
-}
-
 export function usePlayTracking(): void {
   const { user } = useAuth()
-  const { songs, currentIndex, isPlaying } = usePlayer()
+  const { songs, currentIndex, isPlaying: playerPlaying } = usePlayer()
+  // While another device is playing, this one is a remote control: the
+  // player context shows that device's state, but nothing plays here, and
+  // the device that does is the one that records the play.
+  const { outputElsewhere } = useConnect()
+  const isPlaying = playerPlaying && !outputElsewhere
   const elapsedRef = React.useRef(0)
   const recordedRef = React.useRef(false)
 

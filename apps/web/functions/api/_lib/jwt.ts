@@ -26,6 +26,8 @@ interface JwtPayload {
 export interface VerifiedJwt {
   sub: string
   email: string | null
+  /** Expiry, in epoch seconds. */
+  exp: number
 }
 
 export type VerifyResult =
@@ -103,7 +105,7 @@ export async function verifyJwt(
         jwks.find((k) => (k as { kid?: string }).kid === header.kid) ?? jwks[0]
       if (!match)
         return { ok: false, reason: `no JWKS key for kid=${header.kid}` }
-      const algParams: RsaHashedImportParams | EcKeyImportParams =
+      const algParams =
         header.alg === "RS256"
           ? { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }
           : { name: "ECDSA", namedCurve: "P-256" }
@@ -143,9 +145,10 @@ export async function verifyJwt(
     return { ok: false, reason: "bad payload" }
   }
   if (!payload.sub) return { ok: false, reason: "no sub" }
-  if (payload.exp && payload.exp * 1000 < Date.now())
-    return { ok: false, reason: "expired" }
-  return { ok: true, sub: payload.sub, email: payload.email ?? null }
+  // A token that never expires is a credential that can never be revoked.
+  if (typeof payload.exp !== "number") return { ok: false, reason: "no exp" }
+  if (payload.exp * 1000 < Date.now()) return { ok: false, reason: "expired" }
+  return { ok: true, sub: payload.sub, email: payload.email ?? null, exp: payload.exp }
 }
 
 /** Extracts the Bearer token from an Authorization header. */
