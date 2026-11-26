@@ -477,6 +477,11 @@ export interface Database {
         Args: { uid: string }
         Returns: { total_seconds: number; total_plays: number }[]
       }
+      wrapped_for_user: {
+        Args: { uid: string; yr: number }
+        /** jsonb document — typed as WrappedRaw in lib/wrapped.ts. */
+        Returns: unknown
+      }
 get_user_badges: {
         Args: { uid: string }
         Returns: { rank: number; badge_count: number }[]

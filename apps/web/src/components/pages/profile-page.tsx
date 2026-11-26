@@ -14,6 +14,7 @@ import { ProfileEditSection } from "@/components/profile/profile-edit-section"
 import { ProfileHeader } from "@/components/profile/profile-header"
 import { StorageSection } from "@/components/profile/storage-section"
 import { TopList } from "@/components/profile/top-list"
+import { WrappedBanner } from "@/components/wrapped/wrapped-banner"
 import { useAuth } from "@/hooks/useAuth"
 import { useTopStats, useUserListeningStats } from "@/hooks/useTopStats"
 import { useUserBadges } from "@/hooks/useUserBadges"
@@ -266,6 +267,8 @@ export function ProfilePage() {
             {imageError}
           </p>
         ) : null}
+
+        <WrappedBanner />
 
         <ProfileEditSection />
 

@@ -121,6 +121,11 @@ const SubmitPage = lazyWithReload(() =>
     default: m.SubmitPage,
   }))
 )
+const WrappedPage = lazyWithReload(() =>
+  import("@/components/pages/wrapped-page").then((m) => ({
+    default: m.WrappedPage,
+  }))
+)
 const AdminPage = lazyWithReload(() =>
   import("@/components/pages/admin-page").then((m) => ({
     default: m.AdminPage,
@@ -144,6 +149,7 @@ if (typeof window !== "undefined") {
       void import("@/components/pages/stats-page")
       void import("@/components/pages/submit-page")
       void import("@/components/pages/admin-page")
+      void import("@/components/pages/wrapped-page")
     }
     if ("requestIdleCallback" in window) {
       ;(window as Window & typeof globalThis).requestIdleCallback(prefetch)
@@ -162,6 +168,7 @@ if (typeof window !== "undefined") {
  *   /profile             → profile + stats
  *   /sobre               → about page (PT)
  *   /artist/:name        → artist profile
+ *   /wrapped             → year-in-listening story (Dec–Jan)
  */
 export function App() {
   return (
@@ -188,6 +195,7 @@ export function App() {
                       <Route path="/estatisticas" element={<StatsPage />} />
                       <Route path="/submit" element={<SubmitPage />} />
                       <Route path="/admin" element={<AdminPage />} />
+                      <Route path="/wrapped" element={<WrappedPage />} />
                       <Route path="*" element={<HomePage />} />
                     </Routes>
                   </React.Suspense>
