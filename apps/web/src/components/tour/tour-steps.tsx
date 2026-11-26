@@ -702,12 +702,54 @@ export const ARTISTS_TOUR: TourStep[] = [
   ...ARTIST_PAGE_STEPS,
 ]
 
+/**
+ * Shown once: Connect (play on another of your devices). The device button
+ * only exists while a second device is online, so none of these steps point
+ * at it — a spotlight on a missing element would just time out.
+ */
+export const CONNECT_TOUR: TourStep[] = [
+  {
+    id: "ade",
+    target: null,
+    title: "Ade, ade, ade há mais uma novidade 😝",
+    body: (
+      <>
+        <img
+          src="/scuba.gif"
+          alt=""
+          className="mb-3 max-h-40 w-full rounded-md object-contain"
+        />
+        A nova funcionalidade Connect está pronta para ser usada WOOOO!
+      </>
+    ),
+  },
+  {
+    id: "connect-welcome",
+    target: null,
+    title: "UPDATEEEE! A tua música em casa, no carro em todo o lado 📱💻",
+    body: "Estás a ouvir no telemóvel e abres a app no PC? A música que estava a tocar agora aparece logo lá, na mesma posição, podendo ser controlada a partir de qualquer um dos aparelhos.",
+  },
+  {
+    id: "connect-how",
+    target: null,
+    title: "Escolhe onde queres ouvir",
+    body: "Com a app aberta em dois aparelhos, aparece um botão com um ecrã e uma coluna no leitor. Toca nele e escolhe qual dos aparelhos toca a música. O outro passa a ser o comando: play, pausa, seguinte, anterior, volume, tudo.",
+  },
+  {
+    id: "connect-notes",
+    target: null,
+    title: "Só falta saberes isto",
+    body: "Tens de entrar com a mesma conta nos dois aparelhos. Com o telemóvel bloqueado, o sistema pode atrasar um bocadinho os comandos. E como é novo, pode ter bugs: se algo correr mal, avisem-me yha 🤟",
+  },
+]
+
 export const TOURS: Record<string, TourStep[]> = {
   main: MAIN_TOUR,
   update: UPDATE_TOUR,
   jam: JAM_TOUR,
   playlists: PLAYLISTS_TOUR,
   artists: ARTISTS_TOUR,
+  connect: CONNECT_TOUR,
 }
 
 /** A profile flag recording that an update tour has been seen. */
@@ -724,4 +766,5 @@ export const UPDATE_TOURS: readonly { id: string; seenColumn: UpdateTourColumn }
   { id: "jam", seenColumn: "jam_tour_seen" },
   { id: "playlists", seenColumn: "playlists_tour_seen" },
   { id: "artists", seenColumn: "artists_tour_seen" },
+  { id: "connect", seenColumn: "connect_tour_seen" },
 ]
