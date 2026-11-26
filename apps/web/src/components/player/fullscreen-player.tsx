@@ -3,8 +3,6 @@ import { AnimatePresence } from "framer-motion"
 import {
   Check,
   ChevronDown,
-  CircleAlert,
-  Download,
   FileText,
   ImageUp,
   Loader2,
@@ -15,11 +13,9 @@ import { useNavigate } from "react-router-dom"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
-import { CellularDownloadDialog } from "@/components/library/cellular-download-dialog"
 import { FavoriteButton } from "@/components/library/favorite-button"
 import { MarqueeText } from "@/components/library/marquee-text"
 import { SongArtwork } from "@/components/library/song-artwork"
-import { useOfflineDownload } from "@/hooks/useOfflineDownload"
 import { useShareLink } from "@/hooks/useShareLink"
 import { useTrackMetadata } from "@/hooks/useTrackMetadata"
 import { usePlayer } from "@/hooks/usePlayer"
@@ -29,6 +25,7 @@ import { displayArtist, displayTitle } from "@/lib/song-display"
 
 import { BottomSheet } from "./bottom-sheet"
 import { DeviceButton } from "./device-button"
+import { DownloadButton } from "./download-button"
 import { JamButton } from "./jam-button"
 import { JamStatus } from "./jam-status"
 import { LyricsPanel } from "./lyrics-panel"
@@ -234,39 +231,6 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
     }
   }, [song, meta, storyBusy, handleShare])
 
-  /**
-   * Downloads the current song into the app's offline audio cache — the
-   * same `useOfflineDownload` hook the bulk "Transferências" section
-   * (Profile) and per-playlist downloads use, scoped to this one song.
-   *
-   * This used to be a plain `<a href="/api/stream/..." download>` —
-   * that route hasn't existed since audio moved to streaming directly
-   * from R2, so the link fell through to the SPA's catch-all and
-   * "downloaded" the app's own index.html instead of the song. A
-   * browser file-system download wouldn't have been reliable here
-   * anyway: the `download` attribute is only honoured by browsers for
-   * same-origin links (or a server that opts in with
-   * Content-Disposition: attachment), and audio is served cross-origin
-   * from audio.scoutbangers.com — so this does what "Transferir" means
-   * everywhere else in the app instead.
-   */
-  // Stable single-item array: without the memo, `song ? [song] : []`
-  // would be a fresh array every render, and useOfflineDownload treats a
-  // new array identity as "the song list changed" — re-inspecting the
-  // cache on every render instead of only when the song actually changes.
-  const downloadableSong = React.useMemo(() => (song ? [song] : []), [song])
-  const {
-    targets: downloadTargets,
-    targetBytes: downloadTargetBytes,
-    downloading: downloadProgress,
-    error: downloadError,
-    requestStart: requestDownload,
-    confirmingCellular,
-    confirmCellularDownload,
-    cancelCellularConfirm,
-  } = useOfflineDownload(downloadableSong)
-  const isDownloaded = downloadableSong.length > 0 && downloadTargets.length === 0
-
   // Escape key closes (desktop).
   React.useEffect(() => {
     if (!open) return
@@ -404,36 +368,7 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
         <JamStatus />
         {song ? (
           <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={
-                downloadError
-                  ? "Falha ao transferir — toca para tentar de novo"
-                  : isDownloaded
-                    ? "Música disponível offline"
-                    : "Transferir música para ouvir offline"
-              }
-              onClick={requestDownload}
-              disabled={Boolean(downloadProgress) || isDownloaded}
-              className={cn(
-                "touch-manipulation size-10",
-                downloadError
-                  ? "text-destructive"
-                  : isDownloaded && "text-primary"
-              )}
-            >
-              {downloadProgress ? (
-                <Loader2 className="size-5 animate-spin" />
-              ) : downloadError ? (
-                <CircleAlert className="size-5" />
-              ) : isDownloaded ? (
-                <Check className="size-5" />
-              ) : (
-                <Download className="size-5" />
-              )}
-            </Button>
+            <DownloadButton key={song.id} song={song} />
           </div>
         ) : (
           <span className="size-10" aria-hidden />
@@ -629,13 +564,6 @@ export function FullscreenPlayer({ open, onClose, initialPanel = null }: Fullscr
           </BottomSheet>
         ) : null}
       </AnimatePresence>
-
-      <CellularDownloadDialog
-        open={confirmingCellular}
-        targetBytes={downloadTargetBytes}
-        onConfirm={confirmCellularDownload}
-        onCancel={cancelCellularConfirm}
-      />
     </div>
   )
 }

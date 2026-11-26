@@ -3,6 +3,7 @@ import * as React from "react"
 import { useAuth } from "./useAuth"
 import { useConnect } from "./useConnect"
 import { usePlayer } from "./usePlayer"
+import { usePlayerProgress } from "./usePlayerProgress"
 import { getOrCreateDeviceId } from "@/lib/device"
 import { peekPlaybackDuration } from "@/lib/playback-duration"
 import { ensureTrackMetadata, peekTrackMetadata } from "@/lib/track-metadata"
@@ -20,6 +21,13 @@ import { supabase } from "@/lib/supabase"
  * counts everyone, not just signed-in listeners.
  */
 const PLAY_THRESHOLD_SECONDS = 30
+/**
+ * Hearing the same song again (repeat, or starting it over) doesn't change
+ * the song id, so it is told apart by the playhead: falling from well into
+ * the song back to its start is a new play. A small drop (a seek) isn't.
+ */
+const RESTART_FROM_SECONDS = 10
+const RESTART_TO_SECONDS = 3
 
 export function usePlayTracking(): void {
   const { user } = useAuth()
@@ -28,9 +36,11 @@ export function usePlayTracking(): void {
   // player context shows that device's state, but nothing plays here, and
   // the device that does is the one that records the play.
   const { outputElsewhere } = useConnect()
+  const { position } = usePlayerProgress()
   const isPlaying = playerPlaying && !outputElsewhere
   const elapsedRef = React.useRef(0)
   const recordedRef = React.useRef(false)
+  const lastPositionRef = React.useRef(0)
 
   const songId = currentIndex !== null ? songs[currentIndex]?.id ?? null : null
 
@@ -38,7 +48,19 @@ export function usePlayTracking(): void {
   React.useEffect(() => {
     elapsedRef.current = 0
     recordedRef.current = false
+    lastPositionRef.current = 0
   }, [songId])
+
+  // ...and when the same song starts over: each listen counts, not just the
+  // first one.
+  React.useEffect(() => {
+    const last = lastPositionRef.current
+    lastPositionRef.current = position
+    if (last >= RESTART_FROM_SECONDS && position < RESTART_TO_SECONDS) {
+      elapsedRef.current = 0
+      recordedRef.current = false
+    }
+  }, [position])
 
   // While playing, tick once per second. Cleanup on pause / song change
   // freezes the count where it was so resuming continues, not restarts.
@@ -51,17 +73,18 @@ export function usePlayTracking(): void {
       return
     }
     if (!isPlaying || !songId) return
-    if (recordedRef.current) return
 
     const trackId = songId
     console.info(
       `[plays] tracking ${trackId.slice(0, 8)}… (signed in: ${Boolean(user)})`
     )
 
+    // Keeps ticking after a play is recorded: the same song starting over
+    // clears `recordedRef` and the count begins again.
     const interval = setInterval(() => {
+      if (recordedRef.current) return
       elapsedRef.current += 1
       if (elapsedRef.current < PLAY_THRESHOLD_SECONDS) return
-      if (recordedRef.current) return
 
       recordedRef.current = true
       const userId = user?.id ?? null
