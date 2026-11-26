@@ -8,6 +8,8 @@ import { usePlayer } from "@/hooks/usePlayer"
 
 interface VolumeControlProps {
   className?: string
+  /** Extra classes for the slider, e.g. to hide it at narrow widths. */
+  sliderClassName?: string
 }
 
 function VolumeIcon({ volume, muted }: { volume: number; muted: boolean }) {
@@ -21,7 +23,7 @@ function VolumeIcon({ volume, muted }: { volume: number; muted: boolean }) {
  * Volume slider + mute toggle. Hidden on mobile (`md:` breakpoint controlled
  * by the parent) since phones use hardware volume buttons.
  */
-export function VolumeControl({ className }: VolumeControlProps) {
+export function VolumeControl({ className, sliderClassName }: VolumeControlProps) {
   const { volume, muted, setVolume, toggleMute } = usePlayer()
   const displayed = muted ? 0 : volume
 
@@ -48,7 +50,7 @@ export function VolumeControl({ className }: VolumeControlProps) {
           const next = values[0]
           if (typeof next === "number") setVolume(next)
         }}
-        className="w-24"
+        className={cn("w-24", sliderClassName)}
       />
     </div>
   )

@@ -87,8 +87,12 @@ export function NowPlaying({ className, onExpand }: NowPlayingProps) {
         )}
       </div>
 
+      {/* Below ~400px the controls claim the row; the favorite button is in
+          the fullscreen player too. */}
       {song ? (
-        <FavoriteButton songId={song.id} size="sm" stopPropagation />
+        <div className="hidden shrink-0 min-[400px]:block">
+          <FavoriteButton songId={song.id} size="sm" stopPropagation />
+        </div>
       ) : null}
 
       <Button

@@ -7,6 +7,7 @@ import { usePlayer } from "@/hooks/usePlayer"
 import { useShareLink } from "@/hooks/useShareLink"
 import { displayTitle } from "@/lib/song-display"
 
+import { DeviceButton } from "./device-button"
 import { JamButton } from "./jam-button"
 import { MainControls } from "./main-controls"
 import { NowPlaying } from "./now-playing"
@@ -34,7 +35,11 @@ interface PlayerBarProps {
  * Layout:
  * - Mobile: progress bar on top (full width), then a single row containing
  *   `[NowPlaying] [MainControls]`. Volume is hidden (phones use hardware).
- * - `md+`: 3-column grid `[NowPlaying] [Controls + Progress stacked] [Volume]`.
+ * - `md+`: 3-column grid `[NowPlaying] [Controls + Progress stacked] [Actions]`.
+ *   The actions column sizes to its content, and sheds its secondary buttons
+ *   (jam, share, lyrics, volume slider) below `xl` so it never outgrows its
+ *   space and spills over the playback controls. They all live in the
+ *   fullscreen player too.
  *
  * Tapping the artwork/title region expands the fullscreen player; an explicit
  * chevron button on the right does the same. The artist name within
@@ -65,7 +70,7 @@ export function PlayerBar({
         <ProgressBar compact />
       </div>
 
-      <div className="mx-auto grid w-full max-w-6xl grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] md:gap-4 md:px-6 md:py-3">
+      <div className="mx-auto grid w-full max-w-6xl grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] md:gap-4 md:px-6 md:py-3">
         <NowPlaying onExpand={onExpand} />
 
         <div className="flex flex-col items-stretch gap-1">
@@ -74,9 +79,10 @@ export function PlayerBar({
         </div>
 
         <div className="hidden items-center gap-2 justify-self-end md:flex">
+          <DeviceButton className="touch-manipulation size-8" />
           {hasSong ? (
             <>
-              <JamButton className="touch-manipulation size-8" />
+              <JamButton className="touch-manipulation hidden size-8 xl:inline-flex" />
               <Button
                 type="button"
                 variant="ghost"
@@ -89,7 +95,7 @@ export function PlayerBar({
                     `${window.location.origin}/?song=${song.id}`
                   )
                 }
-                className="touch-manipulation"
+                className="touch-manipulation hidden xl:inline-flex"
               >
                 {copied ? <Check /> : <Share2 />}
               </Button>
@@ -99,7 +105,7 @@ export function PlayerBar({
                 size="icon-sm"
                 aria-label="Abrir letra"
                 onClick={onOpenLyrics}
-                className="touch-manipulation"
+                className="touch-manipulation hidden xl:inline-flex"
               >
                 <FileText />
               </Button>
@@ -111,7 +117,7 @@ export function PlayerBar({
               />
             </>
           ) : null}
-          <VolumeControl />
+          <VolumeControl sliderClassName="hidden xl:flex" />
           <Button
             type="button"
             variant="ghost"

@@ -22,6 +22,7 @@ create table if not exists public.profiles (
   jam_tour_seen boolean default false,
   playlists_tour_seen boolean default false,
   artists_tour_seen boolean default false,
+  connect_tour_seen boolean default false,
   created_at timestamptz not null default now()
 );
 

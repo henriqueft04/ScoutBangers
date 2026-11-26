@@ -1,0 +1,28 @@
+name = "scoutbangers-connect"
+main = "src/index.ts"
+compatibility_date = "2025-11-01"
+
+# Only the custom domain: no *.workers.dev or preview URLs to reach the relay by.
+workers_dev = false
+preview_urls = false
+
+# Custom domain the app connects to (wss://connect.scoutbangers.com). Requires
+# scoutbangers.com to be a zone on this Cloudflare account.
+routes = [{ pattern = "connect.scoutbangers.com", custom_domain = true }]
+
+[vars]
+# Hostnames (and their subdomains) allowed to open a session socket.
+ALLOWED_ORIGINS = "scoutbangers.com,localhost"
+# Used to fetch the JWKS that verifies Supabase access tokens. Not a secret.
+# If the project still signs tokens with the legacy shared secret, also run
+# `wrangler secret put SUPABASE_JWT_SECRET`.
+SUPABASE_URL = "https://ofksdksyicndihxxxbto.supabase.co"
+
+# One ConnectSession object per account. SQLite-backed so it works on the free plan.
+[[durable_objects.bindings]]
+name = "CONNECT_SESSION"
+class_name = "ConnectSession"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ConnectSession"]

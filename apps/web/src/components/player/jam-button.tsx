@@ -3,6 +3,7 @@ import { Check, Users } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
+import { useConnect } from "@/hooks/useConnect"
 import { useJam } from "@/hooks/useJam"
 import { usePlayer } from "@/hooks/usePlayer"
 import { useShareLink } from "@/hooks/useShareLink"
@@ -21,10 +22,13 @@ interface JamButtonProps {
 export function JamButton({ className }: JamButtonProps) {
   const { songs, currentIndex } = usePlayer()
   const { roomId, start } = useJam()
+  // A jam shares what *this* device plays; while another one is playing,
+  // this one has nothing to share until it takes over.
+  const { outputElsewhere } = useConnect()
   const { copied, share } = useShareLink()
 
   const song = currentIndex !== null ? songs[currentIndex] : undefined
-  if (!song) return null
+  if (!song || outputElsewhere) return null
 
   const handleClick = () =>
     void share(

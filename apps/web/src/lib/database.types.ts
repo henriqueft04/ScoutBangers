@@ -20,6 +20,7 @@ export interface Database {
           jam_tour_seen: boolean | null
           playlists_tour_seen: boolean | null
           artists_tour_seen: boolean | null
+          connect_tour_seen: boolean | null
           created_at: string
           regiao: string | null
           nucleo: string | null
@@ -39,6 +40,7 @@ export interface Database {
           jam_tour_seen?: boolean | null
           playlists_tour_seen?: boolean | null
           artists_tour_seen?: boolean | null
+          connect_tour_seen?: boolean | null
           created_at?: string
           regiao?: string | null
           nucleo?: string | null
@@ -58,6 +60,7 @@ export interface Database {
           jam_tour_seen?: boolean | null
           playlists_tour_seen?: boolean | null
           artists_tour_seen?: boolean | null
+          connect_tour_seen?: boolean | null
           created_at?: string
           regiao?: string | null
           nucleo?: string | null

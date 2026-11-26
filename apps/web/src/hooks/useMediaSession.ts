@@ -14,6 +14,8 @@ const FALLBACK_ARTWORK: MediaImage[] = [
 ]
 
 const SEEK_OFFSET_SECONDS = 10
+/** Second registration after a Now Playing (re)start; see `register`. */
+const LATE_REGISTER_MS = 750
 
 /**
  * Cache of measured `${width}x${height}` per song id. Embedded album art
@@ -50,10 +52,11 @@ async function measureArtworkSizes(songId: string, dataUrl: string): Promise<str
  * controls (play/pause/next/prev, scrub, Bluetooth-headphone buttons).
  *
  * Implementation notes:
- *   - Action handlers are registered ONCE on mount. Latest player state is
- *     read via refs inside the handlers, so we don't tear down + reattach
- *     them on every `timeupdate` (which used to leave a tiny gap during which
- *     iOS could miss prev/next presses).
+ *   - Action handlers are registered on mount AND again whenever iOS may
+ *     have restarted its Now Playing session (first `playing`, new track,
+ *     back from background) — see `register`. Latest player state is read
+ *     via refs inside the handlers, so none of this tears anything down on
+ *     `timeupdate`.
  *   - Lock-screen artwork uses the embedded album art's data URL when
  *     available — Blob URLs aren't reliably loaded by the OS lock-screen
  *     process on iOS.
@@ -96,8 +99,13 @@ export function useMediaSession(): void {
     seekRef.current = seek
   })
 
-  // Register action handlers exactly once. Refs above keep them current.
-  React.useEffect(() => {
+  // (Re)installs every action handler. Handlers read the refs above, so this
+  // is cheap and can run as often as needed — and it has to: WebKit drops
+  // handlers registered before the page is "Now Playing" (and again when that
+  // session restarts, e.g. on a new track), after which iOS falls back to its
+  // own ±10s skip buttons. Registering once on mount, as this used to, always
+  // happens before the first play, so the lock screen never got ours.
+  const register = React.useCallback(() => {
     if (!supported) return
     const session = navigator.mediaSession
 
@@ -130,11 +138,11 @@ export function useMediaSession(): void {
 
     // iOS shows TWO secondary control slots in the lock-screen /
     // Control Center Now Playing widget. The default for HTML5
-    // audio is the ±15s seek buttons — and WebKit keeps that
+    // audio is the ±10s seek buttons — and WebKit keeps that
     // default in place unless you EXPLICITLY null out
     // seekbackward/seekforward via setActionHandler. Just *not*
-    // registering them (what we used to do) leaves the UA default
-    // active and the track-skip buttons we registered get hidden.
+    // registering them leaves the UA default active and the
+    // track-skip buttons we registered get hidden.
     // On non-iOS, ±10s is genuinely useful in the Android media
     // notification, so we register real handlers there.
     if (isIOS()) {
@@ -152,17 +160,67 @@ export function useMediaSession(): void {
         seekRef.current(Math.min(cap, target))
       })
     }
-
-    return () => {
-      safeSet("play", null)
-      safeSet("pause", null)
-      safeSet("previoustrack", null)
-      safeSet("nexttrack", null)
-      safeSet("seekto", null)
-      safeSet("seekbackward", null)
-      safeSet("seekforward", null)
-    }
   }, [supported])
+
+  React.useEffect(() => {
+    if (!supported) return
+    register()
+    return () => {
+      const session = navigator.mediaSession
+      for (const action of [
+        "play",
+        "pause",
+        "previoustrack",
+        "nexttrack",
+        "seekto",
+        "seekbackward",
+        "seekforward",
+      ] as const) {
+        try {
+          session.setActionHandler(action, null)
+        } catch {
+          /* action not supported on this UA */
+        }
+      }
+    }
+  }, [supported, register])
+
+  // Re-register whenever iOS may have (re)started the Now Playing session:
+  // the moment audio actually starts (any deck — media events don't bubble,
+  // hence the capture listener), when the page comes back from the
+  // background, and on a bfcache restore. Each runs twice: right away, and
+  // again shortly after, because the session can be established a beat
+  // after the event fires.
+  React.useEffect(() => {
+    if (!supported) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const registerSoon = () => {
+      register()
+      clearTimeout(timer)
+      timer = setTimeout(register, LATE_REGISTER_MS)
+    }
+    const onVisible = () => {
+      if (document.visibilityState === "visible") registerSoon()
+    }
+    document.addEventListener("playing", registerSoon, true)
+    document.addEventListener("visibilitychange", onVisible)
+    window.addEventListener("pageshow", registerSoon)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener("playing", registerSoon, true)
+      document.removeEventListener("visibilitychange", onVisible)
+      window.removeEventListener("pageshow", registerSoon)
+    }
+  }, [supported, register])
+
+  // A new track restarts the Now Playing session too.
+  const songId = song?.id
+  React.useEffect(() => {
+    if (!supported || !songId || !isPlaying) return
+    register()
+    const timer = setTimeout(register, LATE_REGISTER_MS)
+    return () => clearTimeout(timer)
+  }, [supported, register, songId, isPlaying])
 
   // Metadata: title / artist / artwork. Updated whenever the song or its
   // embedded tags change. Cached IDB entries only carry a Blob, not a

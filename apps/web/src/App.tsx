@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom"
 import { AppShell } from "@/components/layout/app-shell"
 import { AuthProvider } from "@/components/auth/auth-provider"
 import { HomePage } from "@/components/pages/home-page"
+import { ConnectProvider } from "@/components/player/connect-provider"
 import { JamProvider } from "@/components/player/jam-provider"
 import { PlayerProvider } from "@/components/player/player-provider"
 import { TourProvider } from "@/components/tour/tour-provider"
@@ -168,29 +169,31 @@ export function App() {
       <AuthProvider>
         <PlayerProvider>
           <JamProvider>
-            <TourProvider>
-              <AppShell>
-                <React.Suspense fallback={null}>
-                  <Routes>
-                    <Route path="/" element={<HomePage />} />
-                    <Route path="/music" element={<LibraryPage />} />
-                    <Route path="/playlists" element={<PlaylistsPage />} />
-                    <Route
-                      path="/playlists/:id"
-                      element={<PlaylistDetailPage />}
-                    />
-                    <Route path="/profile" element={<ProfilePage />} />
-                    <Route path="/sobre" element={<AboutPage />} />
-                    <Route path="/u/:userId" element={<PublicProfilePage />} />
-                    <Route path="/artist/:name" element={<ArtistPage />} />
-                    <Route path="/estatisticas" element={<StatsPage />} />
-                    <Route path="/submit" element={<SubmitPage />} />
-                    <Route path="/admin" element={<AdminPage />} />
-                    <Route path="*" element={<HomePage />} />
-                  </Routes>
-                </React.Suspense>
-              </AppShell>
-            </TourProvider>
+            <ConnectProvider>
+              <TourProvider>
+                <AppShell>
+                  <React.Suspense fallback={null}>
+                    <Routes>
+                      <Route path="/" element={<HomePage />} />
+                      <Route path="/music" element={<LibraryPage />} />
+                      <Route path="/playlists" element={<PlaylistsPage />} />
+                      <Route
+                        path="/playlists/:id"
+                        element={<PlaylistDetailPage />}
+                      />
+                      <Route path="/profile" element={<ProfilePage />} />
+                      <Route path="/sobre" element={<AboutPage />} />
+                      <Route path="/u/:userId" element={<PublicProfilePage />} />
+                      <Route path="/artist/:name" element={<ArtistPage />} />
+                      <Route path="/estatisticas" element={<StatsPage />} />
+                      <Route path="/submit" element={<SubmitPage />} />
+                      <Route path="/admin" element={<AdminPage />} />
+                      <Route path="*" element={<HomePage />} />
+                    </Routes>
+                  </React.Suspense>
+                </AppShell>
+              </TourProvider>
+            </ConnectProvider>
           </JamProvider>
         </PlayerProvider>
       </AuthProvider>

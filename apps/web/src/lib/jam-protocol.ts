@@ -111,7 +111,7 @@ const isQueueEntries = (value: unknown) =>
   )
 
 /** One validator per field: a state needs all of them, a patch any of them. */
-const FIELD_VALIDATORS: Record<keyof JamState, (value: unknown) => boolean> = {
+export const FIELD_VALIDATORS: Record<keyof JamState, (value: unknown) => boolean> = {
   songId: isSongId,
   position: (value) =>
     typeof value === "number" &&
@@ -128,7 +128,7 @@ const FIELD_VALIDATORS: Record<keyof JamState, (value: unknown) => boolean> = {
 
 export const JAM_STATE_KEYS = Object.keys(FIELD_VALIDATORS) as (keyof JamState)[]
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
 
 export function isJamState(value: unknown): value is JamState {
@@ -145,7 +145,8 @@ export function isJamPatch(value: unknown): value is JamPatch {
     keys.length > 0 &&
     keys.every(
       (key) =>
-        key in FIELD_VALIDATORS &&
+        // Own keys only: `"constructor" in obj` is true for every object.
+        Object.hasOwn(FIELD_VALIDATORS, key) &&
         FIELD_VALIDATORS[key as keyof JamState](value[key])
     )
   )
@@ -160,7 +161,7 @@ const isMember = (value: unknown): value is JamMember =>
 const isMembers = (value: unknown): value is JamMember[] =>
   Array.isArray(value) && value.every(isMember)
 
-function parseJson(raw: unknown): Record<string, unknown> | null {
+export function parseJson(raw: unknown): Record<string, unknown> | null {
   if (typeof raw !== "string" || raw.length > MAX_MESSAGE_CHARS) return null
   try {
     const parsed: unknown = JSON.parse(raw)
