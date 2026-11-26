@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers"
 
+import { originAllowed } from "../../shared/origin"
 import {
   MAX_MEMBERS,
   ROOM_ID_PATTERN,
@@ -23,21 +24,6 @@ const ROOM_TTL_MS = 60 * 60 * 1000
 /** Guards against a client flooding the room; legit senders debounce well above this. */
 const MIN_MESSAGE_GAP_MS = 50
 
-function originAllowed(request: Request, env: Env): boolean {
-  const origin = request.headers.get("Origin")
-  if (!origin) return false
-  let hostname: string
-  try {
-    hostname = new URL(origin).hostname
-  } catch {
-    return false
-  }
-  return env.ALLOWED_ORIGINS.split(",").some((allowed) => {
-    const host = allowed.trim()
-    return hostname === host || hostname.endsWith(`.${host}`)
-  })
-}
-
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const roomId = new URL(request.url).pathname.match(ROOM_PATH)?.[1]
@@ -47,7 +33,7 @@ export default {
     if (request.headers.get("Upgrade") !== "websocket") {
       return new Response("Expected a WebSocket upgrade", { status: 426 })
     }
-    if (!originAllowed(request, env)) {
+    if (!originAllowed(request, env.ALLOWED_ORIGINS)) {
       return new Response("Forbidden", { status: 403 })
     }
     return env.JAM_ROOM.getByName(roomId).fetch(request)

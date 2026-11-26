@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers"
 
 import { verifyJwt } from "../../../apps/web/functions/api/_lib/jwt"
+import { originAllowed } from "../../shared/origin"
 import {
   BEARER_SUBPROTOCOL_PREFIX,
   CONNECT_SUBPROTOCOL,
@@ -60,21 +61,6 @@ class Bucket {
   }
 }
 
-function originAllowed(request: Request, env: Env): boolean {
-  const origin = request.headers.get("Origin")
-  if (!origin) return false
-  let hostname: string
-  try {
-    hostname = new URL(origin).hostname
-  } catch {
-    return false
-  }
-  return env.ALLOWED_ORIGINS.split(",").some((allowed) => {
-    const host = allowed.trim()
-    return hostname === host || hostname.endsWith(`.${host}`)
-  })
-}
-
 /**
  * Browsers can't set headers on a WebSocket, and a token in the URL would
  * end up in logs, so the app offers it as a subprotocol:
@@ -98,7 +84,7 @@ export default {
     if (request.headers.get("Upgrade") !== "websocket") {
       return new Response("Expected a WebSocket upgrade", { status: 426 })
     }
-    if (!originAllowed(request, env)) {
+    if (!originAllowed(request, env.ALLOWED_ORIGINS)) {
       return new Response("Forbidden", { status: 403 })
     }
     const token = tokenFromSubprotocols(request)
