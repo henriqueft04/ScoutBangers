@@ -6,6 +6,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { EmptyState } from "@/components/library/empty-state"
 import { FriendsFeed } from "@/components/library/friends-feed"
 import { SongRow } from "@/components/library/song-row"
+import { WrappedBanner } from "@/components/wrapped/wrapped-banner"
 import { usePlayer } from "@/hooks/usePlayer"
 import { newestFirst } from "@/lib/sort"
 import { getCached, setCached } from "@/lib/storage"
@@ -190,6 +191,8 @@ export function HomePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-3 pt-3 pb-4 md:px-6 md:pt-4">
+      <WrappedBanner />
+
       <div className="xl:hidden">
         <FriendsFeed />
       </div>
